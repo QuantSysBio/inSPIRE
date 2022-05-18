@@ -127,3 +127,20 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+inspire/.DS_Store
+inspire/__pycache__
+inspire/__pycache__/*
+inspire/input/__pycache__
+inspire/input/__pycache__/*
+
+example/output/final*
+example/output/non_spectral*
+example/output/*.html
+example/output/*.tab
+example/output/searchEngineFdrs.csv
+example/output/selectedFeatures.yaml
+example/output/spectralPlots.eps
+example/output/rescore.log
+example/output/input_all_features.tab
+example/output/prositInput.csv
