@@ -1,0 +1,11 @@
+---
+experimentTitle: Example Rescoring
+searchResults: example/data/msms.txt
+searchEngine: maxquant
+outputFolder: example/output
+scansFolder: example/data
+scansFormat: mgf
+collisionEnergy: 33
+digest: unspecific
+rescoreMethod: mokapot
+mzAccuracy: 0.03
