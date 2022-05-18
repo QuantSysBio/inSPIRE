@@ -3,13 +3,15 @@ in silico Spectral Predictor Informed REscoring
 
 ## Set Up
 
-### git lfs
+### Before Downloading
 
 Before cloning from the github please ensure that you have git lfs installed (see https://git-lfs.github.com/).
 
+You will also require conda to be installed.
+
 ### Setting up your environment:
 
-Note, inSPIRE requires conda already installed. Once, these are installed follow these steps:
+Once you have installed conda and cloned the repo (with git-lfs used) you can run inSPIRE.
 
 1) To start with create a new conda environment with python version 3.8:
 
