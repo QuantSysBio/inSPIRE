@@ -3,12 +3,23 @@ in silico Spectral Predictor Informed REscoring
 
 ## Set Up
 
+### git lfs
+
+Before cloning from the github please ensure that you have git lfs installed (see https://git-lfs.github.com/).
+
+### Setting up your environment:
+
 Note, inSPIRE requires conda already installed. Once, these are installed follow these steps:
 
 1) To start with create a new conda environment with python version 3.8:
 
 ```
 conda create --name inspire python=3.8
+```
+
+2) Activate this environment
+
+```
 conda activate inspire
 ```
 
@@ -111,6 +122,7 @@ These setting are optional and are completely dependent on user preference.
 | falseDiscoveryRate  | This is the false discovery rate Percolator optimises for (default=0.01). |
 | excludeFeatures       | This specifies any features which you wish to exclude from rescoring (default=empty list). |
 | reduce       | By default inSPIRE uses only the highest scoring hit per scan (and accession group if specified). If you set reduce to False this will consider all hits (default=True). |
+| saveSpectra | Option to save the spectra plotted using the plotSpectra pipeline as post script files. |
 
 ### Additional Configs for Mascot Distiller
 
