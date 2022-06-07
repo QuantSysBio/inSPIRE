@@ -1,6 +1,8 @@
 """ Functions for plotting spectra.
 """
+import os
 
+from PyPDF2 import PdfFileMerger
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -20,6 +22,8 @@ from inspire.input.mgf import process_mgf_file
 from inspire.input.msp import msp_to_df
 from inspire.input.mzml import process_mzml_file
 from inspire.mz_match import get_ion_masses
+
+PLOTS_PER_PAGE = 30
 
 def convert_names_and_mzs(mod_seq, pred_names):
     """ Function to generate plotting ion names and mzs.
@@ -393,6 +397,7 @@ def plot_spectra(config):
         how='inner',
         on=[SOURCE_KEY, SCAN_KEY]
     )
+    n_groups = 1 + (input_df.shape[0] // PLOTS_PER_PAGE)
 
     prosit_df = msp_to_df(f'{config.output_folder}/prositPredictions.msp')
     prosit_df = prosit_df.drop_duplicates(subset=['modified_sequence', CHARGE_KEY])
@@ -409,7 +414,8 @@ def plot_spectra(config):
     )
 
     input_df = input_df.reset_index(drop=True)
-    input_df['index'] = input_df.index
+    input_df['group'] = input_df.index // PLOTS_PER_PAGE
+    input_df['index'] = input_df.index % PLOTS_PER_PAGE
     input_df['plot_data'] = input_df.apply(pair_plot, axis=1)
 
     titles = []
@@ -419,72 +425,87 @@ def plot_spectra(config):
         titles.append(
             f'Sequence: {seq} (SA {spectral_angle})'
         )
-    n_plot_rows = 1 + (input_df.shape[0]//3)
-    fig = make_subplots(
-        rows=n_plot_rows,
-        cols=3,
-        subplot_titles = titles,
-    )
+    
 
-    plot_data = input_df['plot_data'].tolist()
-    for idx, (traces, annotations) in enumerate(plot_data):
-        for trace in traces:
+    for group_idx in range(n_groups):
+
+        start_idx = PLOTS_PER_PAGE*group_idx
+        sub_df = input_df[input_df['group'] == group_idx]
+        n_plots = sub_df.shape[0]
+        n_plot_rows = 1 + (n_plots//3)
+        print(n_plots, start_idx)
+        fig = make_subplots(
+            rows=n_plot_rows,
+            cols=3,
+            subplot_titles = titles[start_idx:start_idx+n_plots],
+        )
+
+        plot_data = sub_df['plot_data'].tolist()
+        for idx, (traces, annotations) in enumerate(plot_data):
+            for trace in traces:
+                fig.add_trace(
+                    trace,
+                    row=1 + (idx//3),
+                    col=1 + (idx%3),
+                )
+
+            fig.layout['annotations'] += tuple(annotations)
+
+        for idx in range(sub_df.shape[0]):
             fig.add_trace(
-                trace,
+                go.Scatter(
+                    x=[0, 1000],
+                    y=[0, 0],
+                    mode='lines',
+                    line={'width':0.5, 'color':'black'},
+                ),
                 row=1 + (idx//3),
                 col=1 + (idx%3),
             )
-        for fig_annot in annotations:
-            fig.add_annotation(fig_annot)
 
-    # fig.update_layout(barmode='group')
-    # fig.update_traces(width=4)
-
-    for idx in range(input_df.shape[0]):
-        fig.add_trace(
-            go.Scatter(
-                x=[0, 1000],
-                y=[0, 0],
-                mode='lines',
-                line={'width':0.5, 'color':'black'},
-            ),
-            row=1 + (idx//3),
-            col=1 + (idx%3),
+        fig.update_layout(
+            width=2100,
+            height=n_plot_rows*500,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            showlegend=False,
         )
 
-    fig.update_layout(
-        width=2100,
-        height=n_plot_rows*500,
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        showlegend=False,
-    )
 
+        fig.update_xaxes(
+            showticklabels=True,
+            range=[0, 1000],
+            linecolor='black',
+            linewidth=0.5,
+            showgrid=False,
+            ticks="outside",
+        )
 
-    fig.update_xaxes(
-        showticklabels=True,
-        range=[0, 1000],
-        linecolor='black',
-        linewidth=0.5,
-        showgrid=False,
-        ticks="outside",
-    )
+        fig.update_yaxes(
+            showline=True,
+            linewidth=0.5,
+            linecolor='black',
+            range=[-1.2, 1.6],
+            tickvals = [-1.2+(i*0.4) for i in range(8)],
+            ticktext = [round(abs(-1.2+(i*0.4)), 1) for i in range(8)],
+            showgrid=False,
+            ticks="outside",
+        )
 
-    fig.update_yaxes(
-        showline=True,
-        linewidth=0.5,
-        linecolor='black',
-        range=[-1.2, 1.6],
-        tickvals = [-1.2+(i*0.4) for i in range(8)],
-        ticktext = [round(abs(-1.2+(i*0.4)), 1) for i in range(8)],
-        showgrid=False,
-        ticks="outside",
-    )
-
-    fig.show()
-    if config.save_spectra:
+        fig.show()
         pio.write_image(
             fig,
-            f'{config.output_folder}/spectralPlots.eps',
+            f'{config.output_folder}/spectralPlots{group_idx}.pdf',
             engine='orca',
+        )
+
+    merger = PdfFileMerger()
+    for group_idx in range(n_groups):
+        merger.append(
+            f'{config.output_folder}/spectralPlots{group_idx}.pdf'
+        )
+    merger.write(f'{config.output_folder}/spectralPlots.pdf')
+    for group_idx in range(n_groups):
+        os.remove(
+            f'{config.output_folder}/spectralPlots{group_idx}.pdf'
         )

@@ -55,13 +55,21 @@ inspire --pipeline rescore --config_file example/config.yml
 
 This will run the rescoring with mokapot rather than percolator as it is easier to install and produce a report upon completion (this should take 2-3 minutes).
 
-Finally if you wish to see pair plots comparing the experimental data to prosit predictions call:
+### Plotting Spectra
+
+To use the inSPIRE plotting utility you will need to further install plotly-orca:
+
+```
+conda install -c plotly plotly-orca 
+```
+
+Then to to see example pair plots comparing the experimental data to prosit predictions call:
 
 ```
 inspire --pipeline plotSpectra --config_file example/config.yml
 ```
 
-This plots the PSMs specified in example/output/plotData.csv. To plot a different PSM simply copy the relevant line from example/output/finalAssignments.csv into example/output/finalAssignments.csv and see its pair plot. These plots can be saved as .eps files if specified, however this requires the installation of the kaleido package (more details below).
+This plots the PSMs specified in example/output/plotData.csv and save the plots to example/output/spectralPlots.pdf. To plot a different PSM simply copy the relevant line from example/output/finalAssignments.csv into example/output/finalAssignments.csv and rerun the plotSpectra pipeline.
 
 ## inSPIRE Pipelines.
 
