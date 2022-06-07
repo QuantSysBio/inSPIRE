@@ -43,7 +43,6 @@ ALL_CONFIG_KEYS = [
     'dropUnknownPTMs',
     'rawFileGroupings',
     'additionalContextFeatures',
-    'saveSpectra',
 ]
 
 class Config:
@@ -107,7 +106,6 @@ class Config:
         self.spectral_predictor = config_dict.get('spectralPredictor', 'prosit')
 
         # Optional
-        self.save_spectra = config_dict.get('saveSpectra', False)
         self.fdr = config_dict.get('falseDiscoveryRate', 0.01)
         self.max_for_selection = config_dict.get('maxForFeatureSelection', 1)
         self.exclude_raw_files = config_dict.get('excludeRawFiles', [])
