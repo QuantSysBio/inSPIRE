@@ -433,7 +433,7 @@ def plot_spectra(config):
         sub_df = input_df[input_df['group'] == group_idx]
         n_plots = sub_df.shape[0]
         n_plot_rows = 1 + (n_plots//3)
-        print(n_plots, start_idx)
+
         fig = make_subplots(
             rows=n_plot_rows,
             cols=3,
