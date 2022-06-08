@@ -5,10 +5,10 @@ in silico Spectral Predictor Informed REscoring
 
 ### Before Downloading
 
-Before cloning from the github please ensure that you have git lfs installed (see https://git-lfs.github.com/). To make sure it is properly installed, run
+Before cloning from the github please ensure that you have git lfs installed (see https://git-lfs.github.com/) or simply install it via conda with
 
 ```
-git-lfs
+conda install git-lfs
 ```
 
 in your terminal.
@@ -21,10 +21,16 @@ You can then clone the repo with:
 git clone https://github.com/QuantSysBio/inSPIRE.git
 ```
 
-and navigate in your terminal to the inSPIRE folder with
+and navigate in your terminal to the inSPIRE folder with:
 
 ```
 cd inSPIRE
+```
+
+To make sure git-lfs is working run:
+
+```
+git lfs pull
 ```
 
 ### Setting up your environment:
