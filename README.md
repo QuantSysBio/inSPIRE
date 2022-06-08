@@ -5,7 +5,13 @@ in silico Spectral Predictor Informed REscoring
 
 ### Before Downloading
 
-Before cloning from the github please ensure that you have git lfs installed (see https://git-lfs.github.com/).
+Before cloning from the github please ensure that you have git lfs installed (see https://git-lfs.github.com/). To make sure it is properly installed, run
+
+```
+git-lfs
+```
+
+in your terminal.
 
 You will also require conda to be installed.
 
