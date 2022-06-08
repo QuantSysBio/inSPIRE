@@ -11,6 +11,12 @@ Before cloning from the github please ensure that you have git lfs installed (se
 conda install git-lfs
 ```
 
+and
+
+```
+git lfs install
+```
+
 in your terminal.
 
 You will also require conda to be installed.
