@@ -9,6 +9,14 @@ Before cloning from the github please ensure that you have git lfs installed (se
 
 You will also require conda to be installed.
 
+You can then clone the repo with:
+
+```
+git clone https://github.com/QuantSysBio/inSPIRE.git
+```
+
+and navigate in your terminal to the inSPIRE folder.
+
 ### Setting up your environment:
 
 Once you have installed conda and cloned the repo (with git-lfs used) you can run inSPIRE.
