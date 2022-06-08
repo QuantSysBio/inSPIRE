@@ -15,7 +15,11 @@ You can then clone the repo with:
 git clone https://github.com/QuantSysBio/inSPIRE.git
 ```
 
-and navigate in your terminal to the inSPIRE folder.
+and navigate in your terminal to the inSPIRE folder with
+
+```
+cd inSPIRE
+```
 
 ### Setting up your environment:
 
