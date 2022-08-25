@@ -7,21 +7,22 @@ import pandas as pd
 from pyteomics import mgf
 
 from inspire.constants import (
+    CHARGE_KEY,
     INTENSITIES_KEY,
     MZS_KEY,
     SCAN_KEY,
     SOURCE_KEY,
 )
 
-def process_mgf_file(mgf_filename, scan_ids, scan_file_format, source_list):
+def process_mgf_file(mgf_filename, scan_ids, scan_file_format, source_list, with_charge=False):
     """ Function to process an mgf file to find matches with scan IDs.
 
     Parameters
     ----------
     mgf_filename : str
         The mgf file from which we are reading.
-    scan_ids : list of int
-        A list of the scan IDs we require.
+    scan_ids : set of int
+        A set of the scan IDs we require.
     scan_file_format : str
         The format of the file used.
     source_list : list of str
@@ -37,6 +38,8 @@ def process_mgf_file(mgf_filename, scan_ids, scan_file_format, source_list):
     matched_mzs = []
     sources = []
     filename = mgf_filename.split('/')[-1]
+    if with_charge:
+        charge_list = []
 
     with mgf.read(mgf_filename) as reader:
         for spectrum in reader:
@@ -56,11 +59,13 @@ def process_mgf_file(mgf_filename, scan_ids, scan_file_format, source_list):
                     int(spectrum['params']['title'].split(' from file [')[-1].strip(']'))
                 ]
 
-            if scan_id in scan_ids:
+            if scan_ids is None or scan_id in scan_ids:
                 sources.append(source)
                 matched_scan_ids.append(scan_id)
                 matched_intensities.append(np.array(list(spectrum['intensity array'])))
                 matched_mzs.append(np.array(list(spectrum['m/z array'])))
+                if with_charge:
+                    charge_list.append(int(spectrum['params']['charge'][0]))
 
     mgf_df = pd.DataFrame(
         {
@@ -70,6 +75,8 @@ def process_mgf_file(mgf_filename, scan_ids, scan_file_format, source_list):
             MZS_KEY: pd.Series(matched_mzs)
         }
     )
+    if with_charge:
+        mgf_df[CHARGE_KEY] = pd.Series(charge_list)
 
     mgf_df = mgf_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY])
 

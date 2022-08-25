@@ -145,3 +145,6 @@ example/output/rescore.log
 example/output/input_all_features.tab
 example/output/prositInput.csv
 example/output/spectralPlots.pdf
+example/.DS_Store
+
+inspire/model

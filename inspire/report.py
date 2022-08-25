@@ -28,6 +28,7 @@ from inspire.constants import (
     TRUE_ACCESSION_KEY,
     TRUE_PEPTIDE_KEY,
 )
+from inspire.feature_selection import generate_one_hot_entries
 from inspire.figures import (
     create_binders_fig,
     create_pr_fig,
@@ -44,12 +45,9 @@ NON_SPECTRAL_FEATURES = [
     ENGINE_SCORE_KEY,
     DELTA_SCORE_KEY,
     MASS_DIFF_KEY,
-    CHARGE_KEY,
     SEQ_LEN_KEY,
     'nVarMods',
     'avgResidueMass',
-    'fromChimera',
-    'fracUnique',
 ]
 N_PR_STEPS = 200
 
@@ -115,8 +113,14 @@ def apply_non_spectral_percolator(output_folder, fdr, rescore_method, use_score_
         A DataFrame of results from Percolator trained without spectral features.
     """
     all_features_df = pd.read_csv(f'{output_folder}/input_all_features.tab', sep='\t')
+
     prefix_keys = PREFIX_KEYS[rescore_method]
     psm_id_key = PSM_ID_KEY[rescore_method]
+
+    all_features_df, one_hot_features = generate_one_hot_entries(
+        all_features_df,
+        CHARGE_KEY
+    )
 
     if use_score_only:
         non_spectral_df = all_features_df[
@@ -126,7 +130,7 @@ def apply_non_spectral_percolator(output_folder, fdr, rescore_method, use_score_
         ]
     else:
         non_spectral_df = all_features_df[
-            prefix_keys + BASIC_FEATURES + SUFFIX_KEYS
+            prefix_keys + NON_SPECTRAL_FEATURES + one_hot_features + SUFFIX_KEYS
         ]
 
     non_spectral_df = non_spectral_df.dropna(axis=1)
@@ -317,7 +321,7 @@ def get_wrong_table(config):
     se_wrong_fig : str
         A table of the highest ranking incorrect Search Engine PSMs converted to html.
     """
-    query_table = pd.read_csv(f'{config.output_folder}/queryTable.csv')
+    query_table = pd.read_csv(f'{config.output_folder}/queryTable.csv', index_col=False)
 
     query_table = query_table.sort_values(by=FINAL_SCORE_KEY, ascending=False)
     query_table.reset_index(drop=True, inplace=True)
@@ -389,10 +393,10 @@ def plot_precision_recall_curve(config):
     pr_fig : str
         A figure of precision and recalls at varying score thresholds converted to html.
     """
-    query_table = pd.read_csv(f'{config.output_folder}/queryTable.csv')
+    query_table = pd.read_csv(f'{config.output_folder}/queryTable.csv', index_col=False)
     non_spec_df = pd.read_csv(
         f'{config.output_folder}/non_spectral.{config.rescore_method}.psms.txt',
-        sep='\t',
+        sep='\t', index_col=False
     )
     non_spec_df = non_spec_df.rename(
         columns={OUT_SCORE_KEY[config.rescore_method]: 'nonSpectralScore'}
@@ -512,19 +516,11 @@ def generate_report(config):
     else:
         non_spectral_fdr = config.fdr
 
-    if config.search_engine in ('maxquant', 'mascot'):
-        non_spectral_df = apply_non_spectral_percolator(
-            config.output_folder,
-            non_spectral_fdr,
-            config.rescore_method,
-        )
-    elif config.search_engine == 'peaks':
-        non_spectral_df = apply_non_spectral_percolator(
-            config.output_folder,
-            non_spectral_fdr,
-            config.rescore_method,
-            use_score_only=True,
-        )
+    non_spectral_df = apply_non_spectral_percolator(
+        config.output_folder,
+        non_spectral_fdr,
+        config.rescore_method,
+    )
 
     assignment_df = pd.read_csv(f'{config.output_folder}/finalAssignments.csv')
 
@@ -586,6 +582,7 @@ def calculate_distributions(config, most_positive_features, most_negative_featur
     out_filename = f'final.{config.rescore_method}.psms.txt'
     input_df = pd.read_csv(f'{config.output_folder}/final_input.tab', sep='\t')
     psms_df = pd.read_csv(f'{config.output_folder}/{out_filename}', sep='\t')
+
     psms_df['Status'] = psms_df[out_score_key].apply(
         lambda x : 'Accepted' if x >= 0 else 'Rejected'
     )
@@ -664,9 +661,9 @@ def create_weights_table(output_folder, rescore_method, acc_idx=None):
         weights_df = add_mokapot_weights(output_folder, rescore_method, acc_idx)
     else:
         if acc_idx is None:
-            weights_path = f'{output_folder}/final.percolator.weights.csv'
+            weights_path = f'{output_folder}/final.{rescore_method}.weights.csv'
         else:
-            weights_path = f'{output_folder}/final_{acc_idx}.percolator.weights.csv'
+            weights_path = f'{output_folder}/final_{acc_idx}.{rescore_method}.weights.csv'
         weights_df = pd.read_csv(
             weights_path,
             skiprows=lambda x : x not in [0, 1, 4, 7],

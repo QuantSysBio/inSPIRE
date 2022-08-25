@@ -2,12 +2,12 @@
 """
 import numpy as np
 import pandas as pd
-from pyopenms import MSExperiment, MzMLFile # pylint: disable-msg=E0611
+from pyteomics import mzml
 
-from inspire.constants import INTENSITIES_KEY, MZS_KEY, SCAN_KEY, SOURCE_KEY
+from inspire.constants import CHARGE_KEY, INTENSITIES_KEY, MZS_KEY, SCAN_KEY, SOURCE_KEY
 
 
-def process_mzml_file(mzml_filename, scan_ids):
+def process_mzml_file(mzml_filename, scan_ids, with_charge=False):
     """ Function to process an MzML file to find matches with scan IDs.
 
     Parameters
@@ -27,16 +27,20 @@ def process_mzml_file(mzml_filename, scan_ids):
     scan_id_list = []
     mzml_filenames = []
     filename = mzml_filename.split('/')[-1]
+    if with_charge:
+        charge_list = []
 
-    exp = MSExperiment()
-    MzMLFile().load(mzml_filename, exp)
-    for spectrum in exp:
-        scan_id = int(spectrum.getNativeID().split('scan=')[1])
-        if scan_id in scan_ids:
-            ion_list.append(np.array([peak.getMZ() for peak in spectrum]))
-            intensities_list.append(np.array([peak.getIntensity() for peak in spectrum]))
-            scan_id_list.append(scan_id)
-            mzml_filenames.append(filename)
+    with mzml.read(mzml_filename) as reader:
+        for spectrum in reader:
+            scan_id = int(spectrum.getNativeID().split('scan=')[1])
+
+            if scan_id in scan_ids:
+                mzml_filenames.append(filename)
+                scan_id_list.append(scan_id)
+                intensities_list.append(np.array(list(spectrum['intensity array'])))
+                ion_list.append(np.array(list(spectrum['m/z array'])))
+                if with_charge:
+                    charge_list.append(int(spectrum['params']['charge'][0]))
 
     scans_df =  pd.DataFrame(
         {
@@ -46,6 +50,8 @@ def process_mzml_file(mzml_filename, scan_ids):
             MZS_KEY: pd.Series(ion_list)
         }
     )
+    if with_charge:
+        scans_df[CHARGE_KEY] = pd.Series(charge_list)
 
     scans_df = scans_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY])
 

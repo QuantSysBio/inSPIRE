@@ -21,6 +21,7 @@ from inspire.input.msp import msp_to_df
 from inspire.input.mzml import process_mzml_file
 from inspire.input.search_results import generic_read_df
 from inspire.feature_creation import combine_spectral_data
+from inspire.predict_spectra import predict_spectra
 from inspire.prepare import write_prosit_input_df
 from inspire.spectral_features import calculate_spectral_features
 from inspire.utils import get_ox_flag, remove_source_suffixes
@@ -66,7 +67,7 @@ def prepare_calibration(config):
         write_prosit_input_df(
             target_df,
             mods_df,
-            config.output_folder,
+            config,
             collision_energy,
             'calibrationInput',
             overwrite=idx==0,
@@ -85,9 +86,12 @@ def calibrate(config):
         '\tSelecting top hits...' +
         ENDC_TEXT
     )
+    prepare_calibration(config)
+    predict_spectra(config, 'calibrate')
+
     target_df, mods_df = _get_top_hits(config)
     prosit_df = msp_to_df(
-        f'{config.output_folder}/calibrationPredictions.msp'
+        f'{config.output_folder}/calibrationPredictions.msp', 'prosit', None,
     )
 
     if config.combined_scans_file is not None:
@@ -108,12 +112,12 @@ def calibrate(config):
         if config.scans_format == 'mzML':
             scan_df = process_mzml_file(
                 f'{config.scans_folder}/{scan_file}.{config.scans_format}',
-                scans.tolist()
+                set(scans.tolist()),
             )
         else:
             scan_df = process_mgf_file(
                 f'{config.scans_folder}/{scan_file}.{config.scans_format}',
-                scans.tolist(),
+                set(scans.tolist()),
                 config.scan_title_format,
                 config.source_files
             )
@@ -129,6 +133,7 @@ def calibrate(config):
         combined_scan_df,
         prosit_df,
         ox_flag,
+        'prosit',
     )
     print(
         OKCYAN_TEXT +
@@ -140,8 +145,11 @@ def calibrate(config):
             x,
             {0: 0.0},
             config.mz_accuracy,
+            config.mz_units,
             None,
             '1',
+            config.delta_method,
+            config.spectral_predictor,
             spectral_angle_only=True,
         ),
         axis=1

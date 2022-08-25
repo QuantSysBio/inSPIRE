@@ -50,11 +50,11 @@ def apply_rescoring(
     results : pd.DataFrame
         The predictions from Percolator.
     """
-    input_key = f'{output_folder}/{input_filename}'
     psm_output_key = f'{output_folder}/{output_prefix}.{rescore_method}.psms.txt'
     pep_output_key = f'{output_folder}/{output_prefix}.{rescore_method}.peptides.txt'
 
     if rescore_method == 'mokapot':
+        rescore_name = 'mokapot'
         clis = (
             f' --dest_dir {output_folder} --keep_decoys --verbosity 0 ' +
             f' --train_fdr {fdr} -v 0 ' +
@@ -62,26 +62,28 @@ def apply_rescoring(
         )
         trailing_args = ''
     elif rescore_method == 'percolatorSeparate':
+        rescore_name = 'percolator'
         percolator_decoy_key = f'{output_folder}/{output_prefix}.{rescore_method}.decoy.psms.txt'
         weights_path = f'{output_folder}/{output_prefix}.{rescore_method}.weights.csv'
         clis = (
-            f' - U -F {fdr} -t {fdr} -i 10 -M {percolator_decoy_key} --post-processing-tdc  ' +
-            f' -w {weights_path} ' +
+            f' -U -F {fdr} -t {fdr} -i 10 -M {percolator_decoy_key} --post-processing-tdc  ' +
+            f' -w {weights_path} --override ' +
             f' --results-psms {psm_output_key} --results-peptides {pep_output_key} '
         )
         trailing_args = ''
     else:
+        rescore_name = 'percolator'
         percolator_decoy_key = f'{output_folder}/{output_prefix}.{rescore_method}.decoy.psms.txt'
         weights_path = f'{output_folder}/{output_prefix}.{rescore_method}.weights.csv'
         clis = (
             f' -F {fdr} -t {fdr} -i 10 -M {percolator_decoy_key} --post-processing-tdc ' +
-            f' -I concatenated --subset-max-train 500000 -w {weights_path} -v 0 ' +
+            f' -I concatenated -w {weights_path} -v 0 ' +
             f' --results-psms {psm_output_key} --results-peptides {pep_output_key} --override '
         )
         trailing_args = ''
 
     bash_command = (
-        f'{rescore_method} {clis} {input_key} {trailing_args}'
+        f'{rescore_name} {clis} {output_folder}/{input_filename} {trailing_args}'
     )
 
     with open(f'{output_folder}/rescore.log', 'w', encoding='UTF-8') as log_file:
@@ -162,15 +164,13 @@ def _add_key_features(target_psms, config):
     )
     input_df = input_df.drop_duplicates(subset=[psm_id_key, PEPTIDE_KEY])
 
-    key_features = [SPECTRAL_ANGLE_KEY, ENGINE_SCORE_KEY, CHARGE_KEY]
+    key_features = [SPECTRAL_ANGLE_KEY, 'matchedCoverage', 'deltaRT', ENGINE_SCORE_KEY, CHARGE_KEY]
     if config.use_accession_stratum:
         acc_cols = [x for x in input_df.columns if x.startswith('accession')]
         input_df[ACCESSION_STRATUM_KEY] = input_df.apply(
             lambda x : _regroup_accession(x, acc_cols), axis=1
         )
         key_features.append(ACCESSION_STRATUM_KEY)
-    if config.additional_context_feats is not None:
-        key_features += config.additional_context_features
 
     output_df = pd.merge(
         target_psms,
@@ -204,6 +204,11 @@ def final_rescoring(config):
         config.rescore_method,
         output_prefix,
     )
+
+    if 'PSMId' in target_psms.columns:
+        target_psms = target_psms.rename(
+            columns={'PSMId': psm_id_key}
+        )
 
     print(
         OKCYAN_TEXT + '\tRescoring complete.' + ENDC_TEXT

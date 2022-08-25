@@ -64,16 +64,24 @@ def read_mhcpan_output(mhc_pan_dir):
     ]
     mhc_dfs = []
     for mhc_pan_file in mhc_pan_files:
-        # TODO get single file & remove X chars.
         clean_mhc_pan_output(mhc_pan_file)
         start, end = get_mhc_pan_metadata(mhc_pan_file)
-        mhc_pan_df = pd.read_csv(
-            mhc_pan_file,
-            delim_whitespace=True,
-            skiprows=lambda idx, sl=start, el=end : idx < sl or idx > el,
-            header=None,
-            names=MHC_PAN_COL_NAMES
-        )
+        try:
+            mhc_pan_df = pd.read_csv(
+                mhc_pan_file,
+                delim_whitespace=True,
+                skiprows=lambda idx, sl=start, el=end : idx < sl or idx > el,
+                header=None,
+                names=MHC_PAN_COL_NAMES
+            )
+        except pd.errors.ParserError:
+            mhc_pan_df = pd.read_csv(
+                mhc_pan_file,
+                delim_whitespace=True,
+                skiprows=lambda idx, sl=start, el=end : idx < sl or idx > el,
+                header=None,
+                names=[col for col in MHC_PAN_COL_NAMES if col != 'BindLevel']
+            )
         mhc_dfs.append(mhc_pan_df)
     mhc_pan_combined_df = pd.concat(mhc_dfs)
 

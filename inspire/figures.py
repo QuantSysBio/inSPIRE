@@ -388,7 +388,7 @@ def create_weights_fig(
     fig.update_layout(
         title='Weights of Features Selected by inSPIRE.',
         width=1000,
-        height=600 + (17*(len(weights_df)-17)),
+        height=1100,
         title_x=0.5
     )
     return fig.to_html()

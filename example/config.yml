@@ -6,6 +6,5 @@ outputFolder: example/output
 scansFolder: example/data
 scansFormat: mgf
 collisionEnergy: 33
-digest: unspecific
 rescoreMethod: mokapot
-mzAccuracy: 0.03
+mzAccuracy: 0.02

@@ -11,6 +11,8 @@ PROSIT_SEQ_KEY = 'modified_sequence'
 PROSIT_CHARGE_KEY = 'precursor_charge'
 PROSIT_COLLISION_ENERGY_KEY = 'collision_energy'
 
+FIGSHARE_PATH = 'https://figshare.com/ndownloader/articles/20368035/versions/1'
+
 HEADER_TEXT = '\033[95m'
 OKBLUE_TEXT = '\033[94m'
 OKCYAN_TEXT = '\033[96m'
@@ -54,7 +56,6 @@ FRAG_MZ_ERR_VAR_KEY = 'fragmentMzErrorVariance'
 
 MATCHED_IONS_KEY = 'nMatchedIonsDivFrags'
 MATCHABLE_IONS_KEY = 'nPrositIonsDivFrags'
-OBS_NOT_PRED_KEY = 'nFoundNotPredDivFrags'
 NOT_ASSIGNED_KEY = 'nNotMatchableDivFrags'
 LOSS_IONS_KEY = 'nLossIonsDivFrags'
 
@@ -71,23 +72,28 @@ PERC_SCAN_ID = 'scannr'
 PSM_ID_KEY = {
     'mokapot': 'specID',
     'percolator': 'PSMId',
+    'percolatorSeparate': 'PSMId',
 }
 OUT_ACCESSION_KEY = {
     'mokapot': 'proteins',
     'percolator': 'proteinIds',
+    'percolatorSeparate': 'proteinIds',
 }
 OUT_SCORE_KEY = {
     'mokapot': 'mokapot score',
     'percolator': 'score',
+    'percolatorSeparate': 'score',
 }
 OUT_Q_KEY = {
     'mokapot': 'mokapot q-value',
     'percolator': 'q-value',
+    'percolatorSeparate': 'q-value',
 }
 
 PREFIX_KEYS = {
     'mokapot': [PSM_ID_KEY['mokapot'], LABEL_KEY, PERC_SCAN_ID],
     'percolator': [PSM_ID_KEY['percolator'], LABEL_KEY, PERC_SCAN_ID],
+    'percolatorSeparate': [PSM_ID_KEY['percolatorSeparate'], LABEL_KEY, PERC_SCAN_ID],
 }
 SUFFIX_KEYS = [PEPTIDE_KEY, ACCESSION_KEY]
 
@@ -116,9 +122,45 @@ BASIC_FEATURES = [
     'fromChimera',
     'retentionTime',
     'seqLenMeanDiff',
-    'massMeanDiff',
     'absMassDiff',
 ]
+
+MIN_SEQ_LEN = 7
+MAX_SEQ_LEN = 30
+MAX_ION_IDX = MAX_SEQ_LEN - 1
+MAX_CHARGE = 6
+N_LOSSES = 1
+N_ION_TYPES = 2
+ION_TYPES = 'yb'
+
+MAX_FRAG_CHARGE = 3
+
+PROSIT_PRED_BATCH_SIZE = 1024
+PROSIT_ALPHABET = {
+    "A": 1,
+    "C": 2,
+    "D": 3,
+    "E": 4,
+    "F": 5,
+    "G": 6,
+    "H": 7,
+    "I": 8,
+    "K": 9,
+    "L": 10,
+    "M": 11,
+    "N": 12,
+    "P": 13,
+    "Q": 14,
+    "R": 15,
+    "S": 16,
+    "T": 17,
+    "V": 18,
+    "W": 19,
+    "Y": 20,
+    "M(ox)": 21,
+}
+PROSIT_ALPHABET_S = {integer: char for char, integer in PROSIT_ALPHABET.items()}
+PROSIT_MASK_VALUE = -1.0
 
 PROTON = 1.007276466622
 ELECTRON = 0.00054858
@@ -197,6 +239,21 @@ KNOWN_PTM_LOC = {
     'Phosphorylation (STY)': 'STY',
     'Carbamidomethyl (C)': 'C',
     'Carbamidomethylation': 'C',
+}
+
+MS2PIP_NAME_MAPPINGS = {
+    'Deamidated (N)': 'Deamidation',
+    'Deamidated (NQ)': 'Deamidation',
+    'Deamidation (NQ)': 'Deamidation',
+    'Deamidation (N)': 'Deamidation',
+    'Oxidation (M)': 'Oxidation',
+    'Acetyl (N-term)': 'Acetyl',
+    'Phospho (Y)': 'Phospho',
+    'Phospho (ST)': 'Phospho',
+    'Phospho (STY)': 'Phospho',
+    'Phosphorylation (STY)': 'Phospho',
+    'Carbamidomethyl (C)': 'Carbamidomethyl',
+    'Carbamidomethylation': 'Carbamidomethyl',
 }
 
 ION_OFFSET = {
