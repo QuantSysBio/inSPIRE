@@ -34,6 +34,7 @@ MQ_MISSED_CLEAVAGES_KEY = 'Missed cleavages'
 MQ_MOD_SEQ_KEY = 'Modified sequence'
 MQ_MODS_KEY = 'Modifications'
 MQ_MZ_ERROR = 'Simple mass error [ppm]'
+MQ_INTENSITY_KEY = 'Precursor Intensity'
 MQ_RT_KEY = 'Retention time'
 MQ_SCAN_KEY = 'Scan number'
 MQ_SCORE_KEY = 'Score'
@@ -44,6 +45,7 @@ MQ_RELEVANT_COLS = [
     MQ_CHARGE_KEY,
     MQ_DECOY_KEY,
     MQ_DELTA_SCORE_KEY,
+    MQ_INTENSITY_KEY,
     MQ_LEN_KEY,
     MQ_MASS_KEY,
     MQ_MISSED_CLEAVAGES_KEY,
@@ -184,6 +186,7 @@ def read_single_mq_data(mq_data):
             MQ_SEQ_KEY: PEPTIDE_KEY,
             MQ_SOURCE_KEY: SOURCE_KEY,
             MQ_MISSED_CLEAVAGES_KEY: 'missedCleavages',
+            MQ_INTENSITY_KEY: 'ms1Intensity',
         }
     )
 

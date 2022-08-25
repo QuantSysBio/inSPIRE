@@ -5,6 +5,7 @@ import numpy as np
 from inspire.constants import (
     C_TERMINUS,
     N_TERMINUS,
+    PROTON,
     RESIDUE_WEIGHTS,
     ION_OFFSET,
 )
@@ -116,3 +117,33 @@ def get_ion_masses(sequence, ptm_id_weights, modifications=None):
     prosit_ions['y'] = ION_OFFSET['y'] + rev_sub_seq_mass
 
     return prosit_ions, (total_residue_mass + C_TERMINUS + N_TERMINUS)
+
+
+def match_mz(base_mass, frag_z, observed_mzs, loss=0.0):
+    """ Function to match a fragment m/z to the nearest experimental m/z.
+
+    Parameters
+    ----------
+    base_mass : float
+        The mass of the b or y ion of that fragment index.
+    frag_z : int
+        The charge of the fragment ion.
+    observed_mzs : np.array of float
+        The experimentally observed fragment mzs.
+    loss : float (default=0.0)
+        The neutral loss weight to be applied.
+
+    Returns
+    -------
+    mz_error : float
+        The mz error on the nearest observed fragment ion.
+    matched_mz_ind : int
+        The index of the nearest observed fragment ion.
+    """
+    fragment_mz = (
+        (base_mass + (frag_z * PROTON)) - loss
+    )/frag_z
+    matched_mz_ind = np.argmin(
+        np.abs(observed_mzs - fragment_mz)
+    )
+    return observed_mzs[matched_mz_ind] - fragment_mz, matched_mz_ind

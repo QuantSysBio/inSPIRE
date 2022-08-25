@@ -12,6 +12,7 @@ import plotly.io as pio
 from inspire.constants import (
     CHARGE_KEY,
     KNOWN_PTM_WEIGHTS,
+    PEPTIDE_KEY,
     PROTON,
     SCAN_KEY,
     SOURCE_KEY,
@@ -22,8 +23,12 @@ from inspire.input.mgf import process_mgf_file
 from inspire.input.msp import msp_to_df
 from inspire.input.mzml import process_mzml_file
 from inspire.mz_match import get_ion_masses
+from inspire.predict_spectra import predict_spectra
+from inspire.spectral_features import calculate_spectral_features
 
-PLOTS_PER_PAGE = 30
+PLOTS_PER_PAGE = 15
+PLOTS_PER_LINE = 3
+
 
 def convert_names_and_mzs(mod_seq, pred_names):
     """ Function to generate plotting ion names and mzs.
@@ -156,7 +161,7 @@ def experiment_match(exp_mzs, exp_intes, pred_mzs):
             if abs(exp_mz-pred_m) < min_match:
                 min_match = abs(exp_mz-pred_m)
                 matched_ind = idx
-        if min_match < 0.03:
+        if min_match < 0.02:
             matched_mzs.append(exp_mzs[matched_ind])
             matched_intes.append(exp_intes[matched_ind])
             matched_pred_mzs.append(pred_m)
@@ -209,9 +214,9 @@ def pair_plot(df_row):
     colours = []
     for idx, entry in enumerate(pred_mzs):
         if entry in matched_p_mz:
-            colour = 'green'
+            colour = '#0095A8'
         else:
-            colour = 'red'
+            colour = '#FF7043'
         colours.append(colour)
 
         if pred_intes[idx] < -0.05:
@@ -231,6 +236,32 @@ def pair_plot(df_row):
             )
 
     extra_traces = []
+    annotations.append({
+        'showarrow': False,
+            'text': 'Experimental Spectrum',
+            'x': 850,
+            'ax': 850,
+            'y': 1.5,
+            'ay': 1.5,
+            'font_size': 12,
+            'font_family': "Arial, monospace",
+            'xref': f'x{index+1}',
+            'yref': f'y{index+1}',
+            'align': 'left',
+    })
+    annotations.append({
+        'showarrow': False,
+            'text': 'Prosit Predicted Spectrum',
+            'x': 850,
+            'ax': 850,
+            'y': -1.1,
+            'ay': -1.1,
+            'font_size': 12,
+            'font_family': "Arial, monospace",
+            'xref': f'x{index+1}',
+            'yref': f'y{index+1}',
+            'align': 'left',
+    })
     for idx, residue in enumerate(peptide):
         annotations.append({
             'showarrow': False,
@@ -339,7 +370,7 @@ def pair_plot(df_row):
 
     return traces, annotations
 
-def fetch_scan_data(input_df, config):
+def fetch_scan_data(input_df, config, with_charge):
     """ Function to fetch the experimental scan data.
 
     Parameters
@@ -362,6 +393,7 @@ def fetch_scan_data(input_df, config):
             scan_df = process_mzml_file(
                 f'{config.scans_folder}/{scan_file}.{config.scans_format}',
                 scan_ids,
+                with_charge=with_charge,
             )
         else:
             if config.combined_scans_file is not None:
@@ -370,13 +402,30 @@ def fetch_scan_data(input_df, config):
                 mgf_filename = f'{config.scans_folder}/{scan_file}.{config.scans_format}'
             scan_df = process_mgf_file(
                 mgf_filename,
-                scan_ids,
+                set(scan_ids),
                 config.scan_title_format,
-                config.source_files
+                config.source_files,
+                with_charge=with_charge,
             )
         scan_dfs.append(scan_df)
     total_scan_df = pd.concat(scan_dfs)
     return total_scan_df
+
+def convert_mod_seq_to_ptm_seq(mod_seq):
+    ptm_seq = '0.'
+    while mod_seq:
+        if len(mod_seq) == 1 or mod_seq[1] != '[':
+            ptm_seq += '0'
+            mod_seq = mod_seq[1:]
+        elif mod_seq[1] == '[' and mod_seq[0] == 'C':
+            ptm_seq += '2'
+            mod_seq = mod_seq[8:]
+        else:
+            ptm_seq += '1'
+            mod_seq = mod_seq[8:]
+
+    ptm_seq += '.0'
+    return ptm_seq
 
 def plot_spectra(config):
     """ Function to generate pair plots of selected PSMs (experimental vs. Prosit
@@ -389,7 +438,8 @@ def plot_spectra(config):
     """
     input_df = pd.read_csv(f'{config.output_folder}/plotData.csv')
 
-    scan_df = fetch_scan_data(input_df, config)
+    get_charge_from_scan_file = not CHARGE_KEY in input_df.columns
+    scan_df = fetch_scan_data(input_df, config, get_charge_from_scan_file)
 
     input_df = pd.merge(
         input_df,
@@ -399,12 +449,18 @@ def plot_spectra(config):
     )
     n_groups = 1 + (input_df.shape[0] // PLOTS_PER_PAGE)
 
-    prosit_df = msp_to_df(f'{config.output_folder}/prositPredictions.msp')
-    prosit_df = prosit_df.drop_duplicates(subset=['modified_sequence', CHARGE_KEY])
-
     input_df['modified_sequence'] = input_df['modifiedSequence'].apply(
         lambda x : x.replace('[+16.0]', '(ox)').replace('[+57.0]', '')
     )
+    input_df['precursor_charge'] = input_df[CHARGE_KEY]
+    input_df['collision_energy'] = config.collision_energy
+    input_df[['modified_sequence', 'precursor_charge', 'collision_energy']].to_csv(
+        f'{config.output_folder}/plotInput.csv', index=False,
+    )
+
+    predict_spectra(config, pipeline='plotSpectra')
+    prosit_df = msp_to_df(f'{config.output_folder}/plotPredictions.msp', 'prosit', None)
+    prosit_df = prosit_df.drop_duplicates(subset=['modified_sequence', CHARGE_KEY])
 
     input_df = pd.merge(
         input_df,
@@ -418,35 +474,66 @@ def plot_spectra(config):
     input_df['index'] = input_df.index % PLOTS_PER_PAGE
     input_df['plot_data'] = input_df.apply(pair_plot, axis=1)
 
+    if SPECTRAL_ANGLE_KEY not in input_df.columns:
+        input_df['ptm_seq'] = input_df['modifiedSequence'].apply(
+            convert_mod_seq_to_ptm_seq
+        )
+        input_df = input_df.apply(
+            lambda x : calculate_spectral_features(
+                x,
+                {
+                    0: 0.0,
+                    1: KNOWN_PTM_WEIGHTS['Oxidation (M)'],
+                    2: KNOWN_PTM_WEIGHTS['Carbamidomethylation'],
+                },
+                config.mz_accuracy,
+                config.mz_units,
+                None,
+                '1',
+                config.delta_method,
+                config.spectral_predictor,
+                spectral_angle_only=True,
+            ),
+            axis=1,
+        )
+
     titles = []
     for idx in range(input_df.shape[0]):
-        seq = input_df['peptide'].iloc[idx]
+        seq = input_df[PEPTIDE_KEY].iloc[idx]
+        scan_nr = input_df[SCAN_KEY].iloc[idx]
         spectral_angle = round(input_df[SPECTRAL_ANGLE_KEY].iloc[idx], 2)
         titles.append(
-            f'Sequence: {seq} (SA {spectral_angle})'
+            f'<b>Peptide</b> {seq} <b>Scan</b> {scan_nr} <b>Spectral Angle</b> {spectral_angle}<br>'
         )
-    
+
 
     for group_idx in range(n_groups):
 
         start_idx = PLOTS_PER_PAGE*group_idx
         sub_df = input_df[input_df['group'] == group_idx]
         n_plots = sub_df.shape[0]
-        n_plot_rows = 1 + (n_plots//3)
+        n_plot_rows = 1 + (n_plots//PLOTS_PER_LINE)
 
         fig = make_subplots(
             rows=n_plot_rows,
-            cols=3,
+            cols=PLOTS_PER_LINE,
             subplot_titles = titles[start_idx:start_idx+n_plots],
         )
+        for idx in range(1, (n_plot_rows*PLOTS_PER_LINE)+1):
+            fig.update_layout(
+                {
+                    f'xaxis{idx}':{'title_text': 'm/z'},
+                    f'yaxis{idx}':{'title_text': 'L<sup>2</sup> Normalized Intensity'},
+                }
+            )
 
         plot_data = sub_df['plot_data'].tolist()
         for idx, (traces, annotations) in enumerate(plot_data):
             for trace in traces:
                 fig.add_trace(
                     trace,
-                    row=1 + (idx//3),
-                    col=1 + (idx%3),
+                    row=1 + (idx//PLOTS_PER_LINE),
+                    col=1 + (idx%PLOTS_PER_LINE),
                 )
 
             fig.layout['annotations'] += tuple(annotations)
@@ -459,8 +546,8 @@ def plot_spectra(config):
                     mode='lines',
                     line={'width':0.5, 'color':'black'},
                 ),
-                row=1 + (idx//3),
-                col=1 + (idx%3),
+                row=1 + (idx//PLOTS_PER_LINE),
+                col=1 + (idx%PLOTS_PER_LINE),
             )
 
         fig.update_layout(

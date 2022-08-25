@@ -16,7 +16,7 @@ def create_html_report(config, figures):
     figures : dict
         A dictionary containing all of the required plots.
     """
-    config_str = config.__str__().replace('\n', '<br>')
+    config_str = config.__str__()#.replace('\n', '<br>')
     html_string = ('''
     <html>
         <head>
@@ -45,6 +45,14 @@ def create_html_report(config, figures):
                     width: 60%;
                     margin-top: 2px;
                     left: 20%;
+                }
+                table {
+                    width: 60%;
+                    border: 2px solid #696969;
+                }
+                th, td {
+                    border: 1px solid #696969;
+                    padding: 2px;
                 }
             </style>
         </head>

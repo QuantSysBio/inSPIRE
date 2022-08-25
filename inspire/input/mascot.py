@@ -60,7 +60,7 @@ REQUIRED_MASCOT_COLUMNS = [
 ]
 MASCOT_QUERIES_TITLE_KEY = 'StringTitle'
 MASCOT_QUERIES_RT_KEY = 'Retention time range'
-
+MASCOT_QUERIES_INTENSITY_KEY = 'intensity'
 
 def _get_mascot_file_metadata(csv_file):
     """ Function to extract metadata from a csv file of Mascot results.
@@ -193,7 +193,7 @@ def separate_scan_and_source(df_row, scan_title_format, source_list=None):
         raise ValueError('Oops')
     return df_row
 
-def add_rt_data(hits_df, csv_filename, queries_line):
+def add_rt_data(hits_df, csv_filename, queries_line, scan_file):
     """ Function to add retention time to the main mascot results DataFrame
 
     Parameters
@@ -216,21 +216,26 @@ def add_rt_data(hits_df, csv_filename, queries_line):
     queries_df = pd.read_csv(
         csv_filename,
         skiprows=lambda idx : _skip_logic(idx, queries_line+2),
-        usecols=[MASCOT_QUERIES_TITLE_KEY, MASCOT_QUERIES_RT_KEY]
+        usecols=['query_number', MASCOT_QUERIES_RT_KEY, MASCOT_QUERIES_INTENSITY_KEY]
     )
 
     queries_df = queries_df.rename(columns={
-        MASCOT_QUERIES_TITLE_KEY: MASCOT_SCAN_TITLE_KEY,
+        'query_number': MASCOT_PEP_QUERY_KEY,
         MASCOT_QUERIES_RT_KEY: RT_KEY,
+        MASCOT_QUERIES_INTENSITY_KEY: 'ms1Intensity',
     })
-
+    queries_df[MASCOT_PEP_QUERY_KEY] = queries_df[MASCOT_PEP_QUERY_KEY].apply(
+        lambda x : scan_file + str(x)
+    )
+    print(queries_df[MASCOT_PEP_QUERY_KEY], hits_df[MASCOT_PEP_QUERY_KEY])
+    print(hits_df.shape)
     hits_df = pd.merge(
         hits_df,
         queries_df,
         how='inner',
-        on=MASCOT_SCAN_TITLE_KEY,
+        on=MASCOT_PEP_QUERY_KEY,
     )
-
+    print(hits_df.shape)
     return hits_df
 
 def _read_mascot_dfs(
@@ -239,13 +244,14 @@ def _read_mascot_dfs(
         queries_line,
         mods_range,
         scan_title_format,
+        scan_file,
     ):
     hits_df = pd.read_csv(
         csv_filename,
         skiprows=lambda idx : _skip_logic(idx, hits_line, queries_line),
         usecols=REQUIRED_MASCOT_COLUMNS
     )
-    hits_df[['pep_query', 'pep_exp_z', 'pep_seq']].to_csv('temp_og.csv', index=False)
+
     mods_df = pd.read_csv(
         csv_filename,
         skiprows=lambda idx : idx not in mods_range['variable'],
@@ -272,6 +278,10 @@ def _read_mascot_dfs(
     hits_df['avgResidueMass'] = hits_df[MASCOT_MASS_KEY]/hits_df[SEQ_LEN_KEY]
     hits_df.drop([MASCOT_MASS_KEY, MASCOT_PRED_MASS_KEY], axis=1, inplace=True)
 
+    hits_df[MASCOT_PEP_QUERY_KEY] = hits_df[MASCOT_PEP_QUERY_KEY].apply(
+        lambda x : scan_file + str(x)
+    )
+
     if scan_title_format not in ('mascotDistiller', 'distiller'):
         # Mascot keeps retention time data in a separate table,
         # except if distiller is used in which case it is within the
@@ -280,6 +290,7 @@ def _read_mascot_dfs(
             hits_df,
             csv_filename,
             queries_line,
+            scan_file,
         )
 
 
@@ -385,9 +396,7 @@ def read_single_mascot_data(input_filename, scan_title_format, variable_mods):
         queries_line,
         mod_ranges,
         scan_title_format,
-    )
-    hits_df[MASCOT_PEP_QUERY_KEY] = hits_df[MASCOT_PEP_QUERY_KEY].apply(
-        lambda x : scan_file + str(x)
+        scan_file,
     )
 
     if scan_title_format == 'distiller':
@@ -489,6 +498,9 @@ def read_mascot_data(mascot_data, scan_title_format, source_list, reduce):
         lambda x : separate_scan_and_source(x, scan_title_format, source_list),
         axis=1
     )
+    hits_df = hits_df.drop_duplicates(
+        subset=[SOURCE_KEY, SCAN_KEY, PEPTIDE_KEY]
+    )
 
     if reduce:
         hits_df['scanCounts'] = hits_df.groupby(
@@ -518,12 +530,12 @@ def mascot_reduce_to_max(main_df, reduce):
         The search DataFrame with results filtered per PSM.
     """
     main_df = main_df.sort_values(by=[LABEL_KEY, ENGINE_SCORE_KEY], ascending=False)
-
-    main_df['ilSub'] = main_df[PEPTIDE_KEY].apply(
-        lambda x : x.replace('I', 'L')
-    )
-    main_df = main_df.drop_duplicates(subset=[MASCOT_PEP_QUERY_KEY, 'ilSub'], keep='first')
-    main_df = main_df.drop('ilSub', axis=1)
+    if reduce:
+        main_df['ilSub'] = main_df[PEPTIDE_KEY].apply(
+            lambda x : x.replace('I', 'L')
+        )
+        main_df = main_df.drop_duplicates(subset=[MASCOT_PEP_QUERY_KEY, 'ilSub'], keep='first')
+        main_df = main_df.drop('ilSub', axis=1)
 
     main_df['max_pep_score'] = main_df.groupby(
         [MASCOT_PEP_QUERY_KEY]
@@ -546,6 +558,6 @@ def mascot_reduce_to_max(main_df, reduce):
         axis=1
     )
 
-    main_df = main_df.drop(['max_pep_score', 'pep_score_2', MASCOT_PEP_QUERY_KEY], axis=1)
+    main_df = main_df.drop(['max_pep_score', 'pep_score_2'], axis=1)
 
     return main_df

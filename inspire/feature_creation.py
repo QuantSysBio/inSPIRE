@@ -1,6 +1,8 @@
 """ Functions for writing percolator/mokapot input using Prosit and other features.
 """
-import re
+from math import log10
+import multiprocessing
+import os
 
 import pandas as pd
 
@@ -13,23 +15,22 @@ from inspire.constants import(
     CHARGE_KEY,
     ENDC_TEXT,
     ENGINE_SCORE_KEY,
-    KNOWN_PTM_LOC,
-    KNOWN_PTM_WEIGHTS,
     LABEL_KEY,
     OKCYAN_TEXT,
     PEPTIDE_KEY,
     PSM_ID_KEY,
     PERC_SCAN_ID,
     PTM_ID_KEY,
-    PTM_IS_VAR_KEY,
     PTM_NAME_KEY,
     PTM_SEQ_KEY,
     PTM_WEIGHT_KEY,
     SCAN_KEY,
     SOURCE_INDEX_KEY,
     SOURCE_KEY,
+    SPECTRAL_ANGLE_KEY,
     WARNING_TEXT,
 )
+from inspire.input.mascot import MASCOT_PEP_QUERY_KEY
 from inspire.input.mgf import process_mgf_file
 from inspire.input.mhcpan import read_mhcpan_output
 from inspire.input.msp import msp_to_df
@@ -38,9 +39,16 @@ from inspire.input.search_results import generic_read_df
 from inspire.prepare import create_prosit_mod_seq
 from inspire.retention_time import add_delta_irt
 from inspire.spectral_features import SPECTRAL_FEATURES, DELTA_FEATURES, create_spectral_features
-from inspire.utils import get_ox_flag, modify_sequence_for_skyline, remove_source_suffixes
+from inspire.utils import (
+    get_ox_flag,
+    modify_sequence_for_skyline,
+    remove_source_suffixes,
+    add_fixed_modifications,
+    permute_seq,
+    permute_ptms,
+)
 
-def combine_spectral_data(search_df, scan_df, prosit_df, ox_flag):
+def combine_spectral_data(search_df, scan_df, prosit_df, ox_flag, spectral_predictor):
     """ Function to combine DataFrame of PEAKS results with prosit predicted
         spectrum and the true eperimental spectrum.
 
@@ -58,24 +66,36 @@ def combine_spectral_data(search_df, scan_df, prosit_df, ox_flag):
     final_df : pd.DataFrame
         The DataFrame with all merged Data.
     """
-    search_df['modified_sequence'] = search_df[[PEPTIDE_KEY, PTM_SEQ_KEY]].apply(
-        lambda x : create_prosit_mod_seq(x[PEPTIDE_KEY], x[PTM_SEQ_KEY], ox_flag),
-        axis=1
-    )
+    if spectral_predictor == 'prosit':
+        search_df['modified_sequence'] = search_df[[PEPTIDE_KEY, PTM_SEQ_KEY]].apply(
+            lambda x : create_prosit_mod_seq(x[PEPTIDE_KEY], x[PTM_SEQ_KEY], ox_flag),
+            axis=1
+        )
+        prosit_df = prosit_df.drop_duplicates(
+            subset=['modified_sequence', CHARGE_KEY, 'collisionEnergy']
+        )
+
+
     print(
         OKCYAN_TEXT +
         f'\t\t\t{search_df.shape[0]} in original search results.' +
         ENDC_TEXT
     )
-    prosit_df = prosit_df.drop_duplicates(
-        subset=['modified_sequence', CHARGE_KEY, 'collisionEnergy']
-    )
-    df_with_prosit = pd.merge(
-        search_df,
-        prosit_df,
-        how='inner',
-        on=['modified_sequence', CHARGE_KEY]
-    )
+    if spectral_predictor == 'prosit':
+        df_with_prosit = pd.merge(
+            search_df,
+            prosit_df,
+            how='inner',
+            on=['modified_sequence', CHARGE_KEY]
+        )
+    elif spectral_predictor == 'ms2pip':
+        df_with_prosit = pd.merge(
+            search_df,
+            prosit_df,
+            how='inner',
+            on=[PEPTIDE_KEY, PTM_SEQ_KEY, CHARGE_KEY]
+        )
+
     print(
         OKCYAN_TEXT +
         f'\t\t\t{df_with_prosit.shape[0]} after combination with predicted spectra.'
@@ -123,8 +143,10 @@ def filter_input_columns(combined_df, config, file_idx):
         PERC_SCAN_ID,
     ] + BASIC_FEATURES + SPECTRAL_FEATURES
 
-    use_cols += DELTA_FEATURES
+    if config.delta_method != 'ignore':
+        use_cols += DELTA_FEATURES
     use_cols += ['deltaRT']
+
     if config.use_binding_affinity == 'asFeature':
         use_cols += ['bindingAffinity']
 
@@ -184,82 +206,194 @@ def write_with_spectral_features(
     config : inspire.config.Config
         The Config object.
     """
-    prosit_predictions = f'{config.output_folder}/prositPredictions.msp'
-    prosit_df = msp_to_df(prosit_predictions)
+    if config.spectral_predictor == 'prosit':
+        prosit_predictions = f'{config.output_folder}/prositPredictions.msp'
+        prosit_df = msp_to_df(prosit_predictions, 'prosit', None)
+    elif config.spectral_predictor == 'ms2pip':
+        model = config.ms2pip_model
+        ms2pip_predictions = f'{config.output_folder}/ms2pipInput_{model}_predictions.msp'
+        prosit_df = msp_to_df(ms2pip_predictions, 'ms2pip', mods_df)
+
     if config.combined_scans_file is not None:
         scan_files = [remove_source_suffixes(config.combined_scans_file)]
     else:
         scan_files = search_df[SOURCE_KEY].unique().tolist()
 
-    ox_flag = get_ox_flag(mods_df)
 
     max_scan = search_df[SCAN_KEY].max()
+    if config.n_cores == 1 or len(scan_files) == 1:
+        for file_idx, scan_file in enumerate(scan_files):
+            process_single_file(search_df, mods_df, prosit_df, config, file_idx, scan_file, max_scan, False)
+    else:
+        n_cores = min(config.n_cores, multiprocessing.cpu_count())
+        func_args = [
+            (search_df, mods_df, prosit_df, config,
+            file_idx, scan_file, max_scan, True)
+            for file_idx, scan_file in enumerate(scan_files)
+        ]
+        with multiprocessing.Pool(processes=n_cores) as pool:
+            results = pool.starmap(process_single_file, func_args)
 
-    for file_idx, scan_file in enumerate(scan_files):
+        if os.path.exists(f'{config.output_folder}/input_all_features.tab'):
+            os.remove(f'{config.output_folder}/input_all_features.tab')
+
+        with open(f'{config.output_folder}/input_all_features.tab', 'w', encoding='UTF-8') as out_file:
+            for tab_file in sorted(results):
+                with open(tab_file, 'r', encoding='UTF-8') as in_file:
+                    for line in in_file:
+                        out_file.write(line)
+                os.remove(tab_file)
+    print(
+        OKCYAN_TEXT + '\t\t\tFull input DataFrame written to csv.' + ENDC_TEXT
+    )
+
+
+def process_single_file(search_df, mods_df, prosit_df, config, file_idx, scan_file, max_scan, in_parallel):
+    delta_df = None
+    previous_ptm_name = None
+    previous_ions_name = None
+    previous_name = None
+    if config.delta_method == 'bruteForce' and config.spectral_predictor == 'prosit':
+        delta_predictions = f'{config.output_folder}/deltaPredictions.msp'
+        delta_df = msp_to_df(delta_predictions, 'prosit', None)
+        delta_df['modified_sequence'] = delta_df['modified_sequence'].apply(
+            lambda x : x.replace('M(ox)', 'm')
+        )
+        delta_df = delta_df.rename(columns={'precursor_charge': CHARGE_KEY})
+        previous_name = 'modified_sequence'
+        previous_ions_name = 'prositIons'
+        delta_df = delta_df[['modified_sequence', CHARGE_KEY, 'prositIons']]
+        delta_df = delta_df.drop_duplicates(subset=['modified_sequence', CHARGE_KEY])
+    if config.delta_method == 'bruteForce' and config.spectral_predictor == 'ms2pip':
+        model = config.ms2pip_model
+        delta_predictions = f'{config.output_folder}/deltaInput_{model}_predictions.msp'
+        delta_df = msp_to_df(delta_predictions, 'ms2pip', mods_df)
+        previous_ptm_name = PTM_SEQ_KEY
+        previous_ions_name = 'prositIons'
+        previous_name = 'peptide'
+
+    ox_flag = get_ox_flag(mods_df)
+    print(
+        OKCYAN_TEXT +
+        f'\t\tProcessing scan file {file_idx}' +
+        ENDC_TEXT
+    )
+    if config.combined_scans_file is not None:
+        filtered_search_df = search_df
+    else:
+        filtered_search_df = search_df[search_df[SOURCE_KEY] == scan_file]
+
+    scans = filtered_search_df[SCAN_KEY].unique()
+    if config.scans_format == 'mzML':
+        scan_df = process_mzml_file(
+            f'{config.scans_folder}/{scan_file}.{config.scans_format}',
+            set(scans.tolist()),
+        )
+    else:
+        scan_df = process_mgf_file(
+            f'{config.scans_folder}/{scan_file}.{config.scans_format}',
+            set(scans.tolist()),
+            config.scan_title_format,
+            config.source_files
+        )
+    scan_df = scan_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY])
+    combined_df = combine_spectral_data(
+        filtered_search_df,
+        scan_df,
+        prosit_df,
+        ox_flag,
+        config.spectral_predictor,
+    )
+    if config.delta_method == 'bruteForce':
+        if config.spectral_predictor == 'prosit':
+            combined_df['mSeq'] = combined_df['modified_sequence'].apply(
+                lambda x : x.replace('M(ox)', 'm')
+            )
+            combined_df['permSeqs'] = combined_df['mSeq'].apply(
+                lambda x : permute_seq(x, uniform_length=True)
+            )
+            combined_df[[f'flip{idx}' for idx in range(1, 30)]] = pd.DataFrame(
+                combined_df.permSeqs.tolist(), index=combined_df.index
+            )
+            
+            for i in range(1, 30):
+                delta_df = delta_df.rename(columns={
+                    previous_name: f'flip{i}',
+                    previous_ions_name: f'flip{i}Ions',
+                })
+                combined_df = pd.merge(
+                    combined_df,
+                    delta_df,
+                    how='left',
+                    on=[f'flip{i}', CHARGE_KEY]
+                )
+                previous_name = f'flip{i}'
+                previous_ions_name = f'flip{i}Ions'
+        else:
+            combined_df['permSeqs'] = combined_df['peptide'].apply(
+                lambda x : permute_seq(x, uniform_length=True)
+            )
+
+            combined_df[[f'flip{idx}' for idx in range(1, 30)]] = pd.DataFrame(
+                combined_df.permSeqs.tolist(), index=combined_df.index
+            )
+            combined_df['permPtms'] = combined_df[['peptide', PTM_SEQ_KEY]].apply(
+                lambda x : permute_ptms(x['peptide'], x[PTM_SEQ_KEY], uniform_length=True),
+                axis=1
+            )
+            combined_df[[f'flip{idx}Ptms' for idx in range(1, 30)]] = pd.DataFrame(
+                combined_df.permPtms.tolist(), index=combined_df.index
+            )
+            
+            for i in range(1, 30):
+                delta_df = delta_df.rename(columns={
+                    previous_name: f'flip{i}',
+                    previous_ions_name: f'flip{i}Ions',
+                    previous_ptm_name: f'flip{i}Ptms'
+                })
+                combined_df = pd.merge(
+                    combined_df,
+                    delta_df,
+                    how='left',
+                    on=[f'flip{i}', f'flip{i}Ptms', CHARGE_KEY]
+                )
+                previous_name = f'flip{i}'
+                previous_ions_name = f'flip{i}Ions'
+                previous_ptm_name = f'flip{i}Ptms'
+
+    print(
+        OKCYAN_TEXT + '\t\t\tCombined DB Search, Spectral, and Prosit Data.' + ENDC_TEXT
+    )
+
+    if not combined_df.shape[0]:
         print(
-            OKCYAN_TEXT +
-            f'\t\tProcessing scan file {file_idx+1} of {len(scan_files)}' +
+            WARNING_TEXT +
+            f'Warning. No matched scans found for source file {scan_file}' +
             ENDC_TEXT
         )
-        if config.combined_scans_file is not None:
-            filtered_search_df = search_df
-        else:
-            filtered_search_df = search_df[search_df[SOURCE_KEY] == scan_file]
+        return
 
-        scans = filtered_search_df[SCAN_KEY].unique()
-        if config.scans_format == 'mzML':
-            scan_df = process_mzml_file(
-                f'{config.scans_folder}/{scan_file}.{config.scans_format}',
-                scans.tolist()
-            )
-        else:
-            scan_df = process_mgf_file(
-                f'{config.scans_folder}/{scan_file}.{config.scans_format}',
-                scans.tolist(),
-                config.scan_title_format,
-                config.source_files
-            )
-        scan_df = scan_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY])
-        combined_df = combine_spectral_data(
-            filtered_search_df,
-            scan_df,
-            prosit_df,
-            ox_flag
-        )
+    combined_df = create_spectral_features(combined_df, mods_df, config)
+    combined_df = add_delta_irt(combined_df)
 
-        print(
-            OKCYAN_TEXT + '\t\t\tCombined DB Search, Spectral, and Prosit Data.' + ENDC_TEXT
-        )
-
-        if not combined_df.shape[0]:
-            print(
-                WARNING_TEXT +
-                f'Warning. No matched scans found for source file {scan_file}' +
-                ENDC_TEXT
-            )
-            continue
-
-        combined_df = create_spectral_features(combined_df, mods_df, config.mz_accuracy)
-        combined_df = add_delta_irt(combined_df)
-
-        print(
-            OKCYAN_TEXT + '\t\t\tCreated Spectral and Delta RT Features.' + ENDC_TEXT
-        )
-
+    print(
+        OKCYAN_TEXT + '\t\t\tCreated Spectral and Delta RT Features.' + ENDC_TEXT
+    )
+    if config.search_engine != 'mascot':
         combined_df[PERC_SCAN_ID] = combined_df[SCAN_KEY].apply(
             lambda x, f_id=file_idx : f_id * max_scan  + x
         )
-
-        combined_df = filter_input_columns(combined_df, config, file_idx)
-        combined_df = combined_df.sort_values(by=PERC_SCAN_ID)
-
-        _write_to_tab_file(combined_df, file_idx, config.output_folder)
-
-        print(
-            OKCYAN_TEXT + '\t\t\tFull input DataFrame written to csv.' + ENDC_TEXT
+    else:
+        combined_df[PERC_SCAN_ID] = combined_df[MASCOT_PEP_QUERY_KEY].apply(
+            lambda x, f_id=file_idx : f_id * max_scan  + int(x.split('.mgf')[-1])
         )
+    combined_df = filter_input_columns(combined_df, config, file_idx)
+    combined_df = combined_df.sort_values(by=PERC_SCAN_ID)
 
-def _write_to_tab_file(combined_df, file_idx, output_folder):
+    file_loc = _write_to_tab_file(combined_df, file_idx, config.output_folder, in_parallel)
+    return file_loc
+
+def _write_to_tab_file(combined_df, file_idx, output_folder, in_parallel):
     """ Function to write percolator input in tab format.
 
     Parameters
@@ -271,21 +405,29 @@ def _write_to_tab_file(combined_df, file_idx, output_folder):
     output_folder : str
         The folder where all inSPIRE output is written.
     """
+    if in_parallel:
+        filename = f'input_all_features{file_idx}.tab'
+    else:
+        filename = 'input_all_features.tab'
     if file_idx == 0:
         combined_df.to_csv(
-            f'{output_folder}/input_all_features.tab',
+            f'{output_folder}/{filename}',
             sep='\t',
             index=False,
         )
     else:
+        if in_parallel:
+            write_mode = 'w'
+        else:
+            write_mode = 'a'
         combined_df.to_csv(
-            f'{output_folder}/input_all_features.tab',
+            f'{output_folder}/{filename}',
             sep='\t',
             index=False,
-            mode='a',
+            mode=write_mode,
             header=False,
         )
-
+    return f'{output_folder}/{filename}'
 
 def write_rescoring_features(
         search_df,
@@ -303,7 +445,7 @@ def write_rescoring_features(
     config : inspire.config.Config
         The Config object.
     """
-    feature_df = create_basic_features(search_df, mods_df, config.digest)
+    feature_df = create_basic_features(search_df, mods_df)
 
     if config.use_binding_affinity == 'asFeature':
         mhc_pan_df = read_mhcpan_output(f'{config.output_folder}/mhcpan')
@@ -311,16 +453,20 @@ def write_rescoring_features(
             'Peptide': PEPTIDE_KEY,
             'Aff(nM)': 'bindingAffinity'
         })
+        mhc_pan_df['bindingAffinity'] = mhc_pan_df['bindingAffinity'].apply(log10)
         mhc_pan_df = mhc_pan_df[[PEPTIDE_KEY, 'bindingAffinity']]
         feature_df = pd.merge(
             feature_df,
             mhc_pan_df,
             on=PEPTIDE_KEY,
-            how='left'
+            how='inner'
         )
 
     psm_id_key = PSM_ID_KEY[config.rescore_method]
-    mod_weights = dict(zip(mods_df[PTM_ID_KEY].tolist(), mods_df[PTM_WEIGHT_KEY].tolist()))
+    if mods_df.empty:
+        mod_weights = {}
+    else:
+        mod_weights = dict(zip(mods_df[PTM_ID_KEY].tolist(), mods_df[PTM_WEIGHT_KEY].tolist()))
     feature_df['modSeq'] = feature_df.apply(
         lambda x : modify_sequence_for_skyline(x, mod_weights),
         axis=1
@@ -387,7 +533,7 @@ def create_features(config):
             (mods_df[PTM_NAME_KEY] != 'Oxidation (M)') &
             ((mods_df[PTM_NAME_KEY] != 'Carbamidomethyl (C)'))
         ][PTM_ID_KEY].tolist()
-        unknown_mods = [str(x) for x in unknown_mods]
+        unknown_mods = {str(x) for x in unknown_mods}
         if config.use_accession_stratum:
             target_df['modEngineScore'] = target_df[
                 [ENGINE_SCORE_KEY, ACCESSION_STRATUM_KEY]
@@ -436,92 +582,3 @@ def create_features(config):
         config,
     )
 
-def _modify_ptm_seq(pep_seq, ptm_seq, ptm_locs, ptm_id):
-    """ Helper function to add a fixed PTM to the ptm_seq column of MS search
-        result DataFrame.
-
-    Parameters
-    ----------
-    pep_seq : str
-        The peptide sequence.
-    ptm_seq : str
-        The ptm sequence.
-    ptm_locs : str
-        The location(s) where the ptm should be added.
-    ptm_id : str
-        The id of the ptm.
-
-    Returns
-    -------
-    ptm_seq : str
-        The modified ptm sequence.
-    """
-    if ptm_locs == 'N-term':
-        if ptm_seq is None:
-            return ptm_id + '.' + ''.join(['0']*len(pep_seq)) + '.0'
-        return ptm_id + ptm_seq[1:]
-
-    for loc in ptm_locs:
-        edit_points = [m.start() for m in re.finditer(loc, pep_seq)]
-        if edit_points and ptm_seq is None:
-            ptm_seq = '0.' + ''.join(['0']*len(pep_seq)) + '.0'
-        for e_point in edit_points:
-            ptm_seq = ptm_seq[:e_point+2] + ptm_id + ptm_seq[e_point+3:]
-
-    return ptm_seq
-
-def add_fixed_modifications(search_df, mods_df, fixed_modifications):
-    """ Function to add fixed modifications to the search data.
-
-    Parameters
-    ----------
-    search_df : pd.DataFrame
-        The DataFrame of MS search results from either MaxQuant or PEAKS.
-    mods_df : pd.DataFrame
-        The DataFrame of variable modifications in the search results.
-    fixed_modifications : list
-        A list of the fixed modifications found in the DataFrame.
-
-    Returns
-    -------
-    mods_df : pd.DataFrame
-        A DataFrame of all modifications found (both variable and fixed).
-    """
-    ptm_ids = []
-    ptm_names = []
-    ptm_weights = []
-    for idx, modification in enumerate(fixed_modifications):
-        if modification in mods_df[PTM_NAME_KEY]:
-            continue
-
-        ptm_weight = KNOWN_PTM_WEIGHTS.get(modification)
-        ptm_idx = mods_df.shape[0]+idx+1
-        if ptm_weight is None:
-            raise ValueError(f'Unsupported fixed modification {modification}.')
-
-        ptm_ids.append(ptm_idx)
-        ptm_names.append(modification)
-        ptm_weights.append(ptm_weight)
-        str_ptm_idx = str(ptm_idx)
-        search_df[PTM_SEQ_KEY] = search_df[[PEPTIDE_KEY, PTM_SEQ_KEY]].apply(
-            lambda x, mod=modification, ptm_id=str_ptm_idx : _modify_ptm_seq(
-                x[PEPTIDE_KEY],
-                x[PTM_SEQ_KEY],
-                KNOWN_PTM_LOC[mod],
-                ptm_id
-            ),
-            axis=1
-        )
-
-    fixed_ptm_df = pd.DataFrame({
-        PTM_ID_KEY: ptm_ids,
-        PTM_NAME_KEY: ptm_names,
-        PTM_WEIGHT_KEY: ptm_weights,
-        PTM_IS_VAR_KEY: [False]*len(fixed_modifications)
-    })
-    mods_df = pd.concat([
-        mods_df[[PTM_ID_KEY, PTM_NAME_KEY, PTM_WEIGHT_KEY, PTM_IS_VAR_KEY]],
-        fixed_ptm_df]
-    )
-
-    return search_df, mods_df

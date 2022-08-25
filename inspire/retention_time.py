@@ -2,7 +2,6 @@
     retention times.
 """
 import pandas as pd
-
 from pyteomics import achrom
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import KFold
@@ -39,6 +38,8 @@ def _add_achrom_rt_preds(train_df, test_df):
 
     if 'C' not in retention_time_model['aa']:
         retention_time_model['aa']['C'] = retention_time_model['aa']['P']*0.956
+    if 'W' not in retention_time_model['aa']:
+        retention_time_model['aa']['W'] = retention_time_model['aa']['P']*0.956
 
     pred_rts = test_df[PEPTIDE_KEY].apply(
         lambda x :  achrom.calculate_RT(x, retention_time_model, raise_no_mod=False)
@@ -63,9 +64,14 @@ def add_delta_irt(combined_df):
         combined_df['deltaRT'] = 0
         return combined_df
 
-    kfold = KFold(n_splits=3, shuffle=True, random_state=42)
+    kfold = KFold(n_splits=10, shuffle=True, random_state=42)
     combined_df_list = []
-    combined_df_irt_null_count = combined_df[combined_df['iRT'].isnull()].shape[0]
+
+    if 'iRT' in combined_df.columns:
+        combined_df_irt_null_count = combined_df[combined_df['iRT'].isnull()].shape[0]
+    else:
+        combined_df_irt_null_count = 1
+
     for train, test in kfold.split(combined_df):
         train_df = combined_df.iloc[train]
         test_df = combined_df.iloc[test]

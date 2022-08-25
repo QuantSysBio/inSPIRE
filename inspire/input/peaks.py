@@ -40,12 +40,14 @@ PEAKS_RETENTION_TIME_KEY = 'RT'
 PEAKS_SCAN_KEY = 'Scan'
 PEAKS_SCORE_KEY = '-10lgP'
 PEAKS_SOURCE_KEY = 'Source File'
+PEAKS_INTENSITY_KEY = 'Area'
 PEAKS_RELEVANT_COLUMNS = [
     PEAKS_ACCESSION_KEY,
     PEAKS_ASCORE_KEY,
     PEAKS_CHARGE_KEY,
     PEAKS_CHIMERA_KEY,
     PEAKS_LEN_KEY,
+    PEAKS_INTENSITY_KEY,
     PEAKS_MASS_KEY,
     PEAKS_MZ_KEY,
     PEAKS_PEPTIDE_KEY,
@@ -257,6 +259,7 @@ def read_single_peaks_data(df_loc):
         PEAKS_LEN_KEY: SEQ_LEN_KEY,
         PEAKS_RETENTION_TIME_KEY: RT_KEY,
         PEAKS_SCORE_KEY: ENGINE_SCORE_KEY,
+        PEAKS_INTENSITY_KEY: 'ms1Intensity',
     })
 
     # Filter for Prosit and add feature columns not present.

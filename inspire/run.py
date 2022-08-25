@@ -4,10 +4,12 @@ from argparse import ArgumentParser
 
 import pandas as pd
 
-from inspire.calibration import calibrate, prepare_calibration
+from inspire.calibration import calibrate
 from inspire.config import Config
 from inspire.constants import ENDC_TEXT, OKGREEN_TEXT
+from inspire.download_models import download_models
 from inspire.plot_spectra import plot_spectra
+from inspire.predict_spectra import predict_spectra
 from inspire.prepare import prepare_for_spectral_prediction, prepare_for_mhcpan
 from inspire.feature_creation import create_features
 from inspire.feature_selection import select_features
@@ -18,13 +20,16 @@ from inspire.report import generate_report
 pd.options.mode.chained_assignment = None
 
 PIPELINE_OPTIONS = [
-    'prepareCalibration',
+
     'calibrate',
+    'core',
 
     'prepare',
 
     'spectralPrepare',
     'panPrepare',
+
+    'predictSpectra',
 
     'rescore',
 
@@ -69,13 +74,13 @@ def main():
     """
     args = get_arguments()
     config = Config(args.config_file)
-    if args.pipeline == 'prepareCalibration':
-        print(
-            OKGREEN_TEXT +
-            'Creating Formatted Spectral Prediction Input for CE Calibration...' +
-            ENDC_TEXT
-        )
-        prepare_calibration(config)
+    config.validate()
+    print(
+        OKGREEN_TEXT +
+        'Checking for required inSPIRE models...' +
+        ENDC_TEXT
+    )
+    download_models(force_reload=config.force_reload)
 
     if args.pipeline == 'calibrate':
         print(
@@ -85,7 +90,7 @@ def main():
         )
         calibrate(config)
 
-    if args.pipeline in ('spectralPrepare', 'prepare'):
+    if args.pipeline in ('spectralPrepare', 'prepare', 'core'):
         print(
             OKGREEN_TEXT +
             'Creating Formatted Spectral Prediction Input...' +
@@ -93,7 +98,7 @@ def main():
         )
         prepare_for_spectral_prediction(config)
 
-    if args.pipeline in ('panPrepare', 'prepare'):
+    if args.pipeline in ('panPrepare', 'prepare', 'core'):
         if config.use_binding_affinity is not None:
             print(
                 OKGREEN_TEXT +
@@ -102,7 +107,15 @@ def main():
             )
         prepare_for_mhcpan(config)
 
-    if args.pipeline in ('featureGeneration', 'rescore'):
+    if args.pipeline in ('predictSpectra', 'core'):
+        print(
+            OKGREEN_TEXT +
+            'Predicting Spectra...' +
+            ENDC_TEXT
+        )
+        predict_spectra(config, 'core')
+
+    if args.pipeline in ('featureGeneration', 'rescore', 'core'):
         print(
             OKGREEN_TEXT +
             'Generating Features for Percolator Input...' +
@@ -110,7 +123,7 @@ def main():
         )
         create_features(config)
 
-    if args.pipeline in ('featureSelection', 'featureSelection+', 'rescore'):
+    if args.pipeline in ('featureSelection', 'featureSelection+', 'rescore', 'core'):
         print(
             OKGREEN_TEXT +
             'Optimising Feature Set...' +
@@ -118,7 +131,7 @@ def main():
         )
         select_features(config)
 
-    if args.pipeline in ('finalRescoring', 'featureSelection+', 'rescore'):
+    if args.pipeline in ('finalRescoring', 'featureSelection+', 'rescore', 'core'):
         print(
             OKGREEN_TEXT +
             'Running Finalised Rescoring...' +
@@ -126,7 +139,7 @@ def main():
         )
         final_rescoring(config)
 
-    if args.pipeline in ('queryTable', 'featureSelection+', 'rescore'):
+    if args.pipeline in ('queryTable', 'featureSelection+', 'rescore', 'core'):
         if config.query_table is not None:
             print(
                 OKGREEN_TEXT +
@@ -135,7 +148,7 @@ def main():
             )
         create_query_table(config)
 
-    if args.pipeline in ('generateReport', 'featureSelection+', 'rescore'):
+    if args.pipeline in ('generateReport', 'featureSelection+', 'rescore', 'core'):
         print(
             OKGREEN_TEXT +
             'Generating inSPIRE Performance Report...' +

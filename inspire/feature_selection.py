@@ -3,7 +3,6 @@
 from itertools import combinations
 from subprocess import CalledProcessError
 
-import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import auc, precision_recall_curve
@@ -22,7 +21,6 @@ from inspire.constants import (
     LOSS_IONS_KEY,
     MASS_DIFF_KEY,
     NOT_ASSIGNED_KEY,
-    OBS_NOT_PRED_KEY,
     OKCYAN_TEXT,
     OUT_SCORE_KEY,
     PEARSON_KEY,
@@ -35,6 +33,7 @@ from inspire.constants import (
     SPECTRAL_ANGLE_KEY,
 )
 from inspire.rescore import apply_rescoring
+from inspire.spectral_features import DELTA_FEATURES
 
 BASE_FEATURES = [
     SPECTRAL_ANGLE_KEY,
@@ -59,19 +58,18 @@ COVERAGE_FEATURES = [
     'matchedCoverage',
     'minMatchedCoverage',
     'maxMatchedCoverage',
-    'predNotFoundCoverage',
-    'minPrositDelta',
-    'nDeltasAboveThreshold',
-    'prositDeltaMedian',
-    'nDeltasAboveZero',
     'prositDeltaQuartile1',
     'prositDeltaQuartile3',
+    'prositDeltaMedian',
+    'nDeltasAboveThreshold',
+    'nDeltasAboveZero',
+    'minPrositDelta',
+    'maxPrositDelta',
 ]
 
 AA_FEATS = [
     'possibleKrFragsDivTotal',
     'fracMatchedKR',
-    'spectralAngleKR',
     'fracKR',
     'fracC',
     'missedCleavages',
@@ -83,26 +81,20 @@ AA_FEATS = [
 ]
 
 INTENSITY_FEATURES = [
-    'matchedDivPred',
-    'matchedDivObserved',
     'nMajorNotMatchableDivFrags',
     'nMinorNotMatchableDivFrags',
     PRECURSOR_INTE_KEY,
-    'matchedIntensityRatio',
     'nMajorMatchedDivFrags',
     'nMinorMatchedDivFrags',
-    'majorMatchedCoverage',
 ]
 
 MZ_DISTRIBUTION = [
     CHARGE_KEY,
     'avgResidueMass',
     MASS_DIFF_KEY,
-    'massMeanDiff',
     FRAG_MZ_ERR_MED_KEY,
     FRAG_MZ_ERR_VAR_KEY,
     'spectrumDensity',
-    'nRawPeaksDivFrags',
     LOSS_IONS_KEY,
     'fromChimera',
 ]
@@ -110,18 +102,7 @@ MZ_DISTRIBUTION = [
 
 
 FOUND_NOT_PRED_FEATS = [
-    'observedCoverage',
-    OBS_NOT_PRED_KEY,
-    'nMajorFoundNotPredDivFrags',
-    'nMinorFoundNotPredDivFrags',
-    'foundNotPredDivPred',
-    'foundNotPredDivNotPred',
     NOT_ASSIGNED_KEY,
-    'fracNotMatchable',
-    'nNotPredNotFoundDivFrags',
-    'foundNotPredRatio',
-    'fracPredNotFound',
-    'nMinorPredNotFoundDivFrags',
     'nMajorPredNotFoundDivFrags',
 ]
 
@@ -129,15 +110,8 @@ FOUND_NOT_PRED_FEATS = [
 YB_DIFF_FEATS = [
     'maxTypeSpectralAngle',
     'minTypeSpectralAngle',
-    'typePredRatio',
-    'typeMatchedRatio',
-    'typeIntensityRatio',
     'yIsDominantIonSeries',
     'bIsDominantIonSeries',
-    'maxTypeMajorMatchedFrags',
-    'maxTypePredNotFound',
-    'minTypeFoundNotPred',
-    'maxTypeFoundNotPred',
 ]
 
 
@@ -161,11 +135,55 @@ SPECTRAL_GROUP_NAMES = [
     'Y/B Ion Difference Features',
 ]
 
+DEFAULT_FEATURE_SET = [
+    'engineScore',
+    'deltaScore',
+    'sequenceLength',
+    'seqLenMeanDiff',
+    'charge',
+    'avgResidueMass',
+    'nVarMods',
+    'spectralAngle',
+    'deltaRT',
+    SPEARMAN_KEY,
+    PEARSON_KEY,
+    'spearmanMajorIons',
+    'medianAbsoluteError',
+    'matchedCoverage',
+    'maxMatchedCoverage',
+    'minMatchedCoverage',
+    'minPrositDelta',
+    'prositDeltaQuartile1',
+    'prositDeltaMedian',
+    'prositDeltaQuartile3',
+    'maxPrositDelta',
+    'nDeltasAboveZero',
+    'nDeltasAboveThreshold',
+    'fracUnique',
+    'nRepeatedResidues',
+    'medianFragmentMzError',
+    'fragmentMzErrorVariance',
+    'nMajorMatchedDivFrags',
+    'nMinorMatchedDivFrags',
+    'nMajorNotMatchableDivFrags',
+    'nMinorNotMatchableDivFrags',
+    'maxTypeSpectralAngle',
+    'yIsDominantIonSeries',
+    LOSS_IONS_KEY,
+    'predNotFoundCoverage',
+    'fracC',
+    'fracKR',
+    'fracMatchedKR',
+    'spectrumDensity',
+    'fromChimera',
+    'missedCleavages',
+]
+
 OUTSTANDING_CONFOUNDING_VARIABLES = [
     SOURCE_INDEX_KEY,
 ]
 
-THRESHOLD_VALUE = 100
+THRESHOLD_VALUE = 20
 
 
 def generate_one_hot_entries(all_features_df, key):
@@ -454,9 +472,6 @@ def add_mass_diff_feats(all_features_df):
     all_features_df : pd.DataFrame
         Input DataFrame with absolute mass difference features added.
     """
-    all_features_df['massMeanDiff'] = np.abs(
-        all_features_df[MASS_DIFF_KEY] - all_features_df[MASS_DIFF_KEY].mean()
-    )
     all_features_df['absMassDiff'] = all_features_df[MASS_DIFF_KEY].apply(abs)
     return all_features_df
 
@@ -634,18 +649,19 @@ def select_features(config):
         sep='\t'
     )
 
-    base_features = BASE_FEATURES
-    if config.use_accession_stratum:
-        base_features += [
-            col for col in all_features_df.columns if col.startswith('accession')
-        ]
-
-
-    if config.use_binding_affinity == 'asFeature':
-        base_features += ['bindingAffinity']
-
     if config.max_for_selection < all_features_df.shape[0]:
-        if config.exclude_features is not None:
+        feature_set = DEFAULT_FEATURE_SET
+        if config.delta_method == 'ignore':
+            feature_set = [x for x in feature_set if x not in DELTA_FEATURES]
+        if config.use_binding_affinity == 'asFeature':
+            feature_set += ['bindingAffinity']
+        # all_features_df, one_hot_features = generate_one_hot_entries(
+        #     all_features_df,
+        #     'charge'
+        # )
+        # feature_set += one_hot_features
+        # feature_set.remove('charge')
+        if config.exclude_features is not None and config.exclude_features:
             exclude_features = (
                 config.exclude_features +
                 SUFFIX_KEYS +
@@ -661,9 +677,15 @@ def select_features(config):
             exclude_features = SUFFIX_KEYS + PREFIX_KEYS[config.rescore_method]
 
         feature_set = remove_excluded_features(
-            list(all_features_df.columns), all_features_df, exclude_features
+            feature_set, all_features_df, exclude_features
         )
     else:
+        base_features = BASE_FEATURES
+        if config.use_accession_stratum:
+            base_features += [
+                col for col in all_features_df.columns if col.startswith('accession')
+            ]
+
         all_features_df, feature_set = filter_feature_set(
             all_features_df, config, base_features
         )
