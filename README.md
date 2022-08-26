@@ -23,24 +23,6 @@ and navigate in your terminal to the inSPIRE folder with:
 cd inSPIRE
 ```
 
-You can then clone the repo with:
-
-```
-git clone https://github.com/QuantSysBio/inSPIRE.git
-```
-
-and navigate in your terminal to the inSPIRE folder with:
-
-```
-cd inSPIRE
-```
-
-To make sure git-lfs is working run:
-
-```
-git lfs pull
-```
-
 ### Setting up your environment:
 
 Once you have installed conda and cloned the repo
