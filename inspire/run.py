@@ -3,6 +3,7 @@
 from argparse import ArgumentParser
 
 import pandas as pd
+import tensorflow as tf
 
 from inspire.calibration import calibrate
 from inspire.config import Config
@@ -18,6 +19,7 @@ from inspire.query_table import create_query_table
 from inspire.report import generate_report
 
 pd.options.mode.chained_assignment = None
+tf.config.set_visible_devices([], 'GPU')
 
 PIPELINE_OPTIONS = [
 

@@ -62,6 +62,7 @@ setup(
         'Pillow==9.2.0',
         'plotly==5.10.0',
         'protobuf==3.19.4',
+        'psutil==5.9.1',
         'pyasn1==0.4.8',
         'pyasn1-modules==0.2.8',
         'pyparsing==3.0.9',

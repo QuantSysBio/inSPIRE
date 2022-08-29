@@ -315,10 +315,10 @@ class Config:
                 f'Unsupported mz unit: "{self.mz_units}". Supported units are :Da" and "ppm".'
             )
 
-        if self.rescore_method not in ('mokapot', 'percolator'):
+        if self.rescore_method not in ('mokapot', 'percolator', 'percolatorSeparate'):
             raise ValueError(
-                f'Unsupported Rescore Method: "{self.search_engine}". Supported ' +
-                'methods are "mokapot" and "percolator".'
+                f'Unsupported Rescore Method: "{self.rescore_method}". Supported ' +
+                'methods are "mokapot", "percolatorSeparate", and "percolator".'
             )
 
         if self.spectral_predictor not in ('prosit', 'ms2pip'):

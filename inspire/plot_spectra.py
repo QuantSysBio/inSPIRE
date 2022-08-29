@@ -127,7 +127,7 @@ def get_unmatched(exp_mzs, exp_intes, matched_mzs, l2_norm):
         'intensities': unmatched_intes,
     }
 
-def experiment_match(exp_mzs, exp_intes, pred_mzs):
+def experiment_match(exp_mzs, exp_intes, pred_mzs, plotting_names):
     """ Function to match the mz values of the experimentally observed peaks to the
         Prosit predicted peaks.
 
@@ -154,7 +154,8 @@ def experiment_match(exp_mzs, exp_intes, pred_mzs):
     """
     matched_mzs, matched_intes = [], []
     matched_pred_mzs = []
-    for pred_m in pred_mzs:
+    matched_names = []
+    for match_name, pred_m in zip(plotting_names, pred_mzs):
         matched_ind = -1
         min_match = 100000
         for idx, exp_mz in enumerate(exp_mzs):
@@ -165,6 +166,7 @@ def experiment_match(exp_mzs, exp_intes, pred_mzs):
             matched_mzs.append(exp_mzs[matched_ind])
             matched_intes.append(exp_intes[matched_ind])
             matched_pred_mzs.append(pred_m)
+            matched_names.append(match_name.split('+')[0])
     if len(matched_intes) > 5:
         l2_norm = np.linalg.norm(np.array(matched_intes), ord=2)
     else:
@@ -175,7 +177,7 @@ def experiment_match(exp_mzs, exp_intes, pred_mzs):
         'intensities': [x/l2_norm for x in matched_intes],
     }
 
-    return matched_peaks, l2_norm, matched_pred_mzs
+    return matched_peaks, l2_norm, matched_pred_mzs, matched_names
 
 
 def pair_plot(df_row):
@@ -203,8 +205,8 @@ def pair_plot(df_row):
         list(df_row['prositIons'].keys())
     )
 
-    matched_peaks, l2_norm, matched_p_mz = experiment_match(
-        df_row['mzs'], df_row['intensities'], pred_mzs,
+    matched_peaks, l2_norm, matched_p_mz, matched_names = experiment_match(
+        df_row['mzs'], df_row['intensities'], pred_mzs, plotting_names,
     )
     unmatched_peaks = get_unmatched(
         df_row['mzs'], df_row['intensities'], matched_peaks['mzs'], l2_norm
@@ -239,8 +241,8 @@ def pair_plot(df_row):
     annotations.append({
         'showarrow': False,
             'text': 'Experimental Spectrum',
-            'x': 850,
-            'ax': 850,
+            'x': 1300,
+            'ax': 1300,
             'y': 1.5,
             'ay': 1.5,
             'font_size': 12,
@@ -252,8 +254,8 @@ def pair_plot(df_row):
     annotations.append({
         'showarrow': False,
             'text': 'Prosit Predicted Spectrum',
-            'x': 850,
-            'ax': 850,
+            'x': 1300,
+            'ax': 1300,
             'y': -1.1,
             'ay': -1.1,
             'font_size': 12,
@@ -266,8 +268,8 @@ def pair_plot(df_row):
         annotations.append({
             'showarrow': False,
             'text': (residue),
-            'x': 50 + (idx * 35),
-            'ax': 50 + (idx * 35),
+            'x': 50 + (idx * 50),
+            'ax': 50 + (idx * 50),
             'y': 1.25,
             'ay': 1.25,
             'font_size': 12,
@@ -279,56 +281,79 @@ def pair_plot(df_row):
         if idx > 0:
             min1_idx = idx-1
             rev_idx = len(peptide) - idx
-            annotations.append({
-                'showarrow': False,
-                'text': f'b{idx}',
-                'x': 40 + (min1_idx * 35),
-                'ax': 40 + (min1_idx * 35),
-                'y': 1.02,
-                'ay': 1.02,
-                'font_size': 10,
-                'font_family': "Arial, monospace",
-                'xref': f'x{index+1}',
-                'yref': f'y{index+1}',
-                'align': 'left',
-            })
-            annotations.append({
-                'showarrow': False,
-                'text': f'y{rev_idx}',
-                'x': 63 + (idx * 35),
-                'ax': 63 + (idx * 35),
-                'y': 1.49,
-                'ay': 1.49,
-                'font_size': 10,
-                'font_family': "Arial, monospace",
-                'xref': f'x{index+1}',
-                'yref': f'y{index+1}',
-                'align': 'left',
-            })
+            y_matched = False
+            b_matched = False
+            if f'b{idx}' in matched_names:
+                annotations.append({
+                    'showarrow': False,
+                    'text': f'b{idx}',
+                    'x': 40 + (min1_idx * 50),
+                    'ax': 40 + (min1_idx * 50),
+                    'y': 1.02,
+                    'ay': 1.02,
+                    'font_size': 10,
+                    'font_family': "Arial, monospace",
+                    'xref': f'x{index+1}',
+                    'yref': f'y{index+1}',
+                    'align': 'left',
+                })
+                b_matched = True
+            if f'y{rev_idx}' in matched_names:
+                annotations.append({
+                    'showarrow': False,
+                    'text': f'y{rev_idx}',
+                    'x': 63 + (idx * 50),
+                    'ax': 63 + (idx * 50),
+                    'y': 1.49,
+                    'ay': 1.49,
+                    'font_size': 10,
+                    'font_family': "Arial, monospace",
+                    'xref': f'x{index+1}',
+                    'yref': f'y{index+1}',
+                    'align': 'left',
+                })
+                y_matched = True
         if idx > 0:
-            extra_traces.extend([
-                go.Scatter(
-                    x=[50 + ((idx-1) * 35), 50 + (idx * 35)],
-                    y=[1.1, 1.4],
-                    mode='lines',
-                    line_color='black',
-                    line_width=0.5,
-                ),
-                go.Scatter(
-                    x=[40 + ((idx-1) * 35), 50 + ((idx-1) * 35)],
-                    y=[1.1, 1.1],
-                    mode='lines',
-                    line_color='black',
-                    line_width=0.5,
-                ),
-                go.Scatter(
-                    x=[50 + ((idx) * 35), 60 + (idx * 35)],
-                    y=[1.4, 1.4],
-                    mode='lines',
-                    line_color='black',
-                    line_width=0.5,
-                ),
-            ])
+            if b_matched:
+                extra_traces.append(
+                    go.Scatter(
+                        x=[50 + ((idx-1) * 50), 50 + ((idx-0.5) * 50)],
+                        y=[1.1, 1.25],
+                        mode='lines',
+                        line_color='black',
+                        line_width=0.5,
+                    )
+                )
+            if y_matched:
+                extra_traces.append(
+                    go.Scatter(
+                        x=[50 + ((idx-0.5) * 50), 50 + (idx * 50)],
+                        y=[1.25, 1.4],
+                        mode='lines',
+                        line_color='black',
+                        line_width=0.5,
+                    )
+                )
+            if b_matched:
+                extra_traces.append(
+                    go.Scatter(
+                        x=[40 + ((idx-1) * 50), 50 + ((idx-1) * 50)],
+                        y=[1.1, 1.1],
+                        mode='lines',
+                        line_color='black',
+                        line_width=0.5,
+                    )
+                )
+            if y_matched:
+                extra_traces.append(
+                    go.Scatter(
+                        x=[50 + ((idx) * 50), 60 + (idx * 50)],
+                        y=[1.4, 1.4],
+                        mode='lines',
+                        line_color='black',
+                        line_width=0.5,
+                    )
+                )
 
     traces = [
         go.Bar(
@@ -501,11 +526,11 @@ def plot_spectra(config):
     for idx in range(input_df.shape[0]):
         seq = input_df[PEPTIDE_KEY].iloc[idx]
         scan_nr = input_df[SCAN_KEY].iloc[idx]
+        src = input_df[SOURCE_KEY].iloc[idx]
         spectral_angle = round(input_df[SPECTRAL_ANGLE_KEY].iloc[idx], 2)
         titles.append(
-            f'<b>Peptide</b> {seq} <b>Scan</b> {scan_nr} <b>Spectral Angle</b> {spectral_angle}<br>'
+            f'<b>Source</b> {src} <b>Scan</b> {scan_nr}<br><b>Peptide</b> {seq}  <b>Spectral Angle</b> {spectral_angle}<br>'
         )
-
 
     for group_idx in range(n_groups):
 
@@ -541,7 +566,7 @@ def plot_spectra(config):
         for idx in range(sub_df.shape[0]):
             fig.add_trace(
                 go.Scatter(
-                    x=[0, 1000],
+                    x=[0, 1500],
                     y=[0, 0],
                     mode='lines',
                     line={'width':0.5, 'color':'black'},
@@ -561,7 +586,8 @@ def plot_spectra(config):
 
         fig.update_xaxes(
             showticklabels=True,
-            range=[0, 1000],
+            range=[0, 1500],
+            dtick=300,
             linecolor='black',
             linewidth=0.5,
             showgrid=False,
