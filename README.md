@@ -1,7 +1,7 @@
 # inSPIRE
 <i>in silico</i> Spectral Predictor Informed REscoring
 
-inSPIRE allows easy rescoring of MaxQuant, Mascot or PEAKS DB search results using spectral prediction. inSPIRE is primarily developed to use Prosit predicted spectra but can also use MS<sup>2</sup>PIP predictions. inSPIRE enables the prediction of MS<sup>2</sup> spectra with Prosit without the need of a GPU and it can be run on a standard workstation or laptop.
+inSPIRE allows easy rescoring of MaxQuant, Mascot or PEAKS DB search results using spectral prediction. inSPIRE is primarily developed to use Prosit predicted spectra but can also use MS<sup>2</sup>PIP predictions. inSPIRE enables the prediction of MS2 spectra with Prosit without the need of a GPU and it can be run on a standard workstation or laptop.
 
 ## Set Up
 
