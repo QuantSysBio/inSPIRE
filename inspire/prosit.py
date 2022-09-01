@@ -5,7 +5,7 @@
 import keras
 import numpy as np
 import pandas as pd
-import pyteomics
+from pyteomics.mass import Unimod, std_aa_comp
 import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras import regularizers, constraints, initializers
@@ -301,8 +301,8 @@ def generate_aa_comp():
     >>> aa_comp["Z"]
     Composition({'H': 9, 'C': 5, 'S': 1, 'O': 2, 'N': 1})
     """
-    db = pyteomics.mass.Unimod()
-    aa_comp = dict(pyteomics.mass.std_aa_comp)
+    db = Unimod()
+    aa_comp = dict(std_aa_comp)
     s = db.by_title("Oxidation")["composition"]
     aa_comp["Z"] = aa_comp["M"] + s
     s = db.by_title("Carbamidomethyl")["composition"]
