@@ -706,7 +706,7 @@ def create_spectral_features(spectral_df, mods_df, config):
     ox_flag = get_ox_flag(mods_df)
     ptm_id_weights = fetch_mod_weight_dict(mods_df)
     home = str(Path.home())
-    model_path = f'{home}/inSPIRE/models/prosit_delta_v1.pkl'
+    model_path = f'{home}/inSPIRE_models/models/prosit_delta_v1.pkl'
     with open(model_path, 'rb') as fid:
         model = pickle.load(fid)
 

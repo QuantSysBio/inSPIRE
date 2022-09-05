@@ -31,7 +31,7 @@ MZS_KEY = 'mzs'
 PTM_SEQ_KEY = 'ptm_seq'
 SOURCE_KEY = 'source'
 SCAN_KEY = 'scan'
-LABEL_KEY = 'label'
+LABEL_KEY = 'Label'
 ENGINE_SCORE_KEY = 'engineScore'
 SPECTRAL_ANGLE_KEY = 'spectralAngle'
 MASS_DIFF_KEY = 'massDiff'
@@ -71,8 +71,18 @@ PRECURSOR_INTE_KEY = 'precursorIntensity'
 PERC_SCAN_ID = 'scannr'
 PSM_ID_KEY = {
     'mokapot': 'specID',
+    'percolator': 'specID',
+    'percolatorSeparate': 'specID',
+}
+OUT_PSM_ID_KEY = {
+    'mokapot': 'specID',
     'percolator': 'PSMId',
     'percolatorSeparate': 'PSMId',
+}
+IN_ACCESSION_KEY = {
+    'mokapot': 'proteins',
+    'percolator': 'Proteins',
+    'percolatorSeparate': 'Proteins',
 }
 OUT_ACCESSION_KEY = {
     'mokapot': 'proteins',
@@ -95,8 +105,11 @@ PREFIX_KEYS = {
     'percolator': [PSM_ID_KEY['percolator'], LABEL_KEY, PERC_SCAN_ID],
     'percolatorSeparate': [PSM_ID_KEY['percolatorSeparate'], LABEL_KEY, PERC_SCAN_ID],
 }
-SUFFIX_KEYS = [PEPTIDE_KEY, ACCESSION_KEY]
-
+SUFFIX_KEYS = {
+    'mokapot': [PEPTIDE_KEY, IN_ACCESSION_KEY['mokapot']],
+    'percolator': [PEPTIDE_KEY, IN_ACCESSION_KEY['percolator']],
+    'percolatorSeparate': [PEPTIDE_KEY, IN_ACCESSION_KEY['percolatorSeparate']],
+}
 FINAL_SCORE_KEY = 'percolatorScore'
 FINAL_Q_VALUE_KEY = 'qValue'
 

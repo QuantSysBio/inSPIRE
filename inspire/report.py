@@ -14,6 +14,7 @@ from inspire.constants import (
     FINAL_SCORE_KEY,
     MASS_DIFF_KEY,
     OKCYAN_TEXT,
+    OUT_PSM_ID_KEY,
     OUT_Q_KEY,
     OUT_SCORE_KEY,
     PEPTIDE_KEY,
@@ -130,7 +131,7 @@ def apply_non_spectral_percolator(output_folder, fdr, rescore_method, use_score_
         ]
     else:
         non_spectral_df = all_features_df[
-            prefix_keys + NON_SPECTRAL_FEATURES + one_hot_features + SUFFIX_KEYS
+            prefix_keys + NON_SPECTRAL_FEATURES + one_hot_features + SUFFIX_KEYS[rescore_method]
         ]
 
     non_spectral_df = non_spectral_df.dropna(axis=1)
@@ -146,7 +147,7 @@ def apply_non_spectral_percolator(output_folder, fdr, rescore_method, use_score_
         fdr,
         rescore_method,
         'non_spectral'
-    )
+    ).rename(columns={OUT_PSM_ID_KEY[rescore_method]: psm_id_key})
 
     non_spectral_psm_df = pd.merge(
         non_spectral_psm_df,
@@ -581,7 +582,9 @@ def calculate_distributions(config, most_positive_features, most_negative_featur
 
     out_filename = f'final.{config.rescore_method}.psms.txt'
     input_df = pd.read_csv(f'{config.output_folder}/final_input.tab', sep='\t')
-    psms_df = pd.read_csv(f'{config.output_folder}/{out_filename}', sep='\t')
+    psms_df = pd.read_csv(f'{config.output_folder}/{out_filename}', sep='\t').rename(
+        columns={OUT_PSM_ID_KEY[config.rescore_method]: psm_id_key}
+    )
 
     psms_df['Status'] = psms_df[out_score_key].apply(
         lambda x : 'Accepted' if x >= 0 else 'Rejected'
@@ -638,6 +641,21 @@ def add_mokapot_weights(output_folder, rescore_method, acc_idx):
 
     return pd.DataFrame(feat_weights)
 
+def clean_percolator_weights(weights_path):
+    """ Function to remove the comments which are inexplicably added to a csv
+        file.
+    """
+    with open(weights_path, 'r', encoding='UTF-8') as file :
+        lines = file.readlines()
+        relevant_lines = []
+        for line in lines:
+            if not line.startswith('#'):
+                relevant_lines.append(line)
+
+    with open(weights_path, 'w', encoding='UTF-8') as file:
+        for line in relevant_lines:
+            file.write(line)
+
 def create_weights_table(output_folder, rescore_method, acc_idx=None):
     """ Function to create a Figure of weights table.
 
@@ -664,6 +682,8 @@ def create_weights_table(output_folder, rescore_method, acc_idx=None):
             weights_path = f'{output_folder}/final.{rescore_method}.weights.csv'
         else:
             weights_path = f'{output_folder}/final_{acc_idx}.{rescore_method}.weights.csv'
+        clean_percolator_weights(weights_path)
+        
         weights_df = pd.read_csv(
             weights_path,
             skiprows=lambda x : x not in [0, 1, 4, 7],

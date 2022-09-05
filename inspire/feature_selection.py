@@ -243,7 +243,7 @@ def get_feature_set_performance(all_features_df, features, output_folder, fdr, r
     prefix_keys = PREFIX_KEYS[rescore_method]
     out_score_key = OUT_SCORE_KEY[rescore_method]
 
-    input_df = all_features_df[prefix_keys + features + SUFFIX_KEYS]
+    input_df = all_features_df[prefix_keys + features + SUFFIX_KEYS[rescore_method]]
     input_df.to_csv(f'{output_folder}/feature_test.tab', sep='\t', index=False)
     try:
         psms = apply_rescoring(
@@ -664,7 +664,7 @@ def select_features(config):
         if config.exclude_features is not None and config.exclude_features:
             exclude_features = (
                 config.exclude_features +
-                SUFFIX_KEYS +
+                SUFFIX_KEYS[config.rescore_method] +
                 PREFIX_KEYS[config.rescore_method]
             )
         elif config.include_features is not None:
@@ -674,7 +674,7 @@ def select_features(config):
             if config.use_accession_stratum:
                 exclude_features = [x for x in exclude_features if not x.startswith('accession')]
         else:
-            exclude_features = SUFFIX_KEYS + PREFIX_KEYS[config.rescore_method]
+            exclude_features = SUFFIX_KEYS[config.rescore_method] + PREFIX_KEYS[config.rescore_method]
 
         feature_set = remove_excluded_features(
             feature_set, all_features_df, exclude_features
@@ -710,7 +710,7 @@ def write_final_feature_set(all_features_df, feature_set, config):
     prefix_keys = PREFIX_KEYS[config.rescore_method]
 
     all_features_df = all_features_df[
-        prefix_keys + feature_set + SUFFIX_KEYS
+        prefix_keys + feature_set + SUFFIX_KEYS[config.rescore_method]
     ]
 
     all_features_df.to_csv(

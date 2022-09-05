@@ -6,6 +6,7 @@ from ms2pip.ms2pipC import MS2PIP
 from inspire.prosit import (
     load_model, process_csv_file, prosit_predict, Converter
 )
+
 PARAMS = {
     "ms2pip": {
         "ptm": [

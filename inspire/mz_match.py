@@ -56,8 +56,8 @@ def compute_potential_mzs(sequence, modifications, reverse, ptm_id_weights):
             ptm_end = int(ptms_list[2])
     else:
         mods_list = None
-        ptm_start = 0.0
-        ptm_end = 0.0
+        ptm_start = 0
+        ptm_end = 0
 
     if reverse:
         sequence = sequence[::-1]

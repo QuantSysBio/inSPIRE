@@ -17,6 +17,7 @@ from inspire.constants import(
     ENGINE_SCORE_KEY,
     LABEL_KEY,
     OKCYAN_TEXT,
+    IN_ACCESSION_KEY,
     PEPTIDE_KEY,
     PSM_ID_KEY,
     PERC_SCAN_ID,
@@ -186,7 +187,9 @@ def filter_input_columns(combined_df, config, file_idx):
 
         use_cols += sorted(acc_cols)
 
-    combined_df = combined_df[use_cols]
+    combined_df = combined_df[use_cols].rename(
+        columns={ACCESSION_KEY: IN_ACCESSION_KEY[config.rescore_method]}
+    )
 
     return combined_df
 
