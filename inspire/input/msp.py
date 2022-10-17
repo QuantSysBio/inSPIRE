@@ -208,7 +208,7 @@ def process_prosit_comment(line, sequence):
         previous_ind = 0
         for mod in mods_list:
             if mod.startswith(OXIDATION_PREFIX):
-                pos = int(mod[OXIDATION_PREFIX_LEN:])
+                pos = int(mod[OXIDATION_PREFIX_LEN:]) - 1
                 mod_seq += sequence[previous_ind:pos]
                 mod_seq += "(ox)"
                 previous_ind = pos
