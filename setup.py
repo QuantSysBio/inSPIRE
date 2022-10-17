@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='inspire',
-    version=0.2,
+    version=0.3,
     description='Helping to integrate Spectral Predictors and Rescoring.',
     author='John Cormican',
     author_email='john.cormican@mpinat.mpg.de',

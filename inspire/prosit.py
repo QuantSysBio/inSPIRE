@@ -314,9 +314,9 @@ def generate_mods_string_tuples(sequence_integer):
     for mod in [PROSIT_ALPHABET['M(ox)'], PROSIT_ALPHABET['C']]:
         for position in np.where(sequence_integer == mod)[0]:
             if mod == PROSIT_ALPHABET['C']:
-                list_mods.append((position, "C", "Carbamidomethyl"))
+                list_mods.append((position + 1, "C", "Carbamidomethyl"))
             elif mod == PROSIT_ALPHABET['M(ox)']:
-                list_mods.append((position, "M", "Oxidation"))
+                list_mods.append((position + 1, "M", "Oxidation"))
             else:
                 raise ValueError("cant be true")
     list_mods.sort(key=lambda tup: tup[0])  # inplace

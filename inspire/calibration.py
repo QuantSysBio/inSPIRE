@@ -26,7 +26,7 @@ from inspire.prepare import write_prosit_input_df
 from inspire.spectral_features import calculate_spectral_features
 from inspire.utils import get_ox_flag, remove_source_suffixes
 
-COLLISION_ENERGY_RANGE = [24 + i for i in range(13)]
+COLLISION_ENERGY_RANGE = [20 + i for i in range(21)]
 
 def _get_top_hits(config):
     """ Function to extract the top scoring hits for collision energy calibration.
@@ -39,10 +39,10 @@ def _get_top_hits(config):
     target_df, mods_df = generic_read_df(config)
 
     target_df = target_df[target_df[PTM_SEQ_KEY].isna()]
-    top_10_pct_cut = target_df[ENGINE_SCORE_KEY].quantile(0.9)
+    top_5_pct_cut = target_df[ENGINE_SCORE_KEY].quantile(0.95)
 
     target_df = target_df[
-        (target_df[ENGINE_SCORE_KEY] > top_10_pct_cut) &
+        (target_df[ENGINE_SCORE_KEY] > top_5_pct_cut) &
         (target_df[LABEL_KEY] == 1)
     ]
 
