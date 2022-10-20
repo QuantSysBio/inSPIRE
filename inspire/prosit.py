@@ -5,25 +5,57 @@
 import keras
 import numpy as np
 import pandas as pd
-from pyteomics.mass import Unimod, std_aa_comp
 import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras import regularizers, constraints, initializers
-from tensorflow.keras.layers import Layer
+from tensorflow.keras.layers import Layer # pylint: disable=no-name-in-module
 import yaml
 
 from inspire.constants import (
-    ION_TYPES,
     MAX_CHARGE,
     MAX_FRAG_CHARGE,
-    MAX_ION_IDX,
     MAX_SEQ_LEN,
     N_ION_TYPES,
     N_LOSSES,
     PROSIT_ALPHABET,
-    PROSIT_ALPHABET_S,
     PROSIT_MASK_VALUE,
     PROSIT_PRED_BATCH_SIZE,
+    PROSIT_UNMOD_ALPHA_S,
+)
+
+PROSIT_IONS = np.array(
+    [
+        'y1', 'y1^2)', 'y1^3)', 'b1', 'b1^2)', 'b1^3)',
+        'y2', 'y2^2)', 'y2^3)', 'b2', 'b2^2)', 'b2^3)',
+        'y3', 'y3^2)', 'y3^3)', 'b3', 'b3^2)', 'b3^3)',
+        'y4', 'y4^2)', 'y4^3)', 'b4', 'b4^2)', 'b4^3)',
+        'y5', 'y5^2)', 'y5^3)', 'b5', 'b5^2)', 'b5^3)',
+        'y6', 'y6^2)', 'y6^3)', 'b6', 'b6^2)', 'b6^3)',
+        'y7', 'y7^2)', 'y7^3)', 'b7', 'b7^2)', 'b7^3)',
+        'y8', 'y8^2)', 'y8^3)', 'b8', 'b8^2)', 'b8^3)',
+        'y9', 'y9^2)', 'y9^3)', 'b9', 'b9^2)', 'b9^3)',
+        'y10', 'y10^2', 'y10^3', 'b10', 'b10^2', 'b10^3',
+        'y11', 'y11^2', 'y11^3', 'b11', 'b11^2', 'b11^3',
+        'y12', 'y12^2', 'y12^3', 'b12', 'b12^2', 'b12^3',
+        'y13', 'y13^2', 'y13^3', 'b13', 'b13^2', 'b13^3',
+        'y14', 'y14^2', 'y14^3', 'b14', 'b14^2', 'b14^3',
+        'y15', 'y15^2', 'y15^3', 'b15', 'b15^2', 'b15^3',
+        'y16', 'y16^2', 'y16^3', 'b16', 'b16^2', 'b16^3',
+        'y17', 'y17^2', 'y17^3', 'b17', 'b17^2', 'b17^3',
+        'y18', 'y18^2', 'y18^3', 'b18', 'b18^2', 'b18^3',
+        'y19', 'y19^2', 'y19^3', 'b19', 'b19^2', 'b19^3',
+        'y20', 'y20^2', 'y20^3', 'b20', 'b20^2', 'b20^3',
+        'y21', 'y21^2', 'y21^3', 'b21', 'b21^2', 'b21^3',
+        'y22', 'y22^2', 'y22^3', 'b22', 'b22^2', 'b22^3',
+        'y23', 'y23^2', 'y23^3', 'b23', 'b23^2', 'b23^3',
+        'y24', 'y24^2', 'y24^3', 'b24', 'b24^2', 'b24^3',
+        'y25', 'y25^2', 'y25^3', 'b25', 'b25^2', 'b25^3',
+        'y26', 'y26^2', 'y26^3', 'b26', 'b26^2', 'b26^3',
+        'y27', 'y27^2', 'y27^3', 'b27', 'b27^2', 'b27^3',
+        'y28', 'y28^2', 'y28^3', 'b28', 'b28^2', 'b28^3',
+        'y29', 'y29^2', 'y29^3', 'b29', 'b29^2', 'b29^3',
+    ],
+    dtype='str',
 )
 
 class PrositAttention(Layer):
@@ -32,10 +64,10 @@ class PrositAttention(Layer):
     def __init__(
         self,
         context=False,
-        W_regularizer=None,
+        w_regularizer=None,
         b_regularizer=None,
         u_regularizer=None,
-        W_constraint=None,
+        w_constraint=None,
         b_constraint=None,
         u_constraint=None,
         bias=True,
@@ -43,30 +75,33 @@ class PrositAttention(Layer):
     ):
         self.supports_masking = True
         self.init = initializers.get("glorot_uniform")
-        self.W_regularizer = regularizers.get(W_regularizer)
+        self.w_regularizer = regularizers.get(w_regularizer)
         self.b_regularizer = regularizers.get(b_regularizer)
         self.u_regularizer = regularizers.get(u_regularizer)
-        self.W_constraint = constraints.get(W_constraint)
+        self.w_constraint = constraints.get(w_constraint)
         self.b_constraint = constraints.get(b_constraint)
         self.u_constraint = constraints.get(u_constraint)
         self.bias = bias
         self.context = context
-        super(PrositAttention, self).__init__(**kwargs)
+        self.b = None
+        self.w = None
+        self.u = None
+        super().__init__(**kwargs)
 
     def build(self, input_shape):
         assert len(input_shape) == 3
-        self.W = self.add_weight(
+        self.w = self.add_weight(
             shape=(input_shape[-1],),
             initializer=self.init,
-            name="{}_W".format(self.name),
-            regularizer=self.W_regularizer,
-            constraint=self.W_constraint,
+            name=f'{self.name}_W',
+            regularizer=self.w_regularizer,
+            constraint=self.w_constraint,
         )
         if self.bias:
             self.b = self.add_weight(
                 shape=(input_shape[1],),
                 initializer="zero",
-                name="{}_b".format(self.name),
+                name=f'{self.name}_b',
                 regularizer=self.b_regularizer,
                 constraint=self.b_constraint,
             )
@@ -76,29 +111,30 @@ class PrositAttention(Layer):
             self.u = self.add_weight(
                 shape=(input_shape[-1],),
                 initializer=self.init,
-                name="{}_u".format(self.name),
+                name=f'{self.name}_u',
                 regularizer=self.u_regularizer,
                 constraint=self.u_constraint,
             )
 
         self.built = True
 
-    def compute_mask(self, input, input_mask=None):
-        return None
-
-    def call(self, x, mask=None):
-        a = K.squeeze(K.dot(x, K.expand_dims(self.W)), axis=-1)
+    def call(self, inputs, *args, **kwargs):
+        """ Function to execute the PrositAttention layer.
+        """
+        processed_tensor = K.squeeze(K.dot(inputs, K.expand_dims(self.w)), axis=-1)
         if self.bias:
-            a += self.b
-        a = K.tanh(a)
+            processed_tensor += self.b
+        processed_tensor = K.tanh(processed_tensor)
         if self.context:
-            a = K.squeeze(K.dot(x, K.expand_dims(self.u)), axis=-1)
-        a = K.exp(a)
-        if mask is not None:
-            a *= K.cast(mask, K.floatx())
-        a /= K.cast(K.sum(a, axis=1, keepdims=True) + K.epsilon(), K.floatx())
-        a = K.expand_dims(a)
-        weighted_input = x * a
+            processed_tensor = K.squeeze(K.dot(inputs, K.expand_dims(self.u)), axis=-1)
+        processed_tensor = K.exp(processed_tensor)
+
+        processed_tensor /= K.cast(
+            K.sum(processed_tensor, axis=1, keepdims=True) + K.epsilon(), K.floatx()
+        )
+        processed_tensor = K.expand_dims(processed_tensor)
+        weighted_input = inputs * processed_tensor
+
         return K.sum(weighted_input, axis=1)
 
     def compute_output_shape(self, input_shape):
@@ -108,86 +144,155 @@ class PrositAttention(Layer):
         config = {
             "bias": self.bias,
             "context": self.context,
-            "W_regularizer": regularizers.serialize(self.W_regularizer),
+            "w_regularizer": regularizers.serialize(self.w_regularizer),
             "b_regularizer": regularizers.serialize(self.b_regularizer),
             "u_regularizer": regularizers.serialize(self.u_regularizer),
-            "W_constraint": constraints.serialize(self.W_constraint),
+            "w_constraint": constraints.serialize(self.w_constraint),
             "b_constraint": constraints.serialize(self.b_constraint),
             "u_constraint": constraints.serialize(self.u_constraint),
         }
-        base_config = super(PrositAttention, self).get_config()
+        base_config = super().get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 def load_model(config_loc, model_loc, weights_loc):
+    """ Function to load a Prosit model from disk.
+
+    Parameters
+    ----------
+    config_loc : str
+        The location of the model config file.
+    model_loc : str
+        The location of the model file.
+    weights_loc : str
+        The location of the model weights file.
+
+    Returns
+    -------
+    model_dict : dict
+        The loaded model dictionary.
+    """
     with open(config_loc, 'r', encoding='UTF-8') as stream:
         config_dict = yaml.safe_load(stream)
 
-    with open(model_loc, "r") as f:
+    with open(model_loc, 'r', encoding='UTF-8') as model_file:
         model = tf.keras.models.model_from_yaml(
-            f.read(), custom_objects={"Attention": PrositAttention}
+            model_file.read(), custom_objects={"Attention": PrositAttention}
         )
     model.load_weights(weights_loc)
 
-    d_irt = {}
-    d_irt["graph"] = tf.Graph()
+    model_dict = {}
+    model_dict["graph"] = tf.Graph()
 
-    d_irt["session"] = tf.compat.v1.Session()
-    with d_irt["session"].as_default():
-        d_irt["model"], d_irt["config"] = model, config_dict
-        d_irt["model"].compile(optimizer="adam", loss="mse")
+    model_dict["session"] = tf.compat.v1.Session()
+    with model_dict["session"].as_default():
+        model_dict["model"], model_dict["config"] = model, config_dict
+        model_dict["model"].compile(optimizer="adam", loss="mse")
 
-    return d_irt
+    return model_dict
 
 def get_precursor_charge_onehot(charges):
-    array = np.zeros([len(charges), MAX_CHARGE], dtype=int)
+    """ Function to get one hot array from precursor charge.
+
+    Parameters
+    ----------
+    charges : np.array of int
+        The charge states observed.
+
+    Return
+    ------
+    charge_one_hot : np.array of np.array
+        Array of the one hot encoded charge states.
+    """
+    charge_one_hot = np.zeros([len(charges), MAX_CHARGE], dtype=int)
     for i, precursor_charge in enumerate(charges):
-        array[i, precursor_charge - 1] = 1
-    return array
+        charge_one_hot[i, precursor_charge - 1] = 1
+    return charge_one_hot
 
 
-def peptide_parser(p):
-    p = p.replace("_", "")
-    if p[0] == "(":
-        raise ValueError("sequence starts with '('")
-    n = len(p)
+def peptide_parser(peptide):
+    """ Function to yield residues possible with modification.
+
+    Parameters
+    ----------
+    peptide : str
+        The input peptide.
+
+    Yields
+    ------
+    residue : str
+        Either a single character residue or M(ox).
+    """
+    pep_len = len(peptide)
     i = 0
-    while i < n:
-        if i < n - 3 and p[i + 1] == "(":
-            j = p[i + 2 :].index(")")
+    while i < pep_len:
+        if i < pep_len - 3 and peptide[i + 1] == '(':
+            j = peptide[i + 2 :].index(')')
             offset = i + j + 3
-            yield p[i:offset]
+            yield PROSIT_ALPHABET[peptide[i:offset]]
             i = offset
         else:
-            yield p[i]
+            yield PROSIT_ALPHABET[peptide[i]]
             i += 1
 
 def get_sequence_integer(sequences):
-    array = np.zeros([len(sequences), MAX_SEQ_LEN], dtype=int)
-    for i, sequence in enumerate(sequences):
-        for j, s in enumerate(peptide_parser(sequence)):
-            array[i, j] = PROSIT_ALPHABET[s]
-    return array
+    """ Function to create np arrays of integers from peptides using the Prosit alphabet.
 
+    Parameters
+    ----------
+    sequences : list of str
+        The peptide sequences.
+
+    Returns
+    -------
+    sequence_integers : np.array
+        The encoded arrays.
+    """
+    sequence_integers = np.zeros([len(sequences), MAX_SEQ_LEN], dtype=int)
+    for seq_idx, sequence in enumerate(sequences):
+        for res_idx, residue in enumerate(peptide_parser(sequence)):
+            sequence_integers[seq_idx, res_idx] = residue
+    return sequence_integers
 
 
 def process_csv_file(input_loc):
+    """ Function to process csv file for Prosit input.
+
+    Parameters
+    ----------
+    input_loc : str
+        The location of the Prosit input csv file.
+
+    Returns
+    -------
+    input_df : pd.DataFrame
+        The DataFrame read in from the csv file.
+    data : dict
+        Dictionary of the Prosit input arrays.
+    """
     input_df = pd.read_csv(input_loc)
-    input_df.reset_index(drop=True, inplace=True)
-    n_seqs = input_df.shape[0]
-
-
     data = {
-        "collision_energy_aligned_normed": (
-            np.array(input_df.collision_energy).astype(float).reshape([n_seqs, 1]) / 100.0
+        'collision_energy_aligned_normed': (
+            np.expand_dims(np.array(input_df['collision_energy']).astype(float), axis=1) / 100.0
         ),
-        "sequence_integer": get_sequence_integer(input_df.modified_sequence),
-        "precursor_charge_onehot": get_precursor_charge_onehot(input_df.precursor_charge),
+        'sequence_integer': get_sequence_integer(input_df['modified_sequence']),
+        'precursor_charge_onehot': get_precursor_charge_onehot(input_df['precursor_charge']),
     }
 
-    return data
+    return input_df, data
 
 def sanitize(data):
+    """ Function to sanitize Prosit predicted MS2 spectra.
 
+    Parameters
+    ----------
+    data : dict
+        The output of the Prosit model.
+
+    Returns
+    -------
+    data : dict
+        The Prosit output after cleaning and normalising the spectrum.
+    """
     sequence_lengths = np.count_nonzero(data["sequence_integer"], axis=1)
     intensities = data["intensities_pred"]
     charges = list(data["precursor_charge_onehot"].argmax(axis=1) + 1)
@@ -217,13 +322,28 @@ def sanitize(data):
 
 
 def prosit_predict(data, d_model):
+    """ Function to predict MS2 spectra or iRT using a Prosit model.
+
+    Parameters
+    ----------
+    data : dict
+        A dictionary containing modified_sequence and precursor_charge keys as well as
+        collision_energy if MS2 spectrum is being predicted.
+    d_model : dict
+        A dictionary containing the model details.
+
+    Return
+    ------
+    data : dict
+        The input dictionary updated to contain the prediction data.
+    """
     # check for mandatory keys
-    x = [data[key] for key in d_model["config"]["x"]]
+    input_data = [data[key] for key in d_model["config"]["x"]]
 
     keras.backend.set_session(d_model["session"])
 
     prediction = d_model["model"].predict(
-        x, verbose=True, batch_size=PROSIT_PRED_BATCH_SIZE
+        input_data, verbose=True, batch_size=PROSIT_PRED_BATCH_SIZE
     )
 
     if d_model["config"]["prediction_type"] == "intensity":
@@ -238,78 +358,20 @@ def prosit_predict(data, d_model):
 
     return data
 
-def get_ions():
-    x = np.empty(
-        [MAX_ION_IDX, N_ION_TYPES, MAX_FRAG_CHARGE],
-        dtype="|S6",
-    )
-    for fz in range(MAX_FRAG_CHARGE):
-        for fty_i, fty in enumerate(ION_TYPES):
-            for fi in range(MAX_ION_IDX):
-                ion = fty + str(fi + 1)
-                if fz > 0:
-                    ion += "({}+)".format(fz + 1)
-                x[fi, fty_i, fz] = ion
-    x.flatten()
-    return x
-
-# IONS = np.array(
-#     ,
-#     dtype='|S6'
-# )
-
-
-class Converter():
-    def __init__(self, data, out_path):
-        self.out_path = out_path
-        self.data = data
-        self.aa_comp = generate_aa_comp()
-
-    def convert(self, redux=False):
-        IONS = get_ions().reshape(174, -1).flatten()
-
-        with open(self.out_path, mode="w", encoding="utf-8") as out_file:
-            first_spec = True
-            for i in range(self.data["iRT"].shape[0]):
-                aIntensity = self.data["intensities_pred"][i]
-                sel = np.where(aIntensity > 0)
-                aIntensity = aIntensity[sel]
-                collision_energy = self.data["collision_energy_aligned_normed"][i] * 100
-                iRT = self.data["iRT"][i]
-                precursor_charge = self.data["precursor_charge_onehot"][i].argmax() + 1
-                sequence_integer = self.data["sequence_integer"][i]
-                aIons = IONS[sel]
-                spec = Spectrum(
-                    aIntensity,
-                    collision_energy,
-                    iRT,
-                    precursor_charge,
-                    sequence_integer,
-                    aIons,
-                )
-                if not first_spec:
-                    out_file.write("\n")
-                first_spec = False
-                out_file.write(str(spec))
-        return spec
-
-def generate_aa_comp():
-    """
-    >>> aa_comp = generate_aa_comp()
-    >>> aa_comp["M"]
-    Composition({'H': 9, 'C': 5, 'S': 1, 'O': 1, 'N': 1})
-    >>> aa_comp["Z"]
-    Composition({'H': 9, 'C': 5, 'S': 1, 'O': 2, 'N': 1})
-    """
-    db = Unimod()
-    aa_comp = dict(std_aa_comp)
-    s = db.by_title("Oxidation")["composition"]
-    aa_comp["Z"] = aa_comp["M"] + s
-    s = db.by_title("Carbamidomethyl")["composition"]
-    aa_comp["C"] = aa_comp["C"] + s
-    return aa_comp
 
 def generate_mods_string_tuples(sequence_integer):
+    """ Function to generate tuples of the modifications in a sequence.
+
+    Parameters
+    ----------
+    sequence_integer : np.array of int
+        The peptide sequence encoded using the Prosit alphabet.
+
+    Returns
+    -------
+    list_mods : list of tuples
+        A list of the modifications stored as tuples containing location and identity.
+    """
     list_mods = []
     for mod in [PROSIT_ALPHABET['M(ox)'], PROSIT_ALPHABET['C']]:
         for position in np.where(sequence_integer == mod)[0]:
@@ -318,8 +380,9 @@ def generate_mods_string_tuples(sequence_integer):
             elif mod == PROSIT_ALPHABET['M(ox)']:
                 list_mods.append((position + 1, "M", "Oxidation"))
             else:
-                raise ValueError("cant be true")
-    list_mods.sort(key=lambda tup: tup[0])  # inplace
+                raise ValueError(f'Modification ID {mod} not allowed.')
+    list_mods.sort(key=lambda tup: tup[0])
+
     return list_mods
 
 
@@ -334,65 +397,118 @@ def generate_mod_strings(sequence_integer):
     """
     list_mods = generate_mods_string_tuples(sequence_integer)
     if len(list_mods) == 0:
-        return "0", ""
-    else:
-        returnString_mods = ""
-        returnString_modString = ""
-        returnString_mods += str(len(list_mods))
-        for i, mod_tuple in enumerate(list_mods):
-            returnString_mods += (
-                "/" + str(mod_tuple[0]) + "," + mod_tuple[1] + "," + mod_tuple[2]
+        return '0', ''
+    indexed_mods_string = ''
+    at_mods_string = ''
+    indexed_mods_string += str(len(list_mods))
+    for i, mod_tuple in enumerate(list_mods):
+        indexed_mods_string += (
+            '/' + str(mod_tuple[0] + 1) + ',' + mod_tuple[1] + ',' + mod_tuple[2]
+        )
+        if i == 0:
+            at_mods_string += (
+                mod_tuple[2] + '@' + mod_tuple[1] + str(mod_tuple[0] + 1)
             )
-            if i == 0:
-                returnString_modString += (
-                    mod_tuple[2] + "@" + mod_tuple[1] + str(mod_tuple[0] + 1)
-                )
-            else:
-                returnString_modString += (
-                    "; " + mod_tuple[2] + "@" + mod_tuple[1] + str(mod_tuple[0] + 1)
-                )
+        else:
+            at_mods_string += (
+                '; ' + mod_tuple[2] + '@' + mod_tuple[1] + str(mod_tuple[0] + 1)
+            )
 
-    return returnString_mods, returnString_modString
+    return indexed_mods_string, at_mods_string
 
-class Spectrum(object):
-    """ Spectrum class for all the information that must be outputed in the msp file.
-    """
-    def __init__(
-        self,
-        aIntensity,
+
+def format_msp_spectrum(
+        pred_intes,
         collision_energy,
-        iRT,
+        pred_irt,
         precursor_charge,
         sequence_integer,
-        aIons,
+        pred_ion_names,
     ):
-        self.aIntensity = aIntensity
-        self.collision_energy = collision_energy
-        self.iRT = iRT
-        self.aIons = aIons
-        self.precursor_charge = precursor_charge
-        self.mod, self.mod_string = generate_mod_strings(sequence_integer)
-        self.sequence = ''.join(
-            [PROSIT_ALPHABET_S[i] if i in PROSIT_ALPHABET_S else '' for i in sequence_integer]
-        )
+    """ Function to correctly format an MSP spectrum from Prosit predictions.
 
-    def __str__(self):
-        print_string = "Name: {sequence}/{charge}\nMW: 0.0\n"
-        print_string += "Comment: Parent=0.0 Collision_energy={collision_energy} "
-        print_string += "Mods={mod} ModString={sequence}//{mod_string}/{charge}"
-        print_string += " iRT={iRT}"
-        print_string += "\nNum peaks: {num_peaks}"
-        num_peaks = len(self.aIntensity)
-        print_string = print_string.format(
-            sequence=self.sequence.replace("M(ox)", "M"),
-            charge=self.precursor_charge,
-            collision_energy=np.round(self.collision_energy[0], 0),
-            mod=self.mod,
-            mod_string=self.mod_string,
-            num_peaks=num_peaks,
-            iRT=self.iRT[0],
-        )
-        for intensity, ion in zip(self.aIntensity, self.aIons):
-            print_string += "\n0.0\t" + str(intensity) + '\t"'
-            print_string += ion.decode("UTF-8").replace("(", "^").replace("+", "") + '/0.0ppm"'
-        return print_string
+    Parameters
+    ----------
+    pred_intes : np.array
+        The predicted intensities from Prosit.
+    collision_energy : int
+        The collision energy predicted for.
+    pred_irt : float
+        The predicted iRT value from Prosit.
+    precursor_charge : int
+        The charge of the peptide.
+    sequence_integer : np.array
+        The encoded peptide sequence.
+    pred_ion_names : np.array
+        The name of the ions matching the intensities.
+    """
+    mod, mod_string = generate_mod_strings(sequence_integer)
+    unmod_seq = ''.join(
+        [PROSIT_UNMOD_ALPHA_S[i] if i in PROSIT_UNMOD_ALPHA_S else '' for i in sequence_integer]
+    )
+
+    print_string = (
+        f'Name: {unmod_seq}/{precursor_charge}\nMW: 0.0\n' +
+        f'Comment: Parent=0.0 Collision_energy={np.round(collision_energy, 0)} ' +
+        f'Mods={mod} ModString={unmod_seq}//{mod_string}/{precursor_charge}' +
+        f' iRT={pred_irt}' +
+        f'\nNum peaks: {len(pred_intes)}'
+    )
+
+    for intensity, ion in zip(pred_intes, pred_ion_names):
+        print_string += '\n0.0\t' + str(intensity) + '\t"'
+        print_string += ion + '/0.0ppm"'
+
+    return print_string
+
+
+def write_msp_spectrum(df_row, out_file):
+    """ Function to write a single spectrum in MSP format.
+
+    Parameters
+    ----------
+    df_row : pd.Series
+        A single row of the DataFrame containing prediction data.
+    out_file : file
+        The File where the spectrum will be written.
+    """
+    first_spec = df_row.name == 0
+    pred_intes = df_row['intensities_pred']
+    sel = np.where(pred_intes > 0)
+    pred_intes = pred_intes[sel]
+    collision_energy = df_row['collision_energy']
+    pred_irt = df_row['iRT']
+    precursor_charge = df_row['precursor_charge']
+    sequence_integer = df_row['sequence_integer']
+    pred_ion_names = PROSIT_IONS[sel]
+    spec = format_msp_spectrum(
+        pred_intes,
+        collision_energy,
+        pred_irt,
+        precursor_charge,
+        sequence_integer,
+        pred_ion_names,
+    )
+    if not first_spec:
+        out_file.write("\n")
+    first_spec = False
+    out_file.write(str(spec))
+
+
+def write_msp_file(peptide_df, prediction_data, out_path):
+    """ Function to write MSP output from Prosit predictions.
+
+    Parameters
+    ----------
+    peptide_df : pd.DataFrame
+        The input DataFrame used  from prosit prediction.
+    prediction_data : dict
+        Dictionary of the Prosit output predictions.
+    out_path : str
+        The location where results should be written.
+    """
+    peptide_df['iRT'] = prediction_data['iRT']
+    peptide_df['intensities_pred'] = pd.Series(list(prediction_data['intensities_pred']))
+    peptide_df['sequence_integer'] = pd.Series(list(prediction_data['sequence_integer']))
+    with open(out_path, mode='w', encoding='UTF-8') as out_file:
+        peptide_df.apply(lambda df_row : write_msp_spectrum(df_row, out_file), axis=1)

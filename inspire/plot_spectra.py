@@ -167,6 +167,7 @@ def experiment_match(exp_mzs, exp_intes, pred_mzs, plotting_names):
             matched_intes.append(exp_intes[matched_ind])
             matched_pred_mzs.append(pred_m)
             matched_names.append(match_name.split('+')[0])
+
     if len(matched_intes) > 5:
         l2_norm = np.linalg.norm(np.array(matched_intes), ord=2)
     else:
@@ -437,6 +438,18 @@ def fetch_scan_data(input_df, config, with_charge):
     return total_scan_df
 
 def convert_mod_seq_to_ptm_seq(mod_seq):
+    """ Function to convert the modified prosit sequence to the PTM seq used elsewhere.
+
+    Parameters
+    ----------
+    mod_seq : str
+        The input sequence for Prosit.
+
+    Returns
+    -------
+    ptm_seq : str
+        The string of digits used to represent any PTMs present.
+    """
     ptm_seq = '0.'
     while mod_seq:
         if len(mod_seq) == 1 or mod_seq[1] != '[':
@@ -529,7 +542,8 @@ def plot_spectra(config):
         src = input_df[SOURCE_KEY].iloc[idx]
         spectral_angle = round(input_df[SPECTRAL_ANGLE_KEY].iloc[idx], 2)
         titles.append(
-            f'<b>Source</b> {src} <b>Scan</b> {scan_nr}<br><b>Peptide</b> {seq}  <b>Spectral Angle</b> {spectral_angle}<br>'
+            f'<b>Source</b> {src} <b>Scan</b> {scan_nr}<br><b>Peptide</b> {seq} ' +
+            f'<b>Spectral Angle</b> {spectral_angle}<br>'
         )
 
     for group_idx in range(n_groups):

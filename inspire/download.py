@@ -3,9 +3,10 @@
 import os
 from pathlib import Path
 from urllib.request import urlretrieve
+import tarfile
 import zipfile
 
-from inspire.constants import ENDC_TEXT, FIGSHARE_PATH, OKCYAN_TEXT
+from inspire.constants import ENDC_TEXT, FIGSHARE_EXAMPLE_PATH, FIGSHARE_PATH, OKCYAN_TEXT
 
 
 def download_models(force_reload=False):
@@ -35,9 +36,36 @@ def download_models(force_reload=False):
         print(
             OKCYAN_TEXT + '\tExtracting Models...' + ENDC_TEXT
         )
-        zip_ref = zipfile.ZipFile(f'{home}/inSPIRE_models/models.zip')
-        zip_ref.extractall(f'{home}/inSPIRE_models/models')
-        zip_ref.close()
+        with zipfile.ZipFile(f'{home}/inSPIRE_models/models.zip') as zip_ref:
+            zip_ref.extractall(f'{home}/inSPIRE_models/models')
         print(
             OKCYAN_TEXT + '\tModels ready.' + ENDC_TEXT
+        )
+
+def download_data():
+    """ Function to download the example dataset from Figshare
+
+    Parameters
+    ----------
+    force_reload : bool (default=False)
+        Flag indicating whether to remove the existing inSPIRE_models folder
+        and redownload all models.
+    """
+
+    if os.path.isdir('example'):
+        print(
+            OKCYAN_TEXT + '\tExample data already downloaded.' + ENDC_TEXT
+        )
+    else:
+        print(
+            OKCYAN_TEXT + '\tDownloading data...' + ENDC_TEXT
+        )
+        urlretrieve(FIGSHARE_EXAMPLE_PATH, filename=f'{os.getcwd()}/example.tar.gz')
+        print(
+            OKCYAN_TEXT + '\tExtracting Data...' + ENDC_TEXT
+        )
+        with tarfile.open('example.tar.gz', "r:gz") as tar:
+            tar.extractall()
+        print(
+            OKCYAN_TEXT + '\tDataset ready.' + ENDC_TEXT
         )

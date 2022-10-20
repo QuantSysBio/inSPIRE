@@ -5,7 +5,6 @@ import pandas as pd
 import yaml
 
 from inspire.constants import (
-    BASIC_FEATURES,
     CHARGE_KEY,
     DELTA_SCORE_KEY,
     ENDC_TEXT,
@@ -20,27 +19,22 @@ from inspire.constants import (
     PEPTIDE_KEY,
     PREFIX_KEYS,
     PSM_ID_KEY,
-    SCAN_KEY,
-    SOURCE_KEY,
     SUFFIX_KEYS,
     PRED_ACCESSION_KEY,
     PRED_PEPTIDE_KEY,
     SEQ_LEN_KEY,
-    TRUE_ACCESSION_KEY,
     TRUE_PEPTIDE_KEY,
 )
 from inspire.feature_selection import generate_one_hot_entries
 from inspire.figures import (
     create_binders_fig,
-    create_pr_fig,
     create_psms_fig,
     create_violin_fig,
     create_weights_fig,
-    create_wrong_fig,
 )
 from inspire.html_template import create_html_report
 from inspire.input.mhcpan import read_mhcpan_output
-from inspire.rescore import apply_rescoring, _split_psm_ids
+from inspire.rescore import apply_rescoring
 
 NON_SPECTRAL_FEATURES = [
     ENGINE_SCORE_KEY,
@@ -307,191 +301,6 @@ def _get_counts(all_df, score_cut_off, score_key, acc_grp):
 
     return pred_count, correct_count
 
-def get_wrong_table(config):
-    """ Function to get table of highest ranking incorrect PSMs.
-
-    Parameters
-    ----------
-    config : inspire.config.Config
-        The config object for the experiment.
-
-    Returns
-    -------
-    car_wrong_fig : str
-        A table of the highest ranking incorrect inSPIRE PSMs converted to html.
-    se_wrong_fig : str
-        A table of the highest ranking incorrect Search Engine PSMs converted to html.
-    """
-    query_table = pd.read_csv(f'{config.output_folder}/queryTable.csv', index_col=False)
-
-    query_table = query_table.sort_values(by=FINAL_SCORE_KEY, ascending=False)
-    query_table.reset_index(drop=True, inplace=True)
-    query_table['spireRank'] = query_table.index
-    incorrect_spire_df = query_table[query_table.apply(
-        lambda x : (
-            isinstance(x[PRED_PEPTIDE_KEY], str) and
-            x[TRUE_PEPTIDE_KEY].replace('I', 'L') != x[PRED_PEPTIDE_KEY].replace('I', 'L')
-        ),
-        axis=1
-    )]
-
-    incorrect_column_keys = [
-        PRED_PEPTIDE_KEY,
-        TRUE_ACCESSION_KEY,
-        TRUE_PEPTIDE_KEY,
-    ]
-
-    highest_car_wrong_psms = ['spireRank'] + incorrect_column_keys
-
-    highest_spire_wrong_psms = incorrect_spire_df[highest_car_wrong_psms].head(10)
-    query_table = query_table.sort_values(by=ENGINE_SCORE_KEY, ascending=False)
-    query_table.reset_index(drop=True, inplace=True)
-    query_table['engineRank'] = query_table.index
-    incorrect_se_df = query_table[query_table.apply(
-        lambda x : (
-            isinstance(x[PRED_PEPTIDE_KEY], str) and
-            x[TRUE_PEPTIDE_KEY].replace('I', 'L') != x[PRED_PEPTIDE_KEY].replace('I', 'L')
-        ),
-        axis=1
-    )]
-    se_column_keys = ['engineRank'] + incorrect_column_keys
-    highest_se_wrong_psms = incorrect_se_df[se_column_keys].head(10)
-
-    car_wrong_fig = create_wrong_fig(highest_spire_wrong_psms, highest_car_wrong_psms, 'inSPIRE')
-    se_wrong_fig = create_wrong_fig(highest_se_wrong_psms, se_column_keys, 'Search Engine')
-    return car_wrong_fig, se_wrong_fig
-
-def _generate_cut_offs(query_table, score_key):
-    """ Helper function to generate many score cut offs to for creation of precision recall curve.
-
-    Parameters
-    ----------
-    query_table : pd.DataFrame
-        A DataFrame of PSMs.
-    score_key : str
-        The name of the column of scores for which we are generating a precision-recall curve.
-
-    Returns
-    -------
-    score_cuts : list of float
-        A list of scoring thresholds.
-    """
-    car_score_min = query_table[score_key].min()
-    car_score_max = query_table[score_key].max()
-    car_step_size = (car_score_max - car_score_min)/N_PR_STEPS
-    return [car_score_min + (car_step_size*idx) for idx in range(N_PR_STEPS)]
-
-def plot_precision_recall_curve(config):
-    """ Function to create a precision-recall curve Figure.
-
-    Parameters
-    ----------
-    config : inspire.config.Config
-        The config object for the experiment.
-
-    Returns
-    -------
-    pr_fig : str
-        A figure of precision and recalls at varying score thresholds converted to html.
-    """
-    query_table = pd.read_csv(f'{config.output_folder}/queryTable.csv', index_col=False)
-    non_spec_df = pd.read_csv(
-        f'{config.output_folder}/non_spectral.{config.rescore_method}.psms.txt',
-        sep='\t', index_col=False
-    )
-    non_spec_df = non_spec_df.rename(
-        columns={OUT_SCORE_KEY[config.rescore_method]: 'nonSpectralScore'}
-    )
-    non_spec_df = non_spec_df.apply(
-       lambda x: _split_psm_ids(x, PSM_ID_KEY[config.rescore_method]),
-       axis=1
-    )
-    non_spec_df = non_spec_df[[SOURCE_KEY, SCAN_KEY, 'nonSpectralScore']]
-    non_spec_df = non_spec_df.drop_duplicates([SOURCE_KEY, SCAN_KEY])
-    query_table = pd.merge(
-        query_table,
-        non_spec_df,
-        how='left',
-        on=[SOURCE_KEY, SCAN_KEY],
-    )
-
-    score_cuts = {
-        'inspire': _generate_cut_offs(query_table, FINAL_SCORE_KEY),
-        'searchEngine': _generate_cut_offs(query_table, 'nonSpectralScore'),
-    }
-
-    acc_groups = ['discoverable']
-    precisions = {}
-    recalls = {}
-    one_pct_fdr_prs = {}
-
-    for acc_grp in acc_groups:
-        precisions[acc_grp] = {
-            'inspire': [],
-            'searchEngine': [],
-        }
-        recalls[acc_grp] = {
-            'inspire': [],
-            'searchEngine': [],
-        }
-
-        qt_count = query_table[query_table[TRUE_ACCESSION_KEY] == acc_grp].shape[0]
-
-        for idx in range(N_PR_STEPS):
-            car_pred_count, car_correct_count = _get_counts(
-                query_table, score_cuts['inspire'][idx], FINAL_SCORE_KEY, acc_grp
-            )
-            se_pred_count, se_correct_count = _get_counts(
-                query_table, score_cuts['searchEngine'][idx], 'nonSpectralScore', acc_grp
-            )
-
-            if car_pred_count > 0:
-                precisions[acc_grp]['inspire'].append(
-                    car_correct_count/car_pred_count
-                )
-                recalls[acc_grp]['inspire'].append(
-                    car_correct_count/qt_count
-                )
-            if se_pred_count > 0:
-                precisions[acc_grp]['searchEngine'].append(
-                    se_correct_count/se_pred_count
-                )
-                recalls[acc_grp]['searchEngine'].append(
-                    se_correct_count/qt_count
-                )
-
-        car_pred_count, car_correct_count = _get_counts(
-            query_table,
-            0.0,
-            FINAL_SCORE_KEY,
-            acc_grp,
-        )
-        one_pct_fdr_prs[acc_grp] = {}
-        if car_pred_count > 0:
-            one_pct_fdr_prs[acc_grp]['inspire']= (
-                car_correct_count/car_pred_count,
-                car_correct_count/qt_count
-            )
-        else:
-            one_pct_fdr_prs[acc_grp]['inspire'] = (1.0, 0.0)
-
-        se_pred_count, se_correct_count = _get_counts(
-            query_table,
-            0.0,
-            'nonSpectralScore',
-            acc_grp,
-        )
-        if se_pred_count > 0:
-            one_pct_fdr_prs[acc_grp]['searchEngine'] = (
-                se_correct_count/se_pred_count,
-                se_correct_count/qt_count
-            )
-        else:
-            one_pct_fdr_prs[acc_grp]['searchEngine'] = (
-                1.0, 0.0
-            )
-
-    return create_pr_fig(precisions, recalls, one_pct_fdr_prs)
 
 def generate_report(config):
     """ Function for creating a report at the end of ininspire execution.
@@ -524,14 +333,6 @@ def generate_report(config):
     )
 
     assignment_df = pd.read_csv(f'{config.output_folder}/finalAssignments.csv')
-
-    if config.query_table is not None:
-        figures['pr_fig'] = plot_precision_recall_curve(
-            config
-        )
-        wrong_tables = get_wrong_table(config)
-        figures['wrong_car_fig'] = wrong_tables[0]
-        figures['wrong_se_fig'] = wrong_tables[1]
 
     if config.use_binding_affinity in ['asFeature', 'asValidation']:
         mhcpan_df = read_mhcpan_output(f'{config.output_folder}/mhcpan')
@@ -683,7 +484,7 @@ def create_weights_table(output_folder, rescore_method, acc_idx=None):
         else:
             weights_path = f'{output_folder}/final_{acc_idx}.{rescore_method}.weights.csv'
         clean_percolator_weights(weights_path)
-        
+
         weights_df = pd.read_csv(
             weights_path,
             skiprows=lambda x : x not in [0, 1, 4, 7],

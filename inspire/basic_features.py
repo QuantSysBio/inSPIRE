@@ -82,9 +82,7 @@ def create_basic_features(search_df, mods_df):
     search_df['fracUnique'] = search_df[PEPTIDE_KEY].apply(
         lambda x : len(set(x))/len(x)
     )
-    search_df['fracIL'] = search_df[PEPTIDE_KEY].apply(
-        lambda x : (x.count('L') + x.count('I'))/len(x)
-    )
+
     search_df['fracC'] = search_df[PEPTIDE_KEY].apply(
         lambda x : x.count('C')/len(x)
     )

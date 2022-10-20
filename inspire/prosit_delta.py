@@ -164,12 +164,27 @@ def compute_single_mz(sequence, modifications, ion_type, ion_idx, ptm_id_weights
     return tracking_mw + ION_OFFSET[ion_type]
 
 def calculate_sa_from_dict(predicted, true):
+    """ Function to calculate the spectral angle when the predicted and true spectrum
+        are stored as dictionaries.
+
+    Parameters
+    ----------
+    predicted : dict
+        A dictionary of the prosit predicted spectrum.
+    true : dict
+        A dictionary of the experimental ions matched to the predicted spectrum.
+
+    Returns
+    -------
+    spectral_angle : float
+        The spectral angle between spectra.
+    """
     true_l2_norm = np.linalg.norm(np.array(list(true.values())), ord=2)
     pred_l2_norm = np.linalg.norm(np.array(list(predicted.values())), ord=2)
 
     if true_l2_norm == 0 and pred_l2_norm == 0:
         return 0.0
-    elif true_l2_norm == 0 and pred_l2_norm == 0:
+    if true_l2_norm == 0 and pred_l2_norm == 0:
         return 1.0
 
     if pred_l2_norm > 0.0:
@@ -188,6 +203,20 @@ def calculate_sa_from_dict(predicted, true):
     return 1.0 - spectral_distance
 
 def convert_ptm_seq(ptm_seq, flip_idx):
+    """ Function to adjust a PTM sequence to match permutation of the sequence.
+
+    Parameters
+    ----------
+    ptm_seq : str or None
+        The the original PTM sequence (stored as string of digits)
+    flip_idx : int
+        The index which is to be permuted.
+
+    Returns
+    -------
+    ptm_seq : str or None
+        The adjusted PTM sequence.
+    """
     if not isinstance(ptm_seq, str):
         return ptm_seq
 
@@ -199,6 +228,27 @@ def convert_ptm_seq(ptm_seq, flip_idx):
 
 
 def get_brute_force_deltas(df_row, matched_dict, ptm_id_weights, mz_accuracy, spectral_predictor):
+    """ Function to calculate the Prosit delta values of PSM using the "brute force" method -
+        calculating all possible permuted spectral angles and comparing them to the original.
+
+    Parameters
+    ----------
+    df_row : pd.Series
+        A single row of the PSM dataframe.
+    matched_dict : dict
+        A dictionary of the Prosit matched ions in the experimental spectrum.
+    ptm_id_weights : dict
+        A dictionary providing the molecular weights of all PTMs.
+    mz_accuracy : float
+        The accuracy of the mass spectrometer.
+    spectral_predictor : str
+        Either prosit or ms2pip.
+
+    Returns
+    -------
+    df_row : pd.Series
+        The input row with Prosit-delta features added.
+    """
     peptide = df_row[PEPTIDE_KEY]
     pep_len = len(peptide)
     deltas = []
@@ -252,6 +302,20 @@ def get_brute_force_deltas(df_row, matched_dict, ptm_id_weights, mz_accuracy, sp
     return calculate_delta_features(df_row, np.array(deltas))
 
 def calculate_delta_features(df_row, prot_deltas):
+    """ Function to calculate the Prosit delta features.
+
+    Parameters
+    ----------
+    df_row : pd.Series
+        A single row of the PSM dataframe.
+    prot_deltas : np.array
+        The Prosit-delta values at each point in the sequence.
+
+    Returns
+    -------
+    df_row : pd.Series
+        The input row with Prosit-delta features added.
+    """
     if prot_deltas.size != 0:
         df_row['nDeltasAboveThreshold'] = len(
             prot_deltas[prot_deltas > -0.1]
@@ -281,7 +345,23 @@ def calculate_delta_features(df_row, prot_deltas):
 
     return df_row
 
-def compute_pd_single_mz(sequence, ion_type, ion_idx):
+def compute_pd_single_mw(sequence, ion_type, ion_idx):
+    """ Function to compute the mw of a single ion.
+
+    Parameters
+    ----------
+    sequence : str
+        The peptide sequence.
+    ion_type : str
+        y or b.
+    ion_idx : int
+        The index of ion.
+
+    Returns
+    -------
+    mw : float
+        The mw of the theoretical ion.
+    """
     if ion_type == 'y':
         sequence = sequence[::-1]
 
@@ -294,11 +374,13 @@ def compute_pd_single_mz(sequence, ion_type, ion_idx):
 
 
 def get_new_inte(peptide, flip_ind, df_row, mz_accuracy, ion_series):
+    """ Function to get the potential new intensity.
+    """
     if ion_series == 'b':
-        base_mass = compute_pd_single_mz(peptide, 'b', flip_ind-1)
+        base_mass = compute_pd_single_mw(peptide, 'b', flip_ind-1)
         base_mass += DELTA_PRO_RESIDUE_WEIGHTS[peptide[flip_ind]]
     else:
-        base_mass = compute_pd_single_mz(peptide, 'y', len(peptide)-(flip_ind+1))
+        base_mass = compute_pd_single_mw(peptide, 'y', len(peptide)-(flip_ind+1))
         base_mass += DELTA_PRO_RESIDUE_WEIGHTS[peptide[flip_ind-1]]
     match_inte = 0.0
     for frag_z in range(1, min(df_row['charge'], 4)):
@@ -308,6 +390,27 @@ def get_new_inte(peptide, flip_ind, df_row, mz_accuracy, ion_series):
     return match_inte
 
 def get_err_at_loc(pep_len, matched_ions, prosit_ions, loc, letter):
+    """ Function to get the error at a point in a spectrum between Prosit predicted and
+        normalised experimental intensitiy.
+
+    Parameters
+    ----------
+    pep_len : int
+        Length of the peptide.
+    matched_ions : dict
+        Dictionary of the experimental intensities matched to Prosit ions.
+    prosit_ions : dict
+        Dictionary of the prosit predicted intensities.
+    loc : int
+        The location of interest.
+    letter : str
+        y or b
+
+    Returns
+    -------
+    sum_error : float
+        The sum of all errors at that location.
+    """
     sum_err = 0
     if letter == 'y':
         loc = pep_len - loc
@@ -317,7 +420,16 @@ def get_err_at_loc(pep_len, matched_ions, prosit_ions, loc, letter):
 
     return sum_err
 
-def get_deltas(df_row, prosit_ions, matched_intes, prosit_intes, reg_model, ox_flag, mz_accuracy, matched_dict):
+def get_deltas(
+        df_row,
+        prosit_ions,
+        matched_intes,
+        prosit_intes,
+        reg_model,
+        ox_flag,
+        mz_accuracy,
+        matched_dict,
+    ):
     """ Function to get all predicted prosit-deltas.
 
     Parameters
@@ -377,10 +489,18 @@ def get_deltas(df_row, prosit_ions, matched_intes, prosit_intes, reg_model, ox_f
             [get_new_inte(mod_seq, flip_ind, df_row, mz_accuracy, 'b') for flip_ind in flip_inds]
         )
         input_feats[:,DELTA_PRO_FEATURE_SET.index('yErrsAtLoc')] = np.array(
-            [get_err_at_loc(pep_len, normed_matched_dict, df_row[PROSIT_IONS_KEY], flip_ind, 'y') for flip_ind in flip_inds]
+            [
+                get_err_at_loc(
+                    pep_len, normed_matched_dict, df_row[PROSIT_IONS_KEY], flip_ind, 'y'
+                ) for flip_ind in flip_inds
+            ]
         )
         input_feats[:,DELTA_PRO_FEATURE_SET.index('bErrsAtLoc')] = np.array(
-            [get_err_at_loc(pep_len, normed_matched_dict, df_row[PROSIT_IONS_KEY], flip_ind, 'b') for flip_ind in flip_inds]
+            [
+                get_err_at_loc(
+                    pep_len, normed_matched_dict, df_row[PROSIT_IONS_KEY], flip_ind, 'b'
+                ) for flip_ind in flip_inds
+            ]
         )
         input_feats[:, DELTA_PRO_FEATURE_SET.index('bPrositIntesAtC')] = np.array(
             [

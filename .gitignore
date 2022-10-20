@@ -135,6 +135,8 @@ inspire/input/__pycache__
 inspire/input/__pycache__/*
 
 example/output/final*
+example/output/calibration*
+example/output/*Stats.csv
 example/output/non_spectral*
 example/output/*.html
 example/output/*.tab
@@ -143,7 +145,7 @@ example/output/selectedFeatures.yaml
 example/output/spectralPlots.eps
 example/output/rescore.log
 example/output/input_all_features.tab
-example/output/prositInput.csv
+example/output/prosit*
 example/output/spectralPlots.pdf
 example/.DS_Store
 

@@ -2,7 +2,9 @@
 
 # Minimum lines number of a similarity.
 min-similarity-lines=4
-max-args=6
+
+# Maximum number of function arguments
+max-args=9
 
 # Ignore comments when computing similarities.
 ignore-comments=yes
@@ -13,5 +15,5 @@ ignore-docstrings=yes
 # Ignore imports when computing similarities.
 ignore-imports=yes
 
-# Our Config requires many values to be set.
+# Config requires many values to be set.
 disable=too-many-instance-attributes

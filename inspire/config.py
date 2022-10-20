@@ -15,17 +15,11 @@ ALL_CONFIG_KEYS = [
     'distillerLog',
     'dropUnknownPTMs',
     'excludeFeatures',
-    'excludeRawFiles',
     'experimentTitle',
     'falseDiscoveryRate',
     'fixedModifications',
     'filterCysteine',
     'forceReload',
-    'groundTruth',
-    'groundTruthAccessionStratumKey',
-    'groundTruthScanKey',
-    'groundTruthSeqKey',
-    'groundTruthSourceKey',
     'includeFeatures',
     'ms2pipModel',
     'mzAccuracy',
@@ -79,11 +73,6 @@ class Config:
         if self.output_folder.endswith('/'):
             self.output_folder = self.output_folder[:-1]
 
-        if self.query_table is not None:
-            self.query_table = self.query_table.replace('~', home).replace('%USERPROFILE%', home)
-            if self.query_table.endswith('/'):
-                self.query_table = self.query_table[:-1]
-
         if not os.path.exists(self.output_folder):
             os.makedirs(self.output_folder)
 
@@ -115,7 +104,6 @@ class Config:
         # Optional
         self.fdr = config_dict.get('falseDiscoveryRate', 0.01)
         self.max_for_selection = -1
-        self.exclude_raw_files = config_dict.get('excludeRawFiles', [])
         self.exclude_features = config_dict.get('excludeFeatures', [])
         self.include_features = config_dict.get('includeFeatures', None)
         self.reduce = config_dict.get('reduce', False)
@@ -142,12 +130,6 @@ class Config:
         # MS2PIP Model
         self.ms2pip_model = config_dict.get('ms2pipModel', None)
 
-        # Ground Truth
-        self.query_table = config_dict.get('groundTruth', None)
-        self.qt_seq_key = config_dict.get('groundTruthSeqKey')
-        self.qt_source_key = config_dict.get('groundTruthSourceKey')
-        self.qt_scan_key = config_dict.get('groundTruthScanKey')
-        self.qt_accession_stratum_key = config_dict.get('groundTruthAccessionStratumKey')
 
         # Accession Groups
         self.accession_groups = config_dict.get('accessionGroups')
@@ -155,11 +137,7 @@ class Config:
         self.accession_format = config_dict.get('accessionFormat')
         if self.accession_format == 'invitroSPI' and self.accession_hierarchy is None:
             self.accession_hierarchy = ['nonspliced', 'cisspliced', 'transspliced']
-        self.model_per_acc_grp = config_dict.get('modelPerAccessionGroup', False)
-        if self.model_per_acc_grp and self.model_per_acc_grp in self.accession_hierarchy:
-            self.model_per_acc_grp = [
-                self.accession_hierarchy.index(x) for x in self.model_per_acc_grp
-            ]
+
         self.use_accession_stratum = config_dict.get('useAccessionStrata', False)
         self.proteome = config_dict.get('proteome')
         self.raw_file_groups = config_dict.get('rawFileGroupings')
@@ -331,24 +309,3 @@ class Config:
             raise ValueError(
                 'You must specify an ms2pipModel when using the ms2pip spectral predictor.'
             )
-
-        if self.query_table is not None:
-            if self.qt_scan_key is None:
-                raise ValueError(
-                    'Value for groundTruth provided without groundTruthScanKey'
-                )
-
-            if self.qt_source_key is None:
-                raise ValueError(
-                    'Value for groundTruth provided without groundTruthSourceKey'
-                )
-
-            if self.qt_seq_key is None:
-                raise ValueError(
-                    'Value for groundTruth provided without groundTruthSeqKey'
-                )
-
-            if self.qt_seq_key is None:
-                raise ValueError(
-                    'Value for groundTruth provided without groundTruthAccessionStratumKey'
-                )

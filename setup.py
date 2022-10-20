@@ -3,15 +3,16 @@ from setuptools import setup
 
 setup(
     name='inspire',
-    version=0.3,
+    version=1.0,
     description='Helping to integrate Spectral Predictors and Rescoring.',
-    author='John Cormican',
-    author_email='john.cormican@mpinat.mpg.de',
+    author='John Cormican, Juliane Liepe',
+    author_email='juliane.liepe@mpinat.mpg.de',
     packages=[
         'inspire',
         'inspire.input',
     ],
     long_description=open('README.md').read(),
+    long_description_content_type='text/markdown',
     py_modules=[
         'inspire',
         'inspire.input',
@@ -21,6 +22,7 @@ setup(
             'inspire=inspire.run:main'
         ]
     },
+    python_requires='>=3.8',
     install_requires=[
         'absl-py==0.15.0',
         'astunparse==1.6.3',
@@ -99,4 +101,8 @@ setup(
         'xgboost==1.6.1',
         'zipp==3.8.1',
     ],
+    project_urls={
+        'Homepage': 'https://github.com/QuantSysBio/inSPIRE',
+        'Tracker': 'https://github.com/QuantSysBio/inSPIRE/issues',
+    },
 )

@@ -249,7 +249,9 @@ def read_single_peaks_data(df_loc):
             axis=1
         )
     else:
-        peaks_df = peaks_df.rename(columns={PEAKS_PEPTIDE_KEY: PEPTIDE_KEY})
+        peaks_df = peaks_df.rename( # pylint: disable=no-member
+            columns={PEAKS_PEPTIDE_KEY: PEPTIDE_KEY}
+        )
         peaks_df[PTM_SEQ_KEY] = None
 
     # Rename to match inSPIRE naming scheme.

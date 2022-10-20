@@ -206,7 +206,7 @@ def final_rescoring(config):
     )
 
     if 'PSMId' in target_psms.columns:
-        target_psms = target_psms.rename(
+        target_psms = target_psms.rename(  # pylint: disable=no-member
             columns={'PSMId': psm_id_key}
         )
 

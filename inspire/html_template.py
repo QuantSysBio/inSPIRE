@@ -93,40 +93,6 @@ def create_html_report(config, figures):
             <center>
     ''' + figures['violin_fig'])
 
-    if config.query_table is not None:
-        html_string += (
-            '''
-                    </center>
-                    <h3>
-                        inSPIRE Performance: Precision-Recall Curves
-                    </h3>
-                    <p>
-                        This shows the Precision-Recall Curve for inSPIRE vs. the original Search
-                        Engine Results.
-                    </p>
-                    <center>
-            ''' + figures['pr_fig'] +
-            '''
-                    </center>
-                    <br>
-                    <p>
-                        The highest ranking incorrect PSMs for inSPIRE are shown below.
-                    </p>
-                    <br>
-                    <center>
-            ''' + figures['wrong_car_fig'] +
-            '''
-                    </center>
-                    <br>
-                    <p>
-                        The highest ranking incorrect PSMs for the original Search Engine are
-                        shown below.
-                    </p>
-                    <br>
-                    <center>
-            ''' + figures['wrong_se_fig']
-        )
-
     html_string += (
         '''
                 </center>
