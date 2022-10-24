@@ -2,7 +2,7 @@
 from setuptools import setup
 
 setup(
-    name='inspire',
+    name='inspirems',
     version=1.0,
     description='Helping to integrate Spectral Predictors and Rescoring.',
     author='John Cormican, Juliane Liepe',
