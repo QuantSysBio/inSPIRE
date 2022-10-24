@@ -17,3 +17,13 @@ ignore-imports=yes
 
 # Config requires many values to be set.
 disable=too-many-instance-attributes
+
+[PANDASSUBSCRIPT]
+
+# Issue with pandas DataFrames:
+disable=unsubscriptable-object  # pylint/issues/3139
+
+[PANDASASSIGNMENT]
+
+# Issue with pandas DataFrames:
+disable=unsupported-assignment-operation  # pylint/issues/3139

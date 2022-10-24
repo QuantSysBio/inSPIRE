@@ -18,7 +18,7 @@ from inspire.constants import (
 )
 from inspire.mz_match import match_mz
 
-DELTA_PRO_FEATURE_SET = [
+DELTA_PRO_FEATURE_SET = (
     'spectralAngle',
     'blosumC',
     'blosumN',
@@ -43,7 +43,32 @@ DELTA_PRO_FEATURE_SET = [
     'flipYNewIntensity',
     'flipBNewIntensity',
     'matchedCoverage',
-]
+)
+
+SPECTRAL_ANGLE_INDEX = DELTA_PRO_FEATURE_SET.index('spectralAngle')
+BLOSUM_N_INDEX = DELTA_PRO_FEATURE_SET.index('blosumN')
+BLOSUM_C_INDEX = DELTA_PRO_FEATURE_SET.index('blosumC')
+CHARGE_INDEX = DELTA_PRO_FEATURE_SET.index('charge')
+MATCHED_COV_INDEX = DELTA_PRO_FEATURE_SET.index('matchedCoverage')
+CE_INDEX = DELTA_PRO_FEATURE_SET.index('collisionEnergy')
+C_NEIGHB_INDEX = DELTA_PRO_FEATURE_SET.index('cNeighbourBlosum')
+N_NEIGHB_INDEX = DELTA_PRO_FEATURE_SET.index('nNeighbourBlosum')
+N_TERM_INDEX = DELTA_PRO_FEATURE_SET.index('nTermDist')
+C_TERM_INDEX = DELTA_PRO_FEATURE_SET.index('cTermDist')
+Y_NEW_INTE_INDEX = DELTA_PRO_FEATURE_SET.index('flipYNewIntensity')
+B_NEW_INTE_INDEX = DELTA_PRO_FEATURE_SET.index('flipBNewIntensity')
+Y_ERR_INDEX = DELTA_PRO_FEATURE_SET.index('yErrsAtLoc')
+B_ERR_INDEX = DELTA_PRO_FEATURE_SET.index('bErrsAtLoc')
+B_PROSIT_C_INTE_INDEX = DELTA_PRO_FEATURE_SET.index('bPrositIntesAtC')
+Y_PROSIT_N_INTE_INDEX = DELTA_PRO_FEATURE_SET.index('yPrositIntesAtN')
+Y_PROSIT_INTE_INDEX = DELTA_PRO_FEATURE_SET.index('yPrositIntesAtLoc')
+B_PROSIT_INTE_INDEX = DELTA_PRO_FEATURE_SET.index('bPrositIntesAtLoc')
+Y_MATCHED_N_INTE_INDEX = DELTA_PRO_FEATURE_SET.index('yMatchedIntesAtN')
+B_MATCHED_C_INTE_INDEX = DELTA_PRO_FEATURE_SET.index('bMatchedIntesAtC')
+Y_MATCHED_INTE_INDEX = DELTA_PRO_FEATURE_SET.index('yMatchedIntesAtLoc')
+B_MATCHED_INTE_INDEX = DELTA_PRO_FEATURE_SET.index('bMatchedIntesAtLoc')
+N_OX_INDEX = DELTA_PRO_FEATURE_SET.index('nOxidation')
+C_OX_INDEX = DELTA_PRO_FEATURE_SET.index('cOxidation')
 
 DELTA_PRO_RESIDUE_WEIGHTS = deepcopy(RESIDUE_WEIGHTS)
 DELTA_PRO_RESIDUE_WEIGHTS['C'] = 103.009185 + 57.021464
@@ -60,7 +85,7 @@ def check_oxidation(pep_len, ptm_seq, idx, ox_flag):
     return 0
 
 def get_mass_diff(peptide, ptm_seq, idx, ox_flag):
-    """ Function to find the difference between two peptide masses.
+    """ Function to find the difference between two residue masses.
     """
     if not isinstance(ptm_seq, str):
         return abs(
@@ -462,47 +487,47 @@ def get_deltas(
         input_feats = np.zeros(
             shape=(len(flip_inds), len(DELTA_PRO_FEATURE_SET))
         )
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('spectralAngle')] = df_row[SPECTRAL_ANGLE_KEY]
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('blosumN')] = np.array([
+        input_feats[:, SPECTRAL_ANGLE_INDEX] = df_row[SPECTRAL_ANGLE_KEY]
+        input_feats[:, BLOSUM_N_INDEX] = np.array([
             BLOSUM6_1_VALUES[peptide[idx-1]] for idx in flip_inds
         ])
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('blosumC')] = np.array([
+        input_feats[:, BLOSUM_C_INDEX] = np.array([
             BLOSUM6_1_VALUES[peptide[idx]] for idx in flip_inds
         ])
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('charge')] = df_row['charge']
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('matchedCoverage')] = df_row['matchedCoverage']
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('collisionEnergy')] = df_row['collisionEnergy']
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('cNeighbourBlosum')] = np.array(
+        input_feats[:, CHARGE_INDEX] = df_row['charge']
+        input_feats[:, MATCHED_COV_INDEX] = df_row['matchedCoverage']
+        input_feats[:, CE_INDEX] = df_row['collisionEnergy']
+        input_feats[:, C_NEIGHB_INDEX] = np.array(
             [-5.0 if idx > pep_len-3 else BLOSUM6_1_VALUES[peptide[idx+1]] for idx in flip_inds]
         )
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('nNeighbourBlosum')] = np.array(
+        input_feats[:, N_NEIGHB_INDEX] = np.array(
             [-5.0 if idx < 2 else BLOSUM6_1_VALUES[peptide[idx-2]] for idx in flip_inds]
         )
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('nTermDist')] = np.array(flip_inds)
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('cTermDist')] = np.array([
+        input_feats[:, N_TERM_INDEX] = np.array(flip_inds)
+        input_feats[:, C_TERM_INDEX] = np.array([
             [pep_len-idx for idx in flip_inds]
         ])
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('flipYNewIntensity')] = np.array(
+        input_feats[:, Y_NEW_INTE_INDEX] = np.array(
             [get_new_inte(mod_seq, flip_ind, df_row, mz_accuracy, 'y') for flip_ind in flip_inds]
         )
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('flipBNewIntensity')] = np.array(
+        input_feats[:, B_NEW_INTE_INDEX] = np.array(
             [get_new_inte(mod_seq, flip_ind, df_row, mz_accuracy, 'b') for flip_ind in flip_inds]
         )
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('yErrsAtLoc')] = np.array(
+        input_feats[:, Y_ERR_INDEX] = np.array(
             [
                 get_err_at_loc(
                     pep_len, normed_matched_dict, df_row[PROSIT_IONS_KEY], flip_ind, 'y'
                 ) for flip_ind in flip_inds
             ]
         )
-        input_feats[:,DELTA_PRO_FEATURE_SET.index('bErrsAtLoc')] = np.array(
+        input_feats[:, B_ERR_INDEX] = np.array(
             [
                 get_err_at_loc(
                     pep_len, normed_matched_dict, df_row[PROSIT_IONS_KEY], flip_ind, 'b'
                 ) for flip_ind in flip_inds
             ]
         )
-        input_feats[:, DELTA_PRO_FEATURE_SET.index('bPrositIntesAtC')] = np.array(
+        input_feats[:, B_PROSIT_C_INTE_INDEX] = np.array(
             [
                 get_intes_at_loc(
                     pep_len,
@@ -513,7 +538,7 @@ def get_deltas(
                 ) for flip_idx in flip_inds
             ]
         )
-        input_feats[:, DELTA_PRO_FEATURE_SET.index('yPrositIntesAtN')] = np.array(
+        input_feats[:, Y_PROSIT_N_INTE_INDEX] = np.array(
             [
                 get_intes_at_loc(
                     pep_len,
@@ -524,7 +549,7 @@ def get_deltas(
                 ) for flip_idx in flip_inds
             ]
         )
-        input_feats[:, DELTA_PRO_FEATURE_SET.index('yPrositIntesAtLoc')] = np.array(
+        input_feats[:, Y_PROSIT_INTE_INDEX] = np.array(
             [
                 get_intes_at_loc(
                     pep_len,
@@ -535,7 +560,7 @@ def get_deltas(
                 ) for flip_idx in flip_inds
             ]
         )
-        input_feats[:, DELTA_PRO_FEATURE_SET.index('bPrositIntesAtLoc')] = np.array(
+        input_feats[:, B_PROSIT_INTE_INDEX] = np.array(
             [
                 get_intes_at_loc(
                     pep_len,
@@ -547,7 +572,7 @@ def get_deltas(
             ]
         )
 
-        input_feats[:, DELTA_PRO_FEATURE_SET.index('yMatchedIntesAtN')] = np.array(
+        input_feats[:, Y_MATCHED_N_INTE_INDEX] = np.array(
             [
                 get_intes_at_loc(
                     pep_len,
@@ -558,7 +583,7 @@ def get_deltas(
                 ) for flip_idx in flip_inds
             ]
         )
-        input_feats[:, DELTA_PRO_FEATURE_SET.index('bMatchedIntesAtC')] = np.array(
+        input_feats[:, B_MATCHED_C_INTE_INDEX] = np.array(
             [
                 get_intes_at_loc(
                     pep_len,
@@ -569,7 +594,7 @@ def get_deltas(
                 ) for flip_idx in flip_inds
             ]
         )
-        input_feats[:, DELTA_PRO_FEATURE_SET.index('yMatchedIntesAtLoc')] = np.array(
+        input_feats[:, Y_MATCHED_INTE_INDEX] = np.array(
             [
                 get_intes_at_loc(
                     pep_len,
@@ -580,7 +605,7 @@ def get_deltas(
                 ) for flip_idx in flip_inds
             ]
         )
-        input_feats[:, DELTA_PRO_FEATURE_SET.index('bMatchedIntesAtLoc')] = np.array(
+        input_feats[:, B_MATCHED_INTE_INDEX] = np.array(
             [
                 get_intes_at_loc(
                     pep_len,
@@ -592,7 +617,7 @@ def get_deltas(
             ]
         )
 
-        input_feats[:, DELTA_PRO_FEATURE_SET.index('cOxidation')] = np.array(
+        input_feats[:, C_OX_INDEX] = np.array(
             [
                 check_oxidation(
                     pep_len,
@@ -602,7 +627,7 @@ def get_deltas(
                 ) for flip_idx in flip_inds
             ]
         )
-        input_feats[:, DELTA_PRO_FEATURE_SET.index('nOxidation')] = np.array(
+        input_feats[:, N_OX_INDEX] = np.array(
             [
                 check_oxidation(
                     pep_len,

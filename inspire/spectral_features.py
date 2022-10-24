@@ -196,10 +196,6 @@ def get_matches(
     possible_loss_ions = []
     mz_errors = []
     assigned_inds = []
-    # if mz_units == 'ppm':
-    #     mz_err = (precursor_weight*mz_accuracy*(10**-6))/precursor_z
-    # else:
-    #     mz_err = mz_accuracy
 
     max_frag_charge = min(4, precursor_z+1)
     match_idx = 0
@@ -281,7 +277,7 @@ def get_matches(
         possible_loss_ions,
     )
 
-def _get_mz_error_stats(mz_errors, mz_accu):
+def get_mz_error_stats(mz_errors, mz_accu):
     """ Function to get the median and variance of the mz errors on prosit matched fragments.
 
     Parameters
@@ -370,7 +366,7 @@ def calculate_spectral_features(
 
     df_row['spectrumDensity'] = len(df_row[MZS_KEY])/(df_row[MZS_KEY].max() - df_row[MZS_KEY].min())
 
-    median_mz_error, mz_error_variance = _get_mz_error_stats(mz_errors, min(mz_accuracy, 0.04))
+    median_mz_error, mz_error_variance = get_mz_error_stats(mz_errors, min(mz_accuracy, 0.04))
 
     matched_l2_norm = np.linalg.norm(matched_intensities, ord=2)
     total_l2_norm = np.linalg.norm(df_row[INTENSITIES_KEY], ord=2)

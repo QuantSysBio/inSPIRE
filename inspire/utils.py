@@ -100,14 +100,14 @@ def get_ox_flag(mods_df):
 
     return ox_flag
 
-def get_mokapot_weights(output_folder, caravan_step):
+def get_mokapot_weights(output_folder, inspire_step):
     """ Function to get the weights of mokapot models.
 
     Parameters
     ----------
     output_folder : str
         The folder where all inSPIRE output is written.
-    caravan_step : str
+    inspire_step : str
         Indicator of which step fo inSPIRE the model was trained for.
 
     Results
@@ -117,7 +117,7 @@ def get_mokapot_weights(output_folder, caravan_step):
     """
     for fold_idx in range(1, 4):
         with open(
-            f'{output_folder}/{caravan_step}.mokapot.model_fold-{fold_idx}.pkl',
+            f'{output_folder}/{inspire_step}.mokapot.model_fold-{fold_idx}.pkl',
             'rb',
         ) as model_file:
             model = pickle.load(model_file)
@@ -219,67 +219,6 @@ def filter_for_prosit(search_df):
     search_df = search_df[search_df[CHARGE_KEY] < 7]
     search_df.reset_index(drop=True, inplace=True)
     return search_df
-
-def convert_prosit_ion(ion_code):
-    """ Function to convert msp ion name to its code for ion type
-        and its fragment index.
-
-    Parameters
-    ----------
-    ion_code : str
-        The ion code as found in Prosit msp output.
-
-    Returns
-    -------
-    ion_type_loss : str
-        A string containing the ion type, its charge and any loss.
-    fragment_idx : int
-        The index of the fragment.
-    """
-    data = ion_code.split('-')
-    if len(data) > 1:
-        loss = data[1]
-    else:
-        loss = ''
-    data2 = data[0].split('^')
-    if len(data2) > 1:
-        charge = data2[1]
-    else:
-        charge = 1
-    ion_letter = data2[0][0]
-    fragment_idx = int(data2[0][1:])
-    return f'{ion_letter}^{charge}-{loss}', fragment_idx-1
-
-def construct_ion_code(ion_type_loss, fragment_idx):
-    """ Function to calculate the ion code used in Prosit output based on
-        the ion type, its loss, and fragment index.
-
-    Parameters
-    ----------
-    ion_type_loss : str
-        A string containing the ion type, its charge and any loss.
-    fragment_idx : int
-        The index of the fragment.
-
-    Returns
-    -------
-    ion_code : str
-        The ion code as found in Prosit msp output.
-    """
-    ion_data = ion_type_loss.split('^')
-    ion_charge_and_loss = ion_data[1].split('-')
-
-    ion_letter = ion_data[0]
-    ion_charge = ion_charge_and_loss[0]
-    ion_loss = ion_charge_and_loss[1]
-    ion_code = f'{ion_letter}{fragment_idx+1}'
-    if ion_charge != '1':
-        ion_code += f'^{ion_charge}'
-    if ion_loss != '':
-        ion_code += f'-{ion_loss}'
-
-    return ion_code
-
 
 def _modify_ptm_seq(pep_seq, ptm_seq, ptm_locs, ptm_id):
     """ Helper function to add a fixed PTM to the ptm_seq column of MS search

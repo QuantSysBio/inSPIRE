@@ -44,6 +44,7 @@ setup(
         'idna==3.3',
         'importlib-metadata==4.12.0',
         'joblib==1.1.0',
+        'kaleido==0.2.1',
         'keras-nightly==2.5.0.dev2021032900',
         'Keras-Preprocessing==1.1.2',
         'kiwisolver==1.4.4',

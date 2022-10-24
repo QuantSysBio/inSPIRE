@@ -16,7 +16,7 @@ def create_html_report(config, figures):
     figures : dict
         A dictionary containing all of the required plots.
     """
-    config_str = config.__str__()#.replace('\n', '<br>')
+    config_str = str(config)
     html_string = ('''
     <html>
         <head>

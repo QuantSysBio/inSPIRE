@@ -10,7 +10,7 @@ from inspire.constants import (
     ION_OFFSET,
 )
 
-def compute_potential_mzs(sequence, modifications, reverse, ptm_id_weights):
+def compute_potential_mws(sequence, modifications, reverse, ptm_id_weights):
     """ Function to compute the molecular weights of potential fragments
         generated from a peptide (y & b ions, charges 1,2, or 3, and H2O
         or O2 losses).
@@ -97,14 +97,14 @@ def get_ion_masses(sequence, ptm_id_weights, modifications=None):
         A dictionary of all the mzs of all possible b and y ions
         that could be produced.
     """
-    sub_seq_mass, total_residue_mass = compute_potential_mzs(
+    sub_seq_mass, total_residue_mass = compute_potential_mws(
         sequence=sequence,
         modifications=modifications,
         reverse=False,
         ptm_id_weights=ptm_id_weights
     )
 
-    rev_sub_seq_mass, _ = compute_potential_mzs(
+    rev_sub_seq_mass, _ = compute_potential_mws(
         sequence=sequence,
         modifications=modifications,
         reverse=True,

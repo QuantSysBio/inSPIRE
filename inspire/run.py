@@ -18,7 +18,9 @@ from inspire.feature_creation import create_features
 from inspire.feature_selection import select_features
 from inspire.rescore import final_rescoring
 from inspire.report import generate_report
+import inspire
 
+print(f'\n---> Running inSPIRE version {inspire.__version__} <---\n')
 pd.options.mode.chained_assignment = None
 tf.config.set_visible_devices([], 'GPU')
 

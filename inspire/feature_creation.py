@@ -43,7 +43,6 @@ from inspire.utils import (
     get_ox_flag,
     modify_sequence_for_skyline,
     remove_source_suffixes,
-    add_fixed_modifications,
     permute_seq,
     permute_ptms,
 )
@@ -304,7 +303,7 @@ def process_single_file(
     ox_flag = get_ox_flag(mods_df)
     print(
         OKCYAN_TEXT +
-        f'\t\tProcessing scan file {file_idx}' +
+        f'\t\tProcessing scan file {file_idx}.' +
         ENDC_TEXT
     )
     if config.combined_scans_file is not None:
@@ -546,13 +545,6 @@ def create_features(config):
         The Config object used throughout the pipeline.
     """
     target_df, mods_df = generic_read_df(config)
-
-    if config.fixed_modifications is not None:
-        target_df, mods_df = add_fixed_modifications(
-            target_df,
-            mods_df,
-            config.fixed_modifications
-        )
 
     if config.use_accession_stratum:
         target_df = process_accession_groups(target_df, config)

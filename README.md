@@ -1,4 +1,7 @@
 # inSPIRE
+
+<img src="https://raw.githubusercontent.com/QuantSysBio/inSPIRE/master/img/inSPIRE-logo.png" alt="drawing" width="200"/>
+
 <i>in silico</i> Spectral Predictor Informed REscoring
 
 inSPIRE allows easy rescoring of MaxQuant, Mascot or PEAKS DB search results using spectral prediction. inSPIRE is primarily developed to use Prosit predicted spectra but can also use MS<sup>2</sup>PIP predictions. inSPIRE enables the prediction of MS2 spectra with Prosit without the need of a GPU and it can be run on a standard workstation or laptop.
@@ -7,25 +10,11 @@ inSPIRE allows easy rescoring of MaxQuant, Mascot or PEAKS DB search results usi
 
 ### Before Downloading
 
-For MacOS you will require Miniforge. For Linux or Windows users, any version of conda will suffice.
+If you are working on Mac with an M1 chip you will require Miniforge. For all other users, any version of conda will suffice.
 
-### Download
-
-You can then clone the repo from your terminal with:
-
-```
-git clone https://github.com/QuantSysBio/inSPIRE.git
-```
-
-and navigate in your terminal to the inSPIRE folder with:
-
-```
-cd inSPIRE
-```
 
 ### Setting up your environment:
 
-Once you have installed conda and cloned the repo
 
 1) To start with create a new conda environment with python version 3.9:
 
@@ -39,10 +28,10 @@ conda create --name inspire python=3.9
 conda activate inspire
 ```
 
-2) You will then need to install the inspire package:
+3) You will then need to install the inspire package:
 
 ```
-python setup.py install
+pip install inspire
 ```
 
 4) To check your installation, run the following command (it is normal for this call to hang for a few seconds on first execution)
@@ -59,9 +48,32 @@ inspire --config_file path-to-config-file --pipeline pipeline-to-execute
 
 where the config file is a yaml file specifying details of the inSPIRE execution and the pipeline is one of the options described below.
 
+## Citation
+
+### inSPIRE
+
+Please cite the following article if you are using inSPIRE in your research:
+
+> Cormican, J. A., Horokhovskyi, Y., Soh, W. T., Mishto, M., and Liepe, J. (2022) inSPIRE: An open-source tool for increased mass spectrometry identification rates using Prosit spectral prediction. Mol Cell Proteomics. \
+ [doi.org/10.1016/j.mcpro.2022.100432](https://doi.org/10.1016/j.mcpro.2022.100432)
+
+### Dependencies
+
+Please also cite the relevant publications of the rescoring tools used, see details on https://github.com/percolator/percolator if using Percolator and details on https://github.com/wfondrie/mokapot if using Mokapot.
+
+Please also cite the relevant publications of the spectral predictors, see details on https://www.proteomicsdb.org/prosit if using Prosit and details on  https://github.com/compomics/ms2pip_c if using MS<sup>2</sup>PIP.
+
+If using inSPIRE-affinity please also cite the relevant publications for NetMHCpan binding affinity predictions. See details on https://services.healthtech.dtu.dk/service.php?NetMHCpan-4.1.
+
 ## Running a small example.
 
-The example folder provides a simple example that you should be able to run immediately. The "core" pipeline which takes search engine and mgf input and produces fully rescored identifications using Prosit prediction on CPU. Execute this with:
+The example folder provides a simple example that you should be able to run immediately. 
+
+```
+inspire --pipeline downloadExample
+```
+
+The "core" pipeline which takes search engine and mgf input and produces fully rescored identifications using Prosit prediction on CPU. Execute this with:
 
 ```
 inspire --pipeline core --config_file example/config.yml
@@ -71,13 +83,7 @@ This will run the rescoring and produce a report upon completion (this should ta
 
 ## Plotting Spectra
 
-To use the inSPIRE plotting utility you will need to further install plotly-orca:
-
-```
-conda install -c plotly plotly-orca 
-```
-
-Then to to see example pair plots comparing the experimental data to prosit predictions call:
+To use the inSPIRE plotting and see example pair plots comparing the experimental data to prosit predictions call:
 
 ```
 inspire --pipeline plotSpectra --config_file example/config.yml
@@ -117,19 +123,7 @@ The calibrate collision energy settting will be printed to the terminal and shou
 collisionEnergy: optimized-collision-energy
 ```
 
-## Citation
 
-### inSPIRE
-
-inSPIRE is not yet published.
-
-### Dependencies
-
-Please also cite the relevant publications of the rescoring tools used, see details on https://github.com/percolator/percolator if using Percolator and details on https://github.com/wfondrie/mokapot if using Mokapot.
-
-Please also cite the relevant publications of the spectral predictors, see details on https://www.proteomicsdb.org/prosit if using Prosit and details on  https://github.com/compomics/ms2pip_c if using MS<sup>2</sup>PIP.
-
-If using inSPIRE-affinity please also cite the relevant publications for NetMHCpan binding affinity predictions. See details on https://services.healthtech.dtu.dk/service.php?NetMHCpan-4.1.
 
 ## inSPIRE Config File
 
@@ -212,22 +206,6 @@ NetMHCpan predicts the binding affinity of a peptide for various HLA molecules. 
 | Key   | Description   |
 |-------|---------------|
 | useBindingAffinity  | Set to asValidation if you want to check the percentage binders in your standard inSPIRE identifications. Set to asFeature if you want to use predicted binding affinity as a rescoring feature. |
-
-### Ground Truth Datasets
-
-Ground Truth Datasets may be useful in assessing the accuracy of your identification method. In this case, peptides with prior labels are measured via MS/MS. Some of these peptides are then inserted into the standard proteome and precision and recall your peptide identification method may be estimated.
-
-To use ground truth datasets with inSPIRE, add the following parameters to the config file.
-
-| Key   | Description   |
-|-------|---------------|
-| groundTruth  | The file path to your ground truth dataset matching scans to true peptide label.  |
-| groundTruthSeqKey    | The name of the column containing the true peptide in the ground truth dataset. |
-| groundTruthSourceKey     | The name of the column containing the source file in the ground truth dataset. |
-| groundTruthScanKey  | The name of the column containing the scan number in the ground truth dataset. |
-| groundTruthAccessionGroupKey*       | The name of the column containing the accession group in the ground truth dataset. |
-
-*Optional argument need only if the labelled peptides represent different accession groups.
 
 ## inSPIRE Pipelines.
 

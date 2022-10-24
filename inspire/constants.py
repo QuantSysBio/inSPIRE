@@ -12,7 +12,7 @@ PROSIT_CHARGE_KEY = 'precursor_charge'
 PROSIT_COLLISION_ENERGY_KEY = 'collision_energy'
 
 FIGSHARE_PATH = 'https://figshare.com/ndownloader/articles/20368035/versions/1'
-FIGSHARE_EXAMPLE_PATH = 'https://figshare.com/ndownloader/files/37888986'
+FIGSHARE_EXAMPLE_PATH = 'https://figshare.com/ndownloader/files/37963665'
 
 HEADER_TEXT = '\033[95m'
 OKBLUE_TEXT = '\033[94m'

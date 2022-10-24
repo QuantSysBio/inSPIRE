@@ -17,7 +17,7 @@ from inspire.constants import (
     PTM_SEQ_KEY,
 )
 from inspire.input.search_results import generic_read_df
-from inspire.utils import get_ox_flag, add_fixed_modifications, permute_ptms, permute_seq
+from inspire.utils import get_ox_flag, permute_ptms, permute_seq
 
 def create_prosit_mod_seq(sequence, modifications, ox_marker):
     """ Function to add any required oxidation flags to the peptide sequence.
@@ -134,13 +134,6 @@ def prepare_for_spectral_prediction(config):
         The configuration settings for the pipeline.
     """
     target_df, mods_df = generic_read_df(config)
-
-    if config.fixed_modifications is not None:
-        target_df, mods_df = add_fixed_modifications(
-            target_df,
-            mods_df,
-            config.fixed_modifications
-        )
 
     if config.spectral_predictor == 'prosit':
         write_prosit_input_df(
