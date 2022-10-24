@@ -1,6 +1,8 @@
 """ Main Script from which the whole program runs.
 """
 from argparse import ArgumentParser
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # pylint: disable=wrong-import-position
 
 import pandas as pd
 import tensorflow as tf
@@ -8,42 +10,35 @@ import tensorflow as tf
 from inspire.calibration import calibrate
 from inspire.config import Config
 from inspire.constants import ENDC_TEXT, OKGREEN_TEXT
-from inspire.download_models import download_models
+from inspire.download import download_data, download_models
 from inspire.plot_spectra import plot_spectra
 from inspire.predict_spectra import predict_spectra
 from inspire.prepare import prepare_for_spectral_prediction, prepare_for_mhcpan
 from inspire.feature_creation import create_features
 from inspire.feature_selection import select_features
 from inspire.rescore import final_rescoring
-from inspire.query_table import create_query_table
 from inspire.report import generate_report
+import inspire
 
+print(f'\n---> Running inSPIRE version {inspire.__version__} <---\n')
 pd.options.mode.chained_assignment = None
 tf.config.set_visible_devices([], 'GPU')
 
 PIPELINE_OPTIONS = [
-
     'calibrate',
     'core',
-
+    'downloadExample',
     'prepare',
-
     'spectralPrepare',
     'panPrepare',
-
     'predictSpectra',
-
     'rescore',
-
     'featureGeneration',
     'featureSelection',
-
     'featureSelection+',
-
     'finalRescoring',
     'queryTable',
     'generateReport',
-
     'plotSpectra',
 ]
 
@@ -75,14 +70,18 @@ def main():
     """ Function to orchestrate running of the whole ininspire package.
     """
     args = get_arguments()
-    config = Config(args.config_file)
-    config.validate()
-    print(
-        OKGREEN_TEXT +
-        'Checking for required inSPIRE models...' +
-        ENDC_TEXT
-    )
-    download_models(force_reload=config.force_reload)
+
+    if args.pipeline == 'downloadExample':
+        download_data()
+    else:
+        config = Config(args.config_file)
+        config.validate()
+        print(
+            OKGREEN_TEXT +
+            'Checking for required inSPIRE models...' +
+            ENDC_TEXT
+        )
+        download_models(force_reload=config.force_reload)
 
     if args.pipeline == 'calibrate':
         print(
@@ -140,15 +139,6 @@ def main():
             ENDC_TEXT
         )
         final_rescoring(config)
-
-    if args.pipeline in ('queryTable', 'featureSelection+', 'rescore', 'core'):
-        if config.query_table is not None:
-            print(
-                OKGREEN_TEXT +
-                'Creating Query Table...' +
-                ENDC_TEXT
-            )
-        create_query_table(config)
 
     if args.pipeline in ('generateReport', 'featureSelection+', 'rescore', 'core'):
         print(

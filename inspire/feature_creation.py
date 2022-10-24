@@ -28,7 +28,6 @@ from inspire.constants import(
     SCAN_KEY,
     SOURCE_INDEX_KEY,
     SOURCE_KEY,
-    SPECTRAL_ANGLE_KEY,
     WARNING_TEXT,
 )
 from inspire.input.mascot import MASCOT_PEP_QUERY_KEY
@@ -44,7 +43,6 @@ from inspire.utils import (
     get_ox_flag,
     modify_sequence_for_skyline,
     remove_source_suffixes,
-    add_fixed_modifications,
     permute_seq,
     permute_ptms,
 )
@@ -226,7 +224,9 @@ def write_with_spectral_features(
     max_scan = search_df[SCAN_KEY].max()
     if config.n_cores == 1 or len(scan_files) == 1:
         for file_idx, scan_file in enumerate(scan_files):
-            process_single_file(search_df, mods_df, prosit_df, config, file_idx, scan_file, max_scan, False)
+            process_single_file(
+                search_df, mods_df, prosit_df, config, file_idx, scan_file, max_scan, False
+            )
     else:
         n_cores = min(config.n_cores, multiprocessing.cpu_count())
         func_args = [
@@ -240,7 +240,9 @@ def write_with_spectral_features(
         if os.path.exists(f'{config.output_folder}/input_all_features.tab'):
             os.remove(f'{config.output_folder}/input_all_features.tab')
 
-        with open(f'{config.output_folder}/input_all_features.tab', 'w', encoding='UTF-8') as out_file:
+        with open(
+            f'{config.output_folder}/input_all_features.tab', 'w', encoding='UTF-8'
+        ) as out_file:
             for tab_file in sorted(results):
                 with open(tab_file, 'r', encoding='UTF-8') as in_file:
                     for line in in_file:
@@ -251,7 +253,30 @@ def write_with_spectral_features(
     )
 
 
-def process_single_file(search_df, mods_df, prosit_df, config, file_idx, scan_file, max_scan, in_parallel):
+def process_single_file(
+        search_df, mods_df, prosit_df, config, file_idx, scan_file, max_scan, in_parallel
+    ):
+    """ Function to process all PSMs from a single mgf or mzML file.
+
+    Parameters
+    ----------
+    search_df : pd.DataFrame
+        A DataFrame of PSMs.
+    mods_df : pd.DataFrame
+        A small DataFrame detailing the PTMs present in the data.
+    prosit_df : pd.DataFrame
+        A DataFrame of the predicted spectra from Prosit.
+    config : inspire.config.Config
+        The config file for the experiment.
+    file_idx : int
+        The index of the file being processed.
+    scan_file : str
+        The name of the file being processed.
+    max_scan : int
+        The maximum scan number observed in the data.
+    in_parallel : bool
+        Whether the data is being processed sequentially or in parallel.
+    """
     delta_df = None
     previous_ptm_name = None
     previous_ions_name = None
@@ -278,7 +303,7 @@ def process_single_file(search_df, mods_df, prosit_df, config, file_idx, scan_fi
     ox_flag = get_ox_flag(mods_df)
     print(
         OKCYAN_TEXT +
-        f'\t\tProcessing scan file {file_idx}' +
+        f'\t\tProcessing scan file {file_idx}.' +
         ENDC_TEXT
     )
     if config.combined_scans_file is not None:
@@ -318,7 +343,7 @@ def process_single_file(search_df, mods_df, prosit_df, config, file_idx, scan_fi
             combined_df[[f'flip{idx}' for idx in range(1, 30)]] = pd.DataFrame(
                 combined_df.permSeqs.tolist(), index=combined_df.index
             )
-            
+
             for i in range(1, 30):
                 delta_df = delta_df.rename(columns={
                     previous_name: f'flip{i}',
@@ -347,7 +372,7 @@ def process_single_file(search_df, mods_df, prosit_df, config, file_idx, scan_fi
             combined_df[[f'flip{idx}Ptms' for idx in range(1, 30)]] = pd.DataFrame(
                 combined_df.permPtms.tolist(), index=combined_df.index
             )
-            
+
             for i in range(1, 30):
                 delta_df = delta_df.rename(columns={
                     previous_name: f'flip{i}',
@@ -374,7 +399,7 @@ def process_single_file(search_df, mods_df, prosit_df, config, file_idx, scan_fi
             f'Warning. No matched scans found for source file {scan_file}' +
             ENDC_TEXT
         )
-        return
+        return None
 
     combined_df = create_spectral_features(combined_df, mods_df, config)
     combined_df = add_delta_irt(combined_df)
@@ -394,6 +419,7 @@ def process_single_file(search_df, mods_df, prosit_df, config, file_idx, scan_fi
     combined_df = combined_df.sort_values(by=PERC_SCAN_ID)
 
     file_loc = _write_to_tab_file(combined_df, file_idx, config.output_folder, in_parallel)
+
     return file_loc
 
 def _write_to_tab_file(combined_df, file_idx, output_folder, in_parallel):
@@ -519,14 +545,6 @@ def create_features(config):
         The Config object used throughout the pipeline.
     """
     target_df, mods_df = generic_read_df(config)
-    target_df = target_df[target_df[SOURCE_KEY].apply(lambda x : x not in config.exclude_raw_files)]
-
-    if config.fixed_modifications is not None:
-        target_df, mods_df = add_fixed_modifications(
-            target_df,
-            mods_df,
-            config.fixed_modifications
-        )
 
     if config.use_accession_stratum:
         target_df = process_accession_groups(target_df, config)
@@ -571,8 +589,11 @@ def create_features(config):
     if config.filter_c:
         target_df = target_df[target_df[PEPTIDE_KEY].apply(lambda x : 'C' not in x)]
 
-    if mods_df.shape[0] > 9:
-        raise ValueError(f'inSPIRE supports no more than 9 unique PTMs, found {mods_df.shape[0]}')
+    n_variable_mods = mods_df.shape[0]  # pylint: disable=no-member
+    if  n_variable_mods > 9:
+        raise ValueError(
+            f'inSPIRE supports no more than 9 unique PTMs, found {n_variable_mods}'
+        )
 
     print(
         OKCYAN_TEXT +
@@ -584,4 +605,3 @@ def create_features(config):
         mods_df,
         config,
     )
-

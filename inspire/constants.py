@@ -12,6 +12,7 @@ PROSIT_CHARGE_KEY = 'precursor_charge'
 PROSIT_COLLISION_ENERGY_KEY = 'collision_energy'
 
 FIGSHARE_PATH = 'https://figshare.com/ndownloader/articles/20368035/versions/1'
+FIGSHARE_EXAMPLE_PATH = 'https://figshare.com/ndownloader/files/37963665'
 
 HEADER_TEXT = '\033[95m'
 OKBLUE_TEXT = '\033[94m'
@@ -129,7 +130,6 @@ BASIC_FEATURES = [
     'avgResidueMass',
     'nRepeatedResidues',
     'fracUnique',
-    'fracIL',
     'fracKR',
     'fracC',
     'fromChimera',
@@ -173,6 +173,15 @@ PROSIT_ALPHABET = {
     "M(ox)": 21,
 }
 PROSIT_ALPHABET_S = {integer: char for char, integer in PROSIT_ALPHABET.items()}
+PROSIT_UNMOD_ALPHA_S = {
+    1: 'A', 2: 'C', 3: 'D',
+    4: 'E', 5: 'F', 6: 'G',
+    7: 'H', 8: 'I', 9: 'K',
+    10: 'L', 11: 'M', 12: 'N',
+    13: 'P', 14: 'Q', 15: 'R',
+    16: 'S', 17: 'T', 18: 'V',
+    19: 'W', 20: 'Y', 21: 'M',
+}
 PROSIT_MASK_VALUE = -1.0
 
 PROTON = 1.007276466622

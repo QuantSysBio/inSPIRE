@@ -75,7 +75,6 @@ AA_FEATS = [
     'missedCleavages',
     'nVarMods',
     'fracUnique',
-    'fracIL',
     'nRepeatedResidues',
     'seqLenMeanDiff',
 ]
@@ -459,22 +458,6 @@ def get_max_features(all_features_df):
         return max_features
     return None
 
-def add_mass_diff_feats(all_features_df):
-    """ Function to add absolute mass difference features.
-
-    Parameters
-    ----------
-    all_features_df : pd.DataFrame
-        Processed search results with percolator features.
-
-    Returns
-    -------
-    all_features_df : pd.DataFrame
-        Input DataFrame with absolute mass difference features added.
-    """
-    all_features_df['absMassDiff'] = all_features_df[MASS_DIFF_KEY].apply(abs)
-    return all_features_df
-
 def prepare_for_feature_selection(all_features_df):
     """ Function to create the test metric used for automated feature selection.
     """
@@ -669,12 +652,15 @@ def select_features(config):
             )
         elif config.include_features is not None:
             exclude_features = [
-                col for col in all_features_df.columns if col not in config.include_features
+                col for col in all_features_df.columns # pylint: disable=no-member
+                if col not in config.include_features
             ]
             if config.use_accession_stratum:
                 exclude_features = [x for x in exclude_features if not x.startswith('accession')]
         else:
-            exclude_features = SUFFIX_KEYS[config.rescore_method] + PREFIX_KEYS[config.rescore_method]
+            exclude_features = (
+                SUFFIX_KEYS[config.rescore_method] + PREFIX_KEYS[config.rescore_method]
+            )
 
         feature_set = remove_excluded_features(
             feature_set, all_features_df, exclude_features
@@ -683,7 +669,8 @@ def select_features(config):
         base_features = BASE_FEATURES
         if config.use_accession_stratum:
             base_features += [
-                col for col in all_features_df.columns if col.startswith('accession')
+                col for col in all_features_df.columns # pylint: disable=no-member
+                if col.startswith('accession')
             ]
 
         all_features_df, feature_set = filter_feature_set(

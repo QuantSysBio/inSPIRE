@@ -127,7 +127,7 @@ def get_unmatched(exp_mzs, exp_intes, matched_mzs, l2_norm):
         'intensities': unmatched_intes,
     }
 
-def experiment_match(exp_mzs, exp_intes, pred_mzs, plotting_names):
+def experiment_match(exp_mzs, exp_intes, pred_mzs, plotting_names, mz_accuracy, mz_units):
     """ Function to match the mz values of the experimentally observed peaks to the
         Prosit predicted peaks.
 
@@ -162,11 +162,18 @@ def experiment_match(exp_mzs, exp_intes, pred_mzs, plotting_names):
             if abs(exp_mz-pred_m) < min_match:
                 min_match = abs(exp_mz-pred_m)
                 matched_ind = idx
-        if min_match < 0.02:
+
+        if mz_units == 'ppm':
+            mz_err = pred_m*mz_accuracy*(10**-6)
+        else:
+            mz_err = mz_accuracy
+
+        if min_match < mz_err:
             matched_mzs.append(exp_mzs[matched_ind])
             matched_intes.append(exp_intes[matched_ind])
             matched_pred_mzs.append(pred_m)
             matched_names.append(match_name.split('+')[0])
+
     if len(matched_intes) > 5:
         l2_norm = np.linalg.norm(np.array(matched_intes), ord=2)
     else:
@@ -180,7 +187,7 @@ def experiment_match(exp_mzs, exp_intes, pred_mzs, plotting_names):
     return matched_peaks, l2_norm, matched_pred_mzs, matched_names
 
 
-def pair_plot(df_row):
+def pair_plot(df_row, mz_accuracy, mz_units):
     """ Function to generate the traces and annotations needed for the pair plots
         of the spectra.
 
@@ -206,7 +213,7 @@ def pair_plot(df_row):
     )
 
     matched_peaks, l2_norm, matched_p_mz, matched_names = experiment_match(
-        df_row['mzs'], df_row['intensities'], pred_mzs, plotting_names,
+        df_row['mzs'], df_row['intensities'], pred_mzs, plotting_names, mz_accuracy, mz_units
     )
     unmatched_peaks = get_unmatched(
         df_row['mzs'], df_row['intensities'], matched_peaks['mzs'], l2_norm
@@ -437,6 +444,18 @@ def fetch_scan_data(input_df, config, with_charge):
     return total_scan_df
 
 def convert_mod_seq_to_ptm_seq(mod_seq):
+    """ Function to convert the modified prosit sequence to the PTM seq used elsewhere.
+
+    Parameters
+    ----------
+    mod_seq : str
+        The input sequence for Prosit.
+
+    Returns
+    -------
+    ptm_seq : str
+        The string of digits used to represent any PTMs present.
+    """
     ptm_seq = '0.'
     while mod_seq:
         if len(mod_seq) == 1 or mod_seq[1] != '[':
@@ -497,7 +516,10 @@ def plot_spectra(config):
     input_df = input_df.reset_index(drop=True)
     input_df['group'] = input_df.index // PLOTS_PER_PAGE
     input_df['index'] = input_df.index % PLOTS_PER_PAGE
-    input_df['plot_data'] = input_df.apply(pair_plot, axis=1)
+    input_df['plot_data'] = input_df.apply(
+        lambda x : pair_plot(x, config.mz_accuracy, config.mz_units),
+        axis=1,
+    )
 
     if SPECTRAL_ANGLE_KEY not in input_df.columns:
         input_df['ptm_seq'] = input_df['modifiedSequence'].apply(
@@ -529,7 +551,8 @@ def plot_spectra(config):
         src = input_df[SOURCE_KEY].iloc[idx]
         spectral_angle = round(input_df[SPECTRAL_ANGLE_KEY].iloc[idx], 2)
         titles.append(
-            f'<b>Source</b> {src} <b>Scan</b> {scan_nr}<br><b>Peptide</b> {seq}  <b>Spectral Angle</b> {spectral_angle}<br>'
+            f'<b>Source</b> {src} <b>Scan</b> {scan_nr}<br><b>Peptide</b> {seq} ' +
+            f'<b>Spectral Angle</b> {spectral_angle}<br>'
         )
 
     for group_idx in range(n_groups):
@@ -609,7 +632,7 @@ def plot_spectra(config):
         pio.write_image(
             fig,
             f'{config.output_folder}/spectralPlots{group_idx}.pdf',
-            engine='orca',
+            engine='kaleido',
         )
 
     merger = PdfFileMerger()

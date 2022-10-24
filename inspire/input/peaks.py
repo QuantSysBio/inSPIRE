@@ -249,7 +249,9 @@ def read_single_peaks_data(df_loc):
             axis=1
         )
     else:
-        peaks_df = peaks_df.rename(columns={PEAKS_PEPTIDE_KEY: PEPTIDE_KEY})
+        peaks_df = peaks_df.rename( # pylint: disable=no-member
+            columns={PEAKS_PEPTIDE_KEY: PEPTIDE_KEY}
+        )
         peaks_df[PTM_SEQ_KEY] = None
 
     # Rename to match inSPIRE naming scheme.
@@ -268,6 +270,7 @@ def read_single_peaks_data(df_loc):
     )
 
     peaks_df[ACCESSION_KEY].fillna('unknown', inplace=True)
+
     peaks_df = filter_for_prosit(peaks_df)
     adjusted_masses = peaks_df[PEAKS_MASS_KEY] + peaks_df[CHARGE_KEY]*PROTON
     peaks_df[MASS_DIFF_KEY] = (
@@ -286,6 +289,20 @@ def read_single_peaks_data(df_loc):
     )
     peaks_df[LABEL_KEY] = peaks_df[ACCESSION_KEY].apply(
         lambda x : -1 if isinstance(x, str) and '#DECOY#' in x else 1
+    )
+
+    peaks_df = peaks_df.drop(
+        [
+            PEAKS_ASCORE_KEY,
+            PEAKS_CHIMERA_KEY,
+            PEAKS_MASS_KEY,
+            PEAKS_MZ_KEY,
+            PEAKS_PTM_KEY,
+            PEAKS_PEPTIDE_KEY,
+            PEAKS_SCAN_KEY,
+            PEAKS_SOURCE_KEY,
+        ],
+        axis=1,
     )
 
     return peaks_df, var_mods

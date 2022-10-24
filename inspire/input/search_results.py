@@ -7,6 +7,7 @@ import pandas as pd
 from inspire.input.mascot import read_mascot_data
 from inspire.input.maxquant import read_mq_data
 from inspire.input.peaks import read_peaks_data
+from inspire.utils import add_fixed_modifications
 
 def generic_read_df(config, save_dfs=True):
     """ Function to read in search results from any search engine.
@@ -41,16 +42,15 @@ def generic_read_df(config, save_dfs=True):
         else:
             raise ValueError(f'Unknown Search Engine: {config.search_engine}')
 
+        if config.fixed_modifications is not None:
+            search_df, mods_df = add_fixed_modifications(
+                search_df,
+                mods_df,
+                config.fixed_modifications
+            )
+
         if save_dfs and config.reuse_input:
             search_df.to_csv(f'{config.output_folder}/formated_df.csv', index=False)
             mods_df.to_csv(f'{config.output_folder}/formated_mods.csv', index=False)
-
-    if mods_df.empty:
-        mods_df = pd.DataFrame({
-            'Name': [],
-            'Delta,': [],
-            'Identifier': [],
-            'isVar': []
-        })
 
     return search_df, mods_df

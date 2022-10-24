@@ -227,15 +227,14 @@ def add_rt_data(hits_df, csv_filename, queries_line, scan_file):
     queries_df[MASCOT_PEP_QUERY_KEY] = queries_df[MASCOT_PEP_QUERY_KEY].apply(
         lambda x : scan_file + str(x)
     )
-    print(queries_df[MASCOT_PEP_QUERY_KEY], hits_df[MASCOT_PEP_QUERY_KEY])
-    print(hits_df.shape)
+
     hits_df = pd.merge(
         hits_df,
         queries_df,
         how='inner',
         on=MASCOT_PEP_QUERY_KEY,
     )
-    print(hits_df.shape)
+
     return hits_df
 
 def _read_mascot_dfs(

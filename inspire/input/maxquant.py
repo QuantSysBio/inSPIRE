@@ -207,7 +207,17 @@ def read_single_mq_data(mq_data):
     mq_df[LABEL_KEY] = mq_df[MQ_DECOY_KEY].apply(
         lambda x : -1 if x == '+' else 1
     )
-    mq_df = mq_df.drop([MQ_ACCESSION_KEY, MQ_MASS_KEY], axis=1)
+    mq_df = mq_df.drop(
+        [
+            MQ_ACCESSION_KEY,
+            MQ_MOD_SEQ_KEY,
+            MQ_DECOY_KEY,
+            MQ_MASS_KEY,
+            MQ_MODS_KEY,
+            'scanCounts',
+        ],
+        axis=1,
+    )
     mq_df = mq_df.dropna(subset=[PEPTIDE_KEY, ACCESSION_KEY])
 
     return mq_df, mods_df

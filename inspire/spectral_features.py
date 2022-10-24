@@ -196,10 +196,6 @@ def get_matches(
     possible_loss_ions = []
     mz_errors = []
     assigned_inds = []
-    # if mz_units == 'ppm':
-    #     mz_err = (precursor_weight*mz_accuracy*(10**-6))/precursor_z
-    # else:
-    #     mz_err = mz_accuracy
 
     max_frag_charge = min(4, precursor_z+1)
     match_idx = 0
@@ -225,7 +221,6 @@ def get_matches(
                     observed_mzs,
                     loss=0.0
                 )
-                
 
                 if abs(mz_diff) < mz_err:
                     if ion_code in ordered_prosit:
@@ -282,7 +277,7 @@ def get_matches(
         possible_loss_ions,
     )
 
-def _get_mz_error_stats(mz_errors, mz_accu):
+def get_mz_error_stats(mz_errors, mz_accu):
     """ Function to get the median and variance of the mz errors on prosit matched fragments.
 
     Parameters
@@ -371,7 +366,7 @@ def calculate_spectral_features(
 
     df_row['spectrumDensity'] = len(df_row[MZS_KEY])/(df_row[MZS_KEY].max() - df_row[MZS_KEY].min())
 
-    median_mz_error, mz_error_variance = _get_mz_error_stats(mz_errors, min(mz_accuracy, 0.04))
+    median_mz_error, mz_error_variance = get_mz_error_stats(mz_errors, min(mz_accuracy, 0.04))
 
     matched_l2_norm = np.linalg.norm(matched_intensities, ord=2)
     total_l2_norm = np.linalg.norm(df_row[INTENSITIES_KEY], ord=2)
@@ -492,9 +487,6 @@ def calculate_spectral_features(
         sequence, matched_intensities, ordered_prosit_intes, ordered_prosit_ions, df_row
     )
 
-    y_inds = [idx for idx in range(len(ordered_prosit_ions)) if ordered_prosit_ions[idx][0] == 'y']
-    y_matched_ions = matched_intensities[y_inds]
-
     ordered_matched_ions = ordered_prosit_ions[matched_intensities > 0.0]
     pred_not_found_ions = ordered_prosit_ions[matched_intensities == 0.0]
 
@@ -502,16 +494,9 @@ def calculate_spectral_features(
         seq_len, pred_not_found_ions
     )
 
-    major_matched_filter = (
-        matched_intensities > 0.0
-    ) & (
-        ordered_prosit_intes > PROSIT_MAJOR_MINOR_CUT_OFF
-    )
-
     df_row = get_coverage_features(
         df_row,
         seq_len,
-        major_matched_filter,
         ordered_matched_ions,
         ordered_prosit_ions,
     )
@@ -579,7 +564,6 @@ def calculate_spectral_features(
 def get_coverage_features(
         df_row,
         seq_len,
-        major_matched_filter,
         ordered_matched_ions,
         ordered_prosit_ions
     ):
@@ -649,9 +633,13 @@ def get_kr_feats(sequence, matched_intensities, ordered_prosit_intes, ordered_pr
         kr_matched_intensities = matched_intensities[kr_inds]
 
         if kr_prosit_intensities.size:
-            df_row['fracMatchedKR'] = len(kr_matched_intensities[kr_matched_intensities > 0])/len(kr_prosit_intensities)
+            df_row['fracMatchedKR'] = len(
+                kr_matched_intensities[kr_matched_intensities > 0]
+            )/len(kr_prosit_intensities)
         else:
-            df_row['fracMatchedKR'] = len(matched_intensities[matched_intensities > 0])/len(ordered_prosit_ions)
+            df_row['fracMatchedKR'] = len(
+                matched_intensities[matched_intensities > 0]
+            )/len(ordered_prosit_ions)
         df_row['possibleKrFragsDivTotal'] = n_possible_kr/(seq_len-1)
 
         return df_row
@@ -735,7 +723,7 @@ def create_spectral_features(spectral_df, mods_df, config):
         FRAG_MZ_ERR_VAR_KEY,
         FRAG_MZ_ERR_MED_KEY,
         PEARSON_KEY,
-    ] 
+    ]
     if config.delta_method != 'ignore':
         replace_feats += DELTA_FEATURES
 

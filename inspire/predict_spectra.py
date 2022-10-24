@@ -4,7 +4,7 @@ from pathlib import Path
 from ms2pip.ms2pipC import MS2PIP
 
 from inspire.prosit import (
-    load_model, process_csv_file, prosit_predict, Converter
+    load_model, process_csv_file, prosit_predict, write_msp_file
 )
 
 PARAMS = {
@@ -70,22 +70,21 @@ def predict_spectra(config, pipeline='core'):
         else:
             input_file = f'{config.output_folder}/plotInput.csv'
             out_file = f'{config.output_folder}/plotPredictions.msp'
-        prosit_input = process_csv_file(input_file)
+        input_df, prosit_input = process_csv_file(input_file)
 
         prosit_data = prosit_predict(prosit_input, d_irt)
         final_result = prosit_predict(prosit_data, d_spectra)
 
-        prosit_converter = Converter(final_result, out_file)
-        prosit_converter.convert(redux=True)
+        write_msp_file(input_df, final_result, out_file)
 
         if config.delta_method == 'bruteForce' and pipeline == 'core':
-            prosit_input = process_csv_file(f'{config.output_folder}/deltaInput.csv')
+            input_df, prosit_input = process_csv_file(f'{config.output_folder}/deltaInput.csv')
 
             prosit_data = prosit_predict(prosit_input, d_irt)
             final_result = prosit_predict(prosit_data, d_spectra)
 
-            prosit_converter = Converter(
+            write_msp_file(
+                input_df,
                 final_result,
                 f'{config.output_folder}/deltaPredictions.msp',
             )
-            prosit_converter.convert(redux=True)
