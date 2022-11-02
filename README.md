@@ -149,7 +149,6 @@ These are the minimal configs required to run inSPIRE.
 | outputFolder     | Specify an output folder location which inSPIRE should write to. |
 | scansFolder      | Specify a folder containing the experimental spectra files in mgf or mzML format. |
 | scansFormat      | Specify the format of the spectra file (must be either mgf or mzML). |
-| spectralPredictor | Either Prosit or MS<sup>2</sup>PIP |
 
 ### Arguments Required for Prosit
 | Key   | Description   |
@@ -168,6 +167,7 @@ The following settings are set by default but you should check that they are val
 
 | Key   | Description   |
 |-------|---------------|
+| spectralPredictor | Either Prosit or MS<sup>2</sup>PIP (default=prosit). |
 | mzUnits          | The units used for the m/z accuracy either Da for Daltons or ppm for Parts Per Million (default=Da). |
 | mzAccuracy       | The mz accuracy of the mass spectrometer in Daltons or ppm(default=0.02, default unit is Da). |
 | rescoreMethod       | inSPIRE supports either "mokapot" or "percolator" (default=mokapot). |
