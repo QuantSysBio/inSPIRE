@@ -149,7 +149,6 @@ These are the minimal configs required to run inSPIRE.
 | outputFolder     | Specify an output folder location which inSPIRE should write to. |
 | scansFolder      | Specify a folder containing the experimental spectra files in mgf or mzML format. |
 | scansFormat      | Specify the format of the spectra file (must be either mgf or mzML). |
-| spectralPredictor | Either Prosit or MS<sup>2</sup>PIP |
 
 ### Arguments Required for Prosit
 | Key   | Description   |
@@ -168,6 +167,7 @@ The following settings are set by default but you should check that they are val
 
 | Key   | Description   |
 |-------|---------------|
+| spectralPredictor | Either Prosit or MS<sup>2</sup>PIP (default=prosit). |
 | mzUnits          | The units used for the m/z accuracy either Da for Daltons or ppm for Parts Per Million (default=Da). |
 | mzAccuracy       | The mz accuracy of the mass spectrometer in Daltons or ppm(default=0.02, default unit is Da). |
 | rescoreMethod       | inSPIRE supports either "mokapot" or "percolator" (default=mokapot). |
@@ -187,7 +187,7 @@ These setting are optional and are completely dependent on user preference.
 | reduce       | By default inSPIRE uses only the highest scoring hit per scan (and accession group if specified). If you set reduce to False this will consider all hits (default=True). |
 | reuseInput | Boolean flag on whether to reuse formatted data after the first read in. When using Mascot in particular this may be useful as it reduces the time spend formatting data for input. |
 | filterCysteine | Option to filter cysteins from rescoring if the sample contains unmodified cysteine and Prosit is being used. |
-| dropUnknownPTMs | Whether to drop PSMs containing modifications other than oxidation of methionine and carbamidomethylation of cysteine. (default=True if Prosit used, False if ms2pip used) | 
+| dropUnknownPTMs | Whether to drop PSMs containing modifications other than oxidation of methionine and carbamidomethylation of cysteine. (default=True if prosit used, False if ms2pip used) |
 
 ### Additional Configs for Mascot Distiller
 
@@ -195,6 +195,7 @@ If you have a combined mgf file from Mascot Distiller, you must add the followin
 
 | Key   | Description   |
 |-------|---------------|
+| sourceFileName | If you are using a Mascot search from an mgf file which does not contain the source file name specify it here. |
 | scanTitleFormat  | If Distiller used, set this argument to mascotDistiller.  |
 | distillerLog  | If Distiller used, set this argument to the path to the "table_peptide_int.txt" file from Distiller.  |
 | combinedScansFile | Set this to the combined mgf file from Mascot Distiller and put the mgf file in folder specified by scansFolder. |
