@@ -35,6 +35,7 @@ ALL_CONFIG_KEYS = [
     'scanTitleFormat',
     'searchResults',
     'searchEngine',
+    'sourceFileName',
     'spectralPredictor',
     'useBindingAffinity',
     'useAccessionStrata',
@@ -123,6 +124,7 @@ class Config:
         self.source_files = None
         if 'distillerLog' in config_dict:
             self.source_files = read_distiller_log(config_dict['distillerLog'])
+        self.source_filename = config_dict.get('sourceFileName', None)
 
         # NetMhcPan
         self.use_binding_affinity = config_dict.get('useBindingAffinity', None)

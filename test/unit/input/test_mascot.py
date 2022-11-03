@@ -43,7 +43,8 @@ class TestMascot(unittest.TestCase):
             [self.target_file_path, self.decoy_file_path],
             None,
             None,
-            True
+            True,
+            None,
         )
         self.assertEqual(search_df.shape[0], 123)
         self.assertEqual(search_df.shape[0], search_df[MASCOT_PEP_QUERY_KEY].nunique())
@@ -58,6 +59,7 @@ class TestMascot(unittest.TestCase):
             None,
             None,
             False,
+            None,
         )
         self.assertEqual(search_df.shape[0], 239)
         self.assertGreater(search_df.shape[0], search_df[MASCOT_PEP_QUERY_KEY].nunique())

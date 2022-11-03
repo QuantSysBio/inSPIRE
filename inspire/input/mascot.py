@@ -149,7 +149,7 @@ def _skip_logic(idx, start_idx=0, end_idx=None):
             return False
     return True
 
-def separate_scan_and_source(df_row, scan_title_format, source_list=None):
+def separate_scan_and_source(df_row, scan_title_format, source_list=None, source_filename=None):
     """ Function to separate source file and scan number (as well as retention time if
         Distiller format used) from mascots scan_title_format column.
 
@@ -158,9 +158,11 @@ def separate_scan_and_source(df_row, scan_title_format, source_list=None):
     df_row : pd.Series
         A row of the mascot search results DataFrame.
     scan_title_format : str or None
-        A
+        The format of the scan title (see README for options).
     source_list : str or None
         A list of the source files if Mascot Distiller was used.
+    source_filename : str or None
+        The name of the source file used in the search if available.
 
     Returns
     -------
@@ -170,14 +172,15 @@ def separate_scan_and_source(df_row, scan_title_format, source_list=None):
     scan_title = df_row[MASCOT_SCAN_TITLE_KEY]
     if scan_title_format is None:
         df_row[SCAN_KEY] = int(scan_title.split('=')[-1].strip('~'))
-        source = scan_title.split('File:')[-1]
-        if source.startswith('~'):
-            source = source.split('~')[1]
-        else:
-            source = source.split(', ')[0]
-        if source.endswith('.raw'):
-            source = source[:-4]
-        df_row[SOURCE_KEY] = source
+        if source_filename is None:
+            source = scan_title.split('File:')[-1]
+            if source.startswith('~'):
+                source = source.split('~')[1]
+            else:
+                source = source.split(', ')[0]
+            if source.endswith('.raw'):
+                source = source[:-4]
+            df_row[SOURCE_KEY] = source
     elif scan_title_format == 'mascotDistiller':
         scan_rt_details = scan_title.split(' Scan ')[-1].split(' (rt')
         df_row[SCAN_KEY] = int(scan_rt_details[0])
@@ -450,7 +453,7 @@ def _replace_ptm_id(ptm_seq, replacements):
             new_ptm_seq += char
     return new_ptm_seq
 
-def read_mascot_data(mascot_data, scan_title_format, source_list, reduce):
+def read_mascot_data(mascot_data, scan_title_format, source_list, reduce, source_filename):
     """ Function to read in mascot search results from one or more files.
 
     Parameters
@@ -461,6 +464,8 @@ def read_mascot_data(mascot_data, scan_title_format, source_list, reduce):
         The format of mascot's pep_scan_title column.
     source_list : list of str or None
         A list of the source files used in the mascot search.
+    source_filename : str or None
+        The name of the source file used in the search if available.
 
     Returns
     -------
@@ -494,7 +499,7 @@ def read_mascot_data(mascot_data, scan_title_format, source_list, reduce):
     hits_df = mascot_reduce_to_max(hits_df, reduce)
 
     hits_df = hits_df.apply(
-        lambda x : separate_scan_and_source(x, scan_title_format, source_list),
+        lambda x : separate_scan_and_source(x, scan_title_format, source_list, source_filename),
         axis=1
     )
     hits_df = hits_df.drop_duplicates(
