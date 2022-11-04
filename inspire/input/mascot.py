@@ -174,13 +174,18 @@ def separate_scan_and_source(df_row, scan_title_format, source_list=None, source
         df_row[SCAN_KEY] = int(scan_title.split('=')[-1].strip('~'))
         if source_filename is None:
             source = scan_title.split('File:')[-1]
-            if source.startswith('~'):
-                source = source.split('~')[1]
-            else:
-                source = source.split(', ')[0]
-            if source.endswith('.raw'):
-                source = source[:-4]
-            df_row[SOURCE_KEY] = source
+        else:
+            source = source_filename
+
+        if source.startswith('~'):
+            source = source.split('~')[1]
+        else:
+            source = source.split(', ')[0]
+
+        if source.endswith('.raw') or source.endswith('.mgf'):
+            source = source[:-4]
+        df_row[SOURCE_KEY] = source
+
     elif scan_title_format == 'mascotDistiller':
         scan_rt_details = scan_title.split(' Scan ')[-1].split(' (rt')
         df_row[SCAN_KEY] = int(scan_rt_details[0])
