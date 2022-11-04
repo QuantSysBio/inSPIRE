@@ -34,6 +34,7 @@ def generic_read_df(config, save_dfs=True):
                 config.scan_title_format,
                 config.source_files,
                 config.reduce,
+                config.source_filename,
             )
         elif config.search_engine == 'maxquant':
             search_df, mods_df = read_mq_data(config.search_results)

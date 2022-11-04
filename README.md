@@ -187,7 +187,7 @@ These setting are optional and are completely dependent on user preference.
 | reduce       | By default inSPIRE uses only the highest scoring hit per scan (and accession group if specified). If you set reduce to False this will consider all hits (default=True). |
 | reuseInput | Boolean flag on whether to reuse formatted data after the first read in. When using Mascot in particular this may be useful as it reduces the time spend formatting data for input. |
 | filterCysteine | Option to filter cysteins from rescoring if the sample contains unmodified cysteine and Prosit is being used. |
-| dropUnknownPTMs | Whether to drop PSMs containing modifications other than oxidation of methionine and carbamidomethylation of cysteine. (default=True if Prosit used, False if ms2pip used) | 
+| dropUnknownPTMs | Whether to drop PSMs containing modifications other than oxidation of methionine and carbamidomethylation of cysteine. (default=True if prosit used, False if ms2pip used) |
 
 ### Additional Configs for Mascot Distiller
 
@@ -195,6 +195,7 @@ If you have a combined mgf file from Mascot Distiller, you must add the followin
 
 | Key   | Description   |
 |-------|---------------|
+| sourceFileName | If you are using a Mascot search from an mgf file which does not contain the source file name specify it here. |
 | scanTitleFormat  | If Distiller used, set this argument to mascotDistiller.  |
 | distillerLog  | If Distiller used, set this argument to the path to the "table_peptide_int.txt" file from Distiller.  |
 | combinedScansFile | Set this to the combined mgf file from Mascot Distiller and put the mgf file in folder specified by scansFolder. |

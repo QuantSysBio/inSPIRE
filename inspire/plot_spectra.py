@@ -419,27 +419,35 @@ def fetch_scan_data(input_df, config, with_charge):
     """
     source_files = input_df[SOURCE_KEY].unique().tolist()
     scan_dfs = []
-    for scan_file in source_files:
-        scan_ids = input_df[input_df[SOURCE_KEY] == scan_file][SCAN_KEY].tolist()
-        if config.scans_format == 'mzML':
-            scan_df = process_mzml_file(
-                f'{config.scans_folder}/{scan_file}.{config.scans_format}',
-                scan_ids,
-                with_charge=with_charge,
-            )
-        else:
-            if config.combined_scans_file is not None:
-                mgf_filename = f'{config.scans_folder}/{config.combined_scans_file}'
+    if config.combined_scans_file is not None:
+        scan_ids = input_df[SCAN_KEY].tolist()
+        mgf_filename = f'{config.scans_folder}/{config.combined_scans_file}'
+        scan_dfs = [process_mgf_file(
+            mgf_filename,
+            set(scan_ids),
+            config.scan_title_format,
+            config.source_files,
+            with_charge=with_charge,
+        )]
+    else:
+        for scan_file in source_files:
+            scan_ids = input_df[input_df[SOURCE_KEY] == scan_file][SCAN_KEY].tolist()
+            if config.scans_format == 'mzML':
+                scan_df = process_mzml_file(
+                    f'{config.scans_folder}/{scan_file}.{config.scans_format}',
+                    set(scan_ids),
+                    with_charge=with_charge,
+                )
             else:
                 mgf_filename = f'{config.scans_folder}/{scan_file}.{config.scans_format}'
-            scan_df = process_mgf_file(
-                mgf_filename,
-                set(scan_ids),
-                config.scan_title_format,
-                config.source_files,
-                with_charge=with_charge,
-            )
-        scan_dfs.append(scan_df)
+                scan_df = process_mgf_file(
+                    mgf_filename,
+                    set(scan_ids),
+                    config.scan_title_format,
+                    config.source_files,
+                    with_charge=with_charge,
+                )
+            scan_dfs.append(scan_df)
     total_scan_df = pd.concat(scan_dfs)
     return total_scan_df
 
