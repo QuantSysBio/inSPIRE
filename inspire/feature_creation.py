@@ -536,25 +536,37 @@ def check_bad_mods(ptm_str, bad_mods):
             return True
     return False
 
-def create_features(config):
-    """ Function to create features for percolator/mokapot input.
+def process_unknown_modifications(target_df, mods_df, config):
+    """ Function to handle modifications which are unknown to the Prosit spectral predictor
+        (as well as unmodified cysteines).
 
     Parameters
     ----------
+    Parameters
+    ----------
+    search_df : pd.DataFrame
+        The results from the original search DataFrame.
+    mods_df : pd.DataFrame
+        The DataFrame of ptms.
     config : inspire.config.Config
-        The Config object used throughout the pipeline.
+        The Config object.
+
+    Returns
+    -------
+    target_df : pd.DataFrame
+        The results from the original search DataFrame with unknown modifications filtered.
     """
-    target_df, mods_df = generic_read_df(config)
-
-    if config.use_accession_stratum:
-        target_df = process_accession_groups(target_df, config)
-
     if config.drop_unknown_mods:
         unknown_mods = mods_df[
             (mods_df[PTM_NAME_KEY] != 'Oxidation (M)') &
-            ((mods_df[PTM_NAME_KEY] != 'Carbamidomethyl (C)'))
+            (mods_df[PTM_NAME_KEY] != 'Carbamidomethylation') &
+            (mods_df[PTM_NAME_KEY] != 'Carbamidomethyl (C)')
         ][PTM_ID_KEY].tolist()
         unknown_mods = {str(x) for x in unknown_mods}
+        target_df['unknownModifications'] = target_df[PTM_SEQ_KEY].apply(
+            lambda x : check_bad_mods(x, unknown_mods)
+        )
+        count_before_drop = target_df.shape[0]
         if config.use_accession_stratum:
             target_df['modEngineScore'] = target_df[
                 [ENGINE_SCORE_KEY, ACCESSION_STRATUM_KEY]
@@ -562,9 +574,6 @@ def create_features(config):
             target_df['maxModScore'] = target_df.groupby(
                 [SOURCE_KEY, SCAN_KEY]
             )['modEngineScore'].transform(max)
-            target_df['unknownModifications'] = target_df[PTM_SEQ_KEY].apply(
-                lambda x : check_bad_mods(x, unknown_mods)
-            )
 
             unknown_df = target_df[
                 (target_df['unknownModifications']) &
@@ -584,10 +593,48 @@ def create_features(config):
             )
             target_df = target_df[target_df['drop'] != 'yes']
             target_df = target_df.drop('drop', axis=1)
+        else:
+            target_df = target_df[~target_df['unknownModifications']].drop(
+                ['unknownModifications'], axis=1
+            )
+        count_after_drop = target_df.shape[0]
+        filtered_psms = count_before_drop - count_after_drop
+        print(
+            OKCYAN_TEXT +
+            f'\tFiltered {filtered_psms} PSMs due to modifications unknown to Prosit.' +
+            ENDC_TEXT
+        )
 
-
-    if config.filter_c:
+    if not mods_df[
+            (mods_df[PTM_NAME_KEY] == 'Carbamidomethylation') |
+            (mods_df[PTM_NAME_KEY] == 'Carbamidomethyl (C)')
+        ].shape[0] and config.filter_c:
+        count_before_drop = target_df.shape[0]
         target_df = target_df[target_df[PEPTIDE_KEY].apply(lambda x : 'C' not in x)]
+        count_after_drop = target_df.shape[0]
+        filtered_psms = count_before_drop - count_after_drop
+        print(
+            OKCYAN_TEXT +
+            f'\tFiltered {filtered_psms} PSMs due to unmodified cysteines.' +
+            ENDC_TEXT
+        )
+
+    return target_df
+
+def create_features(config):
+    """ Function to create features for percolator/mokapot input.
+
+    Parameters
+    ----------
+    config : inspire.config.Config
+        The Config object used throughout the pipeline.
+    """
+    target_df, mods_df = generic_read_df(config)
+
+    if config.use_accession_stratum:
+        target_df = process_accession_groups(target_df, config)
+
+    target_df = process_unknown_modifications(target_df, mods_df, config)
 
     n_variable_mods = mods_df.shape[0]  # pylint: disable=no-member
     if  n_variable_mods > 9:
