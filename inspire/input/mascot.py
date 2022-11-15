@@ -351,16 +351,20 @@ def _add_fixed_mod(peptide, ptm_seq, fixed_ptm_dict):
     ptm_seq : str
         The input ptm_seq updated with any relevant fixed modifications.
     """
-    if not isinstance(ptm_seq, str):
-        ptm_seq = '0.' + ''.join(['0']*len(peptide)) + '.0'
     for residues in fixed_ptm_dict:
         if residues == 'N-term':
+            if not isinstance(ptm_seq, str):
+                ptm_seq = '0.' + ''.join(['0']*len(peptide)) + '.0'
             ptm_seq = fixed_ptm_dict[residues] + ptm_seq[1:]
         elif residues == 'C-term':
+            if not isinstance(ptm_seq, str):
+                ptm_seq = '0.' + ''.join(['0']*len(peptide)) + '.0'
             ptm_seq = ptm_seq[:-1] + fixed_ptm_dict[residues]
         else:
             for res in residues:
                 ptm_postns = [m.start() for m in re.finditer(res, peptide)]
+                if ptm_postns and not isinstance(ptm_seq, str):
+                    ptm_seq = '0.' + ''.join(['0']*len(peptide)) + '.0'
                 for pos in ptm_postns:
                     ptm_seq = ptm_seq[:pos+2] + str(fixed_ptm_dict[residues]) + ptm_seq[pos+3:]
 

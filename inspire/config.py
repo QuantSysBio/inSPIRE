@@ -110,7 +110,7 @@ class Config:
         self.reduce = config_dict.get('reduce', False)
         self.rescore_method = config_dict.get('rescoreMethod', 'mokapot')
 
-        self.filter_c = config_dict.get('filterCysteine', False)
+        self.filter_c = config_dict.get('filterCysteine', True)
         if self.spectral_predictor == 'prosit':
             self.drop_unknown_mods = config_dict.get('dropUnknownPTMs', True)
         else:
