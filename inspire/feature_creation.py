@@ -26,6 +26,7 @@ from inspire.constants import(
     PTM_NAME_KEY,
     PTM_SEQ_KEY,
     PTM_WEIGHT_KEY,
+    RT_KEY,
     SCAN_KEY,
     SOURCE_INDEX_KEY,
     SOURCE_KEY,
@@ -162,6 +163,9 @@ def filter_input_columns(combined_df, config, file_idx):
         combined_df[SOURCE_INDEX_KEY] = combined_df[SOURCE_KEY].apply(scan_files.index)
     else:
         combined_df[SOURCE_INDEX_KEY] = file_idx
+
+    if isinstance(config.collision_energy, list):
+        use_cols += ['collisionEnergy']
 
     use_cols += [SOURCE_INDEX_KEY]
 
@@ -326,12 +330,20 @@ def process_single_file(
             set(scans.tolist()),
         )
     else:
+        if filtered_search_df[RT_KEY].nunique() <= 1:
+            filtered_search_df = filtered_search_df.drop(RT_KEY, axis=1)
+            with_rt = True
+        else:
+            with_rt = False
+
         scan_df = process_mgf_file(
             f'{config.scans_folder}/{scan_file}.{config.scans_format}',
             set(scans.tolist()),
             config.scan_title_format,
-            config.source_files
+            config.source_files,
+            with_retention_time=with_rt,
         )
+
     scan_df = scan_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY])
     combined_df = combine_spectral_data(
         filtered_search_df,
@@ -340,6 +352,7 @@ def process_single_file(
         ox_flag,
         config.spectral_predictor,
     )
+
     if config.delta_method == 'bruteForce':
         if config.spectral_predictor == 'prosit':
             combined_df['mSeq'] = combined_df['modified_sequence'].apply(

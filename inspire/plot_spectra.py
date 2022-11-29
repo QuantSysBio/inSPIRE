@@ -505,7 +505,12 @@ def plot_spectra(config):
         lambda x : x.replace('[+16.0]', '(ox)').replace('[+57.0]', '')
     )
     input_df['precursor_charge'] = input_df[CHARGE_KEY]
-    input_df['collision_energy'] = config.collision_energy
+
+    if 'collisionEnergy' in input_df.columns:
+        input_df = input_df.rename(columns={'collisionEnergy': 'collision_energy'})
+    else:
+        input_df['collision_energy'] = config.collision_energy
+
     input_df[['modified_sequence', 'precursor_charge', 'collision_energy']].to_csv(
         f'{config.output_folder}/plotInput.csv', index=False,
     )
