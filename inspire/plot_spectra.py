@@ -547,7 +547,7 @@ def plot_spectra(config):
                 '1',
                 config.delta_method,
                 config.spectral_predictor,
-                spectral_angle_only=True,
+                minimal_features=True,
             ),
             axis=1,
         )

@@ -301,6 +301,12 @@ DELTA_PRO_FEATURES = [
     'BLOSUM6.1',
 ]
 
+MINIMAL_FEATURE_SET = [
+    SPECTRAL_ANGLE_KEY,
+    ENGINE_SCORE_KEY,
+    'matchedCoverage',
+    'deltaRT',
+]
 
 # Constants used by deltapro predictor.
 

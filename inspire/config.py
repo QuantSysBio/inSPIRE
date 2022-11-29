@@ -37,8 +37,9 @@ ALL_CONFIG_KEYS = [
     'searchEngine',
     'sourceFileName',
     'spectralPredictor',
-    'useBindingAffinity',
     'useAccessionStrata',
+    'useBindingAffinity',
+    'useMinimalFeatures',
 ]
 
 class Config:
@@ -101,6 +102,7 @@ class Config:
         else:
             self.delta_method = config_dict.get('deltaMethod', 'ignore')
         self.reuse_input = config_dict.get('reuseInput', False)
+        self.minimal_features = config_dict.get('useMinimalFeatures', False)
 
         # Optional
         self.fdr = config_dict.get('falseDiscoveryRate', 0.01)

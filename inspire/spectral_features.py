@@ -330,7 +330,7 @@ def calculate_spectral_features(
         ox_flag,
         delta_method,
         spectral_predictor,
-        spectral_angle_only=False,
+        minimal_features=False,
     ):
     """ Function to extract the ion intensities from the true spectra which match
     """
@@ -364,7 +364,6 @@ def calculate_spectral_features(
     ordered_prosit_intes = match_info['ordered_prosit_intes']
     truly_matched_intes = matched_intensities[matched_intensities > 0.0]
 
-    df_row['spectrumDensity'] = len(df_row[MZS_KEY])/(df_row[MZS_KEY].max() - df_row[MZS_KEY].min())
 
     median_mz_error, mz_error_variance = get_mz_error_stats(mz_errors, min(mz_accuracy, 0.04))
 
@@ -376,12 +375,24 @@ def calculate_spectral_features(
     else:
         normed_matched_intensities = matched_intensities
 
+
+    ordered_matched_ions = ordered_prosit_ions[matched_intensities > 0.0]
+
     df_row[SPECTRAL_ANGLE_KEY] = calculate_spectral_angle(
         normed_matched_intensities,
         ordered_prosit_intes,
     )
-    if spectral_angle_only:
+    df_row = get_coverage_features(
+        df_row,
+        seq_len,
+        ordered_matched_ions,
+        ordered_prosit_ions,
+    )
+
+    if minimal_features:
         return df_row
+
+    df_row['spectrumDensity'] = len(df_row[MZS_KEY])/(df_row[MZS_KEY].max() - df_row[MZS_KEY].min())
 
     major_pred_inds = (ordered_prosit_intes >= PROSIT_MAJOR_MINOR_CUT_OFF)
 
@@ -487,18 +498,10 @@ def calculate_spectral_features(
         sequence, matched_intensities, ordered_prosit_intes, ordered_prosit_ions, df_row
     )
 
-    ordered_matched_ions = ordered_prosit_ions[matched_intensities > 0.0]
     pred_not_found_ions = ordered_prosit_ions[matched_intensities == 0.0]
 
     df_row['predNotFoundCoverage'] = get_coverage(
         seq_len, pred_not_found_ions
-    )
-
-    df_row = get_coverage_features(
-        df_row,
-        seq_len,
-        ordered_matched_ions,
-        ordered_prosit_ions,
     )
 
     y_filter = [
@@ -711,6 +714,7 @@ def create_spectral_features(spectral_df, mods_df, config):
             str(ox_flag),
             config.delta_method,
             config.spectral_predictor,
+            minimal_features=config.minimal_features,
         ),
         axis=1
     )
@@ -728,7 +732,7 @@ def create_spectral_features(spectral_df, mods_df, config):
         replace_feats += DELTA_FEATURES
 
     for feat in set(replace_feats):
-        if feat in spectral_features:
+        if feat in spectral_features and feat in spectral_df.columns:
             spectral_df_var_median = spectral_df[
                 spectral_df[feat] > -1
             ][feat].median()

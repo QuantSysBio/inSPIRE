@@ -16,6 +16,7 @@ from inspire.constants import(
     ENDC_TEXT,
     ENGINE_SCORE_KEY,
     LABEL_KEY,
+    MINIMAL_FEATURE_SET,
     OKCYAN_TEXT,
     IN_ACCESSION_KEY,
     PEPTIDE_KEY,
@@ -136,18 +137,25 @@ def filter_input_columns(combined_df, config, file_idx):
         The input DataFrame containing only the features required for percolator/mokapot.
     """
     psm_id_key = PSM_ID_KEY[config.rescore_method]
-    use_cols = [
-        psm_id_key,
-        LABEL_KEY,
-        PERC_SCAN_ID,
-    ] + BASIC_FEATURES + SPECTRAL_FEATURES
+    if config.minimal_features:
+        use_cols = [
+            psm_id_key,
+            LABEL_KEY,
+            PERC_SCAN_ID
+        ] + BASIC_FEATURES + MINIMAL_FEATURE_SET
+    else:
+        use_cols = [
+            psm_id_key,
+            LABEL_KEY,
+            PERC_SCAN_ID,
+        ] + BASIC_FEATURES + SPECTRAL_FEATURES
 
-    if config.delta_method != 'ignore':
-        use_cols += DELTA_FEATURES
-    use_cols += ['deltaRT']
+        if config.delta_method != 'ignore':
+            use_cols += DELTA_FEATURES
+        use_cols += ['deltaRT']
 
-    if config.use_binding_affinity == 'asFeature':
-        use_cols += ['bindingAffinity']
+        if config.use_binding_affinity == 'asFeature':
+            use_cols += ['bindingAffinity']
 
     if config.combined_scans_file is not None:
         scan_files = [remove_source_suffixes(x) for x in config.source_files]
@@ -402,6 +410,12 @@ def process_single_file(
         return None
 
     combined_df = create_spectral_features(combined_df, mods_df, config)
+    combined_df = combined_df.sort_values(by='spectralAngle', ascending=False)
+    if isinstance(config.collision_energy, list):
+        combined_df.to_csv('temp.csv', index=False)
+        combined_df = combined_df.drop_duplicates(subset=['source', 'scan', 'peptide'])
+        combined_df.to_csv('temp2.csv', index=False)
+
     combined_df = add_delta_irt(combined_df)
 
     print(

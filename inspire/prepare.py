@@ -90,22 +90,43 @@ def write_prosit_input_df(
     prosit_df = search_df[['modified_sequence', CHARGE_KEY]].rename(
         columns={CHARGE_KEY: 'precursor_charge'}
     )
-    prosit_df['collision_energy'] = collision_energy
-    prosit_df = prosit_df.drop_duplicates()
-    if overwrite:
-        prosit_df.to_csv(
-            f'{config.output_folder}/{filename}.csv',
-            index=False,
-        )
-    else:
-        prosit_df.to_csv(
-            f'{config.output_folder}/{filename}.csv',
-            index=False,
-            mode='a',
-            header=False,
-        )
+    if isinstance(collision_energy, list):
+        prosit_df = prosit_df.drop_duplicates()
+        prosit_df['collision_energy'] = [collision_energy for _ in prosit_df.index]
+        prosit_df = prosit_df.explode('collision_energy')
+        if overwrite:
+            prosit_df.to_csv(
+                f'{config.output_folder}/{filename}.csv',
+                index=False,
+            )
+        else:
+            prosit_df.to_csv(
+                f'{config.output_folder}/{filename}.csv',
+                index=False,
+                mode='a',
+                header=False,
+            )
+    else: 
+        prosit_df['collision_energy'] = collision_energy
+        prosit_df = prosit_df.drop_duplicates()
+        if overwrite:
+            prosit_df.to_csv(
+                f'{config.output_folder}/{filename}.csv',
+                index=False,
+            )
+        else:
+            prosit_df.to_csv(
+                f'{config.output_folder}/{filename}.csv',
+                index=False,
+                mode='a',
+                header=False,
+            )
 
     if config.delta_method == 'bruteForce' and filename == 'prositInput':
+        if isinstance(collision_energy, list):
+            raise NotImplementedError(
+                'bruteForce delta computation not supported for multiple NCE settings.'
+            )
         prosit_df['mSeq'] = prosit_df['modified_sequence'].apply(
             lambda x : x.replace('M(ox)', 'm')
         )
