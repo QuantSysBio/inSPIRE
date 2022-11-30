@@ -42,6 +42,5 @@ class TestMzML(unittest.TestCase):
         mzml_df = process_mzml_file(
             'test/resources/test.mzML', SCANS_TO_SELECT, with_retention_time=True
         )
-        print(mzml_df)
         self.assertEqual(mzml_df.shape[0], 6)
         self.assertEqual(list(mzml_df.columns), EXPECTED_OUTPUT_COLUMNS + [RT_KEY])
