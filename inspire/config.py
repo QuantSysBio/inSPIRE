@@ -36,9 +36,11 @@ ALL_CONFIG_KEYS = [
     'searchResults',
     'searchEngine',
     'sourceFileName',
+    'spectralAngleDfs',
     'spectralPredictor',
-    'useBindingAffinity',
     'useAccessionStrata',
+    'useBindingAffinity',
+    'useMinimalFeatures',
 ]
 
 class Config:
@@ -101,6 +103,7 @@ class Config:
         else:
             self.delta_method = config_dict.get('deltaMethod', 'ignore')
         self.reuse_input = config_dict.get('reuseInput', False)
+        self.minimal_features = config_dict.get('useMinimalFeatures', False)
 
         # Optional
         self.fdr = config_dict.get('falseDiscoveryRate', 0.01)
@@ -109,6 +112,7 @@ class Config:
         self.include_features = config_dict.get('includeFeatures', None)
         self.reduce = config_dict.get('reduce', False)
         self.rescore_method = config_dict.get('rescoreMethod', 'mokapot')
+        self.sa_query_dfs = config_dict.get('spectralAngleDfs', None)
 
         self.filter_c = config_dict.get('filterCysteine', True)
         if self.spectral_predictor == 'prosit':

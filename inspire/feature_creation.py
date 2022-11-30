@@ -16,6 +16,7 @@ from inspire.constants import(
     ENDC_TEXT,
     ENGINE_SCORE_KEY,
     LABEL_KEY,
+    MINIMAL_FEATURE_SET,
     OKCYAN_TEXT,
     IN_ACCESSION_KEY,
     PEPTIDE_KEY,
@@ -25,6 +26,7 @@ from inspire.constants import(
     PTM_NAME_KEY,
     PTM_SEQ_KEY,
     PTM_WEIGHT_KEY,
+    RT_KEY,
     SCAN_KEY,
     SOURCE_INDEX_KEY,
     SOURCE_KEY,
@@ -136,15 +138,23 @@ def filter_input_columns(combined_df, config, file_idx):
         The input DataFrame containing only the features required for percolator/mokapot.
     """
     psm_id_key = PSM_ID_KEY[config.rescore_method]
-    use_cols = [
-        psm_id_key,
-        LABEL_KEY,
-        PERC_SCAN_ID,
-    ] + BASIC_FEATURES + SPECTRAL_FEATURES
+    if config.minimal_features:
+        use_cols = [
+            psm_id_key,
+            LABEL_KEY,
+            PERC_SCAN_ID
+        ] + BASIC_FEATURES + MINIMAL_FEATURE_SET
+    else:
+        use_cols = [
+            psm_id_key,
+            LABEL_KEY,
+            PERC_SCAN_ID,
+        ] + BASIC_FEATURES + SPECTRAL_FEATURES
 
-    if config.delta_method != 'ignore':
-        use_cols += DELTA_FEATURES
-    use_cols += ['deltaRT']
+        if config.delta_method != 'ignore':
+            use_cols += DELTA_FEATURES
+
+        use_cols += ['deltaRT']
 
     if config.use_binding_affinity == 'asFeature':
         use_cols += ['bindingAffinity']
@@ -154,6 +164,9 @@ def filter_input_columns(combined_df, config, file_idx):
         combined_df[SOURCE_INDEX_KEY] = combined_df[SOURCE_KEY].apply(scan_files.index)
     else:
         combined_df[SOURCE_INDEX_KEY] = file_idx
+
+    if isinstance(config.collision_energy, list):
+        use_cols += ['collisionEnergy']
 
     use_cols += [SOURCE_INDEX_KEY]
 
@@ -312,18 +325,28 @@ def process_single_file(
         filtered_search_df = search_df[search_df[SOURCE_KEY] == scan_file]
 
     scans = filtered_search_df[SCAN_KEY].unique()
+
+    if RT_KEY not in filtered_search_df.columns or filtered_search_df[RT_KEY].nunique() <= 1:
+        filtered_search_df = filtered_search_df.drop(RT_KEY, axis=1)
+        with_rt = True
+    else:
+        with_rt = False
+
     if config.scans_format == 'mzML':
         scan_df = process_mzml_file(
             f'{config.scans_folder}/{scan_file}.{config.scans_format}',
             set(scans.tolist()),
+            with_retention_time=with_rt,
         )
     else:
         scan_df = process_mgf_file(
             f'{config.scans_folder}/{scan_file}.{config.scans_format}',
             set(scans.tolist()),
             config.scan_title_format,
-            config.source_files
+            config.source_files,
+            with_retention_time=with_rt,
         )
+
     scan_df = scan_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY])
     combined_df = combine_spectral_data(
         filtered_search_df,
@@ -332,6 +355,7 @@ def process_single_file(
         ox_flag,
         config.spectral_predictor,
     )
+
     if config.delta_method == 'bruteForce':
         if config.spectral_predictor == 'prosit':
             combined_df['mSeq'] = combined_df['modified_sequence'].apply(
@@ -402,6 +426,10 @@ def process_single_file(
         return None
 
     combined_df = create_spectral_features(combined_df, mods_df, config)
+    combined_df = combined_df.sort_values(by='spectralAngle', ascending=False)
+    if isinstance(config.collision_energy, list):
+        combined_df = combined_df.drop_duplicates(subset=['source', 'scan', 'peptide'])
+
     combined_df = add_delta_irt(combined_df)
 
     print(

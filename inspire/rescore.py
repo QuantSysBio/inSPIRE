@@ -10,10 +10,12 @@ from inspire.constants import (
     CHARGE_KEY,
     ENDC_TEXT,
     ENGINE_SCORE_KEY,
+    FINAL_POSTEP_KEY,
     FINAL_Q_VALUE_KEY,
     FINAL_SCORE_KEY,
     OKCYAN_TEXT,
     OUT_ACCESSION_KEY,
+    OUT_POSTEP_KEY,
     OUT_Q_KEY,
     OUT_SCORE_KEY,
     PEPTIDE_KEY,
@@ -172,6 +174,9 @@ def _add_key_features(target_psms, config):
         )
         key_features.append(ACCESSION_STRATUM_KEY)
 
+    if isinstance(config.collision_energy, list):
+        key_features.append('collisionEnergy')
+
     output_df = pd.merge(
         target_psms,
         input_df[[psm_id_key, PEPTIDE_KEY] + key_features],
@@ -191,6 +196,7 @@ def final_rescoring(config):
     """
     out_score_key = OUT_SCORE_KEY[config.rescore_method]
     out_q_key = OUT_Q_KEY[config.rescore_method]
+    out_postep_key = OUT_POSTEP_KEY[config.rescore_method]
     psm_id_key = PSM_ID_KEY[config.rescore_method]
     out_accession_key = OUT_ACCESSION_KEY[config.rescore_method]
 
@@ -206,7 +212,7 @@ def final_rescoring(config):
     )
 
     if 'PSMId' in target_psms.columns:
-        target_psms = target_psms.rename(  # pylint: disable=no-member
+        target_psms = target_psms.rename( # pylint: disable=no-member
             columns={'PSMId': psm_id_key}
         )
 
@@ -225,8 +231,10 @@ def final_rescoring(config):
             out_score_key: FINAL_SCORE_KEY,
             out_q_key: FINAL_Q_VALUE_KEY,
             out_accession_key: ACCESSION_KEY,
+            out_postep_key: FINAL_POSTEP_KEY,
         }
     )
+
     final_columns = (
         [
             SOURCE_KEY,
@@ -235,6 +243,7 @@ def final_rescoring(config):
             'modifiedSequence',
             FINAL_SCORE_KEY,
             FINAL_Q_VALUE_KEY,
+            FINAL_POSTEP_KEY,
         ] + key_features +
         [
             ACCESSION_KEY

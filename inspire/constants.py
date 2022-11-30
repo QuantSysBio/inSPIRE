@@ -100,6 +100,11 @@ OUT_Q_KEY = {
     'percolator': 'q-value',
     'percolatorSeparate': 'q-value',
 }
+OUT_POSTEP_KEY = {
+    'mokapot': 'mokapot PEP',
+    'percolator': 'posterior_error_prob',
+    'percolatorSeparate': 'posterior_error_prob',
+}
 
 PREFIX_KEYS = {
     'mokapot': [PSM_ID_KEY['mokapot'], LABEL_KEY, PERC_SCAN_ID],
@@ -113,6 +118,7 @@ SUFFIX_KEYS = {
 }
 FINAL_SCORE_KEY = 'percolatorScore'
 FINAL_Q_VALUE_KEY = 'qValue'
+FINAL_POSTEP_KEY = 'postErrProb'
 
 PRED_ACCESSION_KEY = 'predictedAccession'
 PRED_PEPTIDE_KEY = 'predictedPeptide'
@@ -301,6 +307,12 @@ DELTA_PRO_FEATURES = [
     'BLOSUM6.1',
 ]
 
+MINIMAL_FEATURE_SET = [
+    SPECTRAL_ANGLE_KEY,
+    ENGINE_SCORE_KEY,
+    'matchedCoverage',
+    'deltaRT',
+]
 
 # Constants used by deltapro predictor.
 

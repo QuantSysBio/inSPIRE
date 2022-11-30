@@ -20,6 +20,7 @@ from inspire.constants import (
     LABEL_KEY,
     LOSS_IONS_KEY,
     MASS_DIFF_KEY,
+    MINIMAL_FEATURE_SET,
     NOT_ASSIGNED_KEY,
     OKCYAN_TEXT,
     OUT_SCORE_KEY,
@@ -134,8 +135,12 @@ SPECTRAL_GROUP_NAMES = [
     'Y/B Ion Difference Features',
 ]
 
+
+
+
+
 DEFAULT_FEATURE_SET = [
-    'engineScore',
+    ENGINE_SCORE_KEY,
     'deltaScore',
     'sequenceLength',
     'seqLenMeanDiff',
@@ -618,7 +623,6 @@ def filter_feature_set(all_features_df, config, base_features):
 
     return all_features_df, feature_set
 
-
 def select_features(config):
     """ Function to select the features used in the final percolator model.
 
@@ -633,17 +637,16 @@ def select_features(config):
     )
 
     if config.max_for_selection < all_features_df.shape[0]:
-        feature_set = DEFAULT_FEATURE_SET
-        if config.delta_method == 'ignore':
-            feature_set = [x for x in feature_set if x not in DELTA_FEATURES]
+        if config.minimal_features:
+            feature_set = MINIMAL_FEATURE_SET
+        else:
+            feature_set = DEFAULT_FEATURE_SET
+            if config.delta_method == 'ignore':
+                feature_set = [x for x in feature_set if x not in DELTA_FEATURES]
+
         if config.use_binding_affinity == 'asFeature':
             feature_set += ['bindingAffinity']
-        # all_features_df, one_hot_features = generate_one_hot_entries(
-        #     all_features_df,
-        #     'charge'
-        # )
-        # feature_set += one_hot_features
-        # feature_set.remove('charge')
+
         if config.exclude_features is not None and config.exclude_features:
             exclude_features = (
                 config.exclude_features +

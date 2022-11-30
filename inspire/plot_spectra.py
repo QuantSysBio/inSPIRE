@@ -18,13 +18,13 @@ from inspire.constants import (
     SOURCE_KEY,
     SPECTRAL_ANGLE_KEY,
 )
-from inspire.input.mgf import process_mgf_file
+
 
 from inspire.input.msp import msp_to_df
-from inspire.input.mzml import process_mzml_file
 from inspire.mz_match import get_ion_masses
 from inspire.predict_spectra import predict_spectra
 from inspire.spectral_features import calculate_spectral_features
+from inspire.utils import fetch_scan_data, convert_mod_seq_to_ptm_seq
 
 PLOTS_PER_PAGE = 15
 PLOTS_PER_LINE = 3
@@ -402,82 +402,6 @@ def pair_plot(df_row, mz_accuracy, mz_units):
 
     return traces, annotations
 
-def fetch_scan_data(input_df, config, with_charge):
-    """ Function to fetch the experimental scan data.
-
-    Parameters
-    ----------
-    input_df : pd.DataFrame
-        The DataFrame of PSMs whose spectra we wish to plot.
-    config : inspire.config.Config
-        The Config object used to run the inSPIRE experiment.
-
-    Returns
-    -------
-    total_scan_df : pd.DataFrame
-        A DataFrame of the necessary scan data.
-    """
-    source_files = input_df[SOURCE_KEY].unique().tolist()
-    scan_dfs = []
-    if config.combined_scans_file is not None:
-        scan_ids = input_df[SCAN_KEY].tolist()
-        mgf_filename = f'{config.scans_folder}/{config.combined_scans_file}'
-        scan_dfs = [process_mgf_file(
-            mgf_filename,
-            set(scan_ids),
-            config.scan_title_format,
-            config.source_files,
-            with_charge=with_charge,
-        )]
-    else:
-        for scan_file in source_files:
-            scan_ids = input_df[input_df[SOURCE_KEY] == scan_file][SCAN_KEY].tolist()
-            if config.scans_format == 'mzML':
-                scan_df = process_mzml_file(
-                    f'{config.scans_folder}/{scan_file}.{config.scans_format}',
-                    set(scan_ids),
-                    with_charge=with_charge,
-                )
-            else:
-                mgf_filename = f'{config.scans_folder}/{scan_file}.{config.scans_format}'
-                scan_df = process_mgf_file(
-                    mgf_filename,
-                    set(scan_ids),
-                    config.scan_title_format,
-                    config.source_files,
-                    with_charge=with_charge,
-                )
-            scan_dfs.append(scan_df)
-    total_scan_df = pd.concat(scan_dfs)
-    return total_scan_df
-
-def convert_mod_seq_to_ptm_seq(mod_seq):
-    """ Function to convert the modified prosit sequence to the PTM seq used elsewhere.
-
-    Parameters
-    ----------
-    mod_seq : str
-        The input sequence for Prosit.
-
-    Returns
-    -------
-    ptm_seq : str
-        The string of digits used to represent any PTMs present.
-    """
-    ptm_seq = '0.'
-    while mod_seq:
-        if len(mod_seq) == 1 or mod_seq[1] != '[':
-            ptm_seq += '0'
-            mod_seq = mod_seq[1:]
-        elif mod_seq[1] == '[' and mod_seq[0] == 'C':
-            ptm_seq += '2'
-            mod_seq = mod_seq[8:]
-        else:
-            ptm_seq += '1'
-            mod_seq = mod_seq[8:]
-
-    ptm_seq += '.0'
-    return ptm_seq
 
 def plot_spectra(config):
     """ Function to generate pair plots of selected PSMs (experimental vs. Prosit
@@ -505,7 +429,12 @@ def plot_spectra(config):
         lambda x : x.replace('[+16.0]', '(ox)').replace('[+57.0]', '')
     )
     input_df['precursor_charge'] = input_df[CHARGE_KEY]
-    input_df['collision_energy'] = config.collision_energy
+
+    if 'collisionEnergy' in input_df.columns:
+        input_df = input_df.rename(columns={'collisionEnergy': 'collision_energy'})
+    else:
+        input_df['collision_energy'] = config.collision_energy
+
     input_df[['modified_sequence', 'precursor_charge', 'collision_energy']].to_csv(
         f'{config.output_folder}/plotInput.csv', index=False,
     )
@@ -547,7 +476,7 @@ def plot_spectra(config):
                 '1',
                 config.delta_method,
                 config.spectral_predictor,
-                spectral_angle_only=True,
+                minimal_features=True,
             ),
             axis=1,
         )

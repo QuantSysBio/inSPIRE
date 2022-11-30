@@ -10,11 +10,19 @@ from inspire.constants import (
     CHARGE_KEY,
     INTENSITIES_KEY,
     MZS_KEY,
+    RT_KEY,
     SCAN_KEY,
     SOURCE_KEY,
 )
 
-def process_mgf_file(mgf_filename, scan_ids, scan_file_format, source_list, with_charge=False):
+def process_mgf_file(
+        mgf_filename,
+        scan_ids,
+        scan_file_format,
+        source_list,
+        with_charge=False,
+        with_retention_time=False,
+    ):
     """ Function to process an mgf file to find matches with scan IDs.
 
     Parameters
@@ -40,6 +48,8 @@ def process_mgf_file(mgf_filename, scan_ids, scan_file_format, source_list, with
     filename = mgf_filename.split('/')[-1]
     if with_charge:
         charge_list = []
+    if with_retention_time:
+        rt_list = []
 
     with mgf.read(mgf_filename) as reader:
         for spectrum in reader:
@@ -66,6 +76,8 @@ def process_mgf_file(mgf_filename, scan_ids, scan_file_format, source_list, with
                 matched_mzs.append(np.array(list(spectrum['m/z array'])))
                 if with_charge:
                     charge_list.append(int(spectrum['params']['charge'][0]))
+                if with_retention_time:
+                    rt_list.append(float(spectrum['params']['rtinseconds']))
 
     mgf_df = pd.DataFrame(
         {
@@ -77,6 +89,8 @@ def process_mgf_file(mgf_filename, scan_ids, scan_file_format, source_list, with
     )
     if with_charge:
         mgf_df[CHARGE_KEY] = pd.Series(charge_list)
+    if with_retention_time:
+        mgf_df[RT_KEY] = pd.Series(rt_list)
 
     mgf_df = mgf_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY])
 
