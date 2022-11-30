@@ -153,10 +153,11 @@ def filter_input_columns(combined_df, config, file_idx):
 
         if config.delta_method != 'ignore':
             use_cols += DELTA_FEATURES
+
         use_cols += ['deltaRT']
 
-        if config.use_binding_affinity == 'asFeature':
-            use_cols += ['bindingAffinity']
+    if config.use_binding_affinity == 'asFeature':
+        use_cols += ['bindingAffinity']
 
     if config.combined_scans_file is not None:
         scan_files = [remove_source_suffixes(x) for x in config.source_files]
@@ -324,18 +325,20 @@ def process_single_file(
         filtered_search_df = search_df[search_df[SOURCE_KEY] == scan_file]
 
     scans = filtered_search_df[SCAN_KEY].unique()
+
+    if RT_KEY not in filtered_search_df.columns or filtered_search_df[RT_KEY].nunique() <= 1:
+        filtered_search_df = filtered_search_df.drop(RT_KEY, axis=1)
+        with_rt = True
+    else:
+        with_rt = False
+
     if config.scans_format == 'mzML':
         scan_df = process_mzml_file(
             f'{config.scans_folder}/{scan_file}.{config.scans_format}',
             set(scans.tolist()),
+            with_retention_time=with_rt,
         )
     else:
-        if filtered_search_df[RT_KEY].nunique() <= 1:
-            filtered_search_df = filtered_search_df.drop(RT_KEY, axis=1)
-            with_rt = True
-        else:
-            with_rt = False
-
         scan_df = process_mgf_file(
             f'{config.scans_folder}/{scan_file}.{config.scans_format}',
             set(scans.tolist()),
