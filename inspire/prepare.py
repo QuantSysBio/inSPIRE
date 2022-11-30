@@ -106,7 +106,7 @@ def write_prosit_input_df(
                 mode='a',
                 header=False,
             )
-    else: 
+    else:
         prosit_df['collision_energy'] = collision_energy
         prosit_df = prosit_df.drop_duplicates()
         if overwrite:

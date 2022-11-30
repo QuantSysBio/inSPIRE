@@ -27,7 +27,6 @@ def get_spectral_angle(config):
         input_df = pd.read_csv(dataset)
         output_loc = dataset.split('.csv')[0] + '_spectralAngle.csv'
         input_cols = list(input_df.columns)
-        print(input_cols)
 
         get_charge_from_scan_file = not CHARGE_KEY in input_df.columns
         scan_df = fetch_scan_data(input_df, config, get_charge_from_scan_file)
@@ -43,7 +42,11 @@ def get_spectral_angle(config):
             lambda x : x.replace('[+16.0]', '(ox)').replace('[+57.0]', '')
         )
         input_df['precursor_charge'] = input_df[CHARGE_KEY]
-        input_df['collision_energy'] = config.collision_energy
+        if 'collisionEnergy' in input_df.columns:
+            input_df = input_df.rename(columns={'collisionEnergy': 'collision_energy'})
+        else:
+            input_df['collision_energy'] = config.collision_energy
+
         input_df[['modified_sequence', 'precursor_charge', 'collision_energy']].to_csv(
             f'{config.output_folder}/saInput.csv', index=False,
         )
@@ -82,12 +85,8 @@ def get_spectral_angle(config):
             ),
             axis=1,
         )
+
         input_df = add_delta_irt(input_df)
-        print(
-            dataset,
-            input_df['deltaRT'].mean(),
-            input_df['deltaRT'].median()
-        )
         input_df[input_cols + ['deltaRT', 'spectralAngle']].to_csv(
             output_loc
         )

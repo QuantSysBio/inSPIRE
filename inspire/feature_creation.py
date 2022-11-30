@@ -428,9 +428,7 @@ def process_single_file(
     combined_df = create_spectral_features(combined_df, mods_df, config)
     combined_df = combined_df.sort_values(by='spectralAngle', ascending=False)
     if isinstance(config.collision_energy, list):
-        combined_df.to_csv('temp.csv', index=False)
         combined_df = combined_df.drop_duplicates(subset=['source', 'scan', 'peptide'])
-        combined_df.to_csv('temp2.csv', index=False)
 
     combined_df = add_delta_irt(combined_df)
 

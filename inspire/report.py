@@ -9,14 +9,12 @@ from inspire.constants import (
     DELTA_SCORE_KEY,
     ENDC_TEXT,
     ENGINE_SCORE_KEY,
-    FINAL_POSTEP_KEY,
     FINAL_Q_VALUE_KEY,
     FINAL_SCORE_KEY,
     MASS_DIFF_KEY,
     OKCYAN_TEXT,
     OUT_PSM_ID_KEY,
     OUT_Q_KEY,
-    OUT_POSTEP_KEY,
     OUT_SCORE_KEY,
     PEPTIDE_KEY,
     PREFIX_KEYS,
@@ -230,7 +228,7 @@ def calculate_fdr_cut_offs(
             assignment_df,
             binders_df,
             q_cut,
-            FINAL_POSTEP_KEY,
+            FINAL_Q_VALUE_KEY,
         )
         n_spire_psms.append(car_stats[0])
         n_spire_binders.append(car_stats[1])
@@ -349,7 +347,7 @@ def generate_report(config):
         fdrs_df = calculate_fdr_cut_offs(
             assignment_df,
             non_spectral_df,
-            OUT_POSTEP_KEY[config.rescore_method],
+            OUT_Q_KEY[config.rescore_method],
             binders_df,
             ns_binders_df
         )
@@ -357,7 +355,7 @@ def generate_report(config):
         fdrs_df = calculate_fdr_cut_offs(
             assignment_df,
             non_spectral_df,
-            OUT_POSTEP_KEY[config.rescore_method],
+            OUT_Q_KEY[config.rescore_method],
         )
 
     if config.use_binding_affinity:

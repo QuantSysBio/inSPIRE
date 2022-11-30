@@ -15,7 +15,11 @@ from inspire.constants import (
     PTM_NAME_KEY,
     PTM_SEQ_KEY,
     PTM_WEIGHT_KEY,
+    SCAN_KEY,
+    SOURCE_KEY,
 )
+from inspire.input.mgf import process_mgf_file
+from inspire.input.mzml import process_mzml_file
 
 def permute_ptms(peptide, ptm_seq, uniform_length=False):
     """ Function to generate all possible permutations on the PTMs of a peptide
@@ -309,3 +313,80 @@ def add_fixed_modifications(search_df, mods_df, fixed_modifications):
     )
 
     return search_df, mods_df
+
+def convert_mod_seq_to_ptm_seq(mod_seq):
+    """ Function to convert the modified prosit sequence to the PTM seq used elsewhere.
+
+    Parameters
+    ----------
+    mod_seq : str
+        The input sequence for Prosit.
+
+    Returns
+    -------
+    ptm_seq : str
+        The string of digits used to represent any PTMs present.
+    """
+    ptm_seq = '0.'
+    while mod_seq:
+        if len(mod_seq) == 1 or mod_seq[1] != '[':
+            ptm_seq += '0'
+            mod_seq = mod_seq[1:]
+        elif mod_seq[1] == '[' and mod_seq[0] == 'C':
+            ptm_seq += '2'
+            mod_seq = mod_seq[8:]
+        else:
+            ptm_seq += '1'
+            mod_seq = mod_seq[8:]
+
+    ptm_seq += '.0'
+    return ptm_seq
+
+def fetch_scan_data(input_df, config, with_charge):
+    """ Function to fetch the experimental scan data.
+
+    Parameters
+    ----------
+    input_df : pd.DataFrame
+        The DataFrame of PSMs whose spectra we wish to plot.
+    config : inspire.config.Config
+        The Config object used to run the inSPIRE experiment.
+
+    Returns
+    -------
+    total_scan_df : pd.DataFrame
+        A DataFrame of the necessary scan data.
+    """
+    source_files = input_df[SOURCE_KEY].unique().tolist()
+    scan_dfs = []
+    if config.combined_scans_file is not None:
+        scan_ids = input_df[SCAN_KEY].tolist()
+        mgf_filename = f'{config.scans_folder}/{config.combined_scans_file}'
+        scan_dfs = [process_mgf_file(
+            mgf_filename,
+            set(scan_ids),
+            config.scan_title_format,
+            config.source_files,
+            with_charge=with_charge,
+        )]
+    else:
+        for scan_file in source_files:
+            scan_ids = input_df[input_df[SOURCE_KEY] == scan_file][SCAN_KEY].tolist()
+            if config.scans_format == 'mzML':
+                scan_df = process_mzml_file(
+                    f'{config.scans_folder}/{scan_file}.{config.scans_format}',
+                    set(scan_ids),
+                    with_charge=with_charge,
+                )
+            else:
+                mgf_filename = f'{config.scans_folder}/{scan_file}.{config.scans_format}'
+                scan_df = process_mgf_file(
+                    mgf_filename,
+                    set(scan_ids),
+                    config.scan_title_format,
+                    config.source_files,
+                    with_charge=with_charge,
+                )
+            scan_dfs.append(scan_df)
+    total_scan_df = pd.concat(scan_dfs)
+    return total_scan_df
