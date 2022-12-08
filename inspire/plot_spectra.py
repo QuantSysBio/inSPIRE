@@ -565,7 +565,9 @@ def plot_spectra(config):
             ticks="outside",
         )
 
-        fig.show()
+        if not config.silent_execution:
+            fig.show()
+
         pio.write_image(
             fig,
             f'{config.output_folder}/spectralPlots{group_idx}.pdf',

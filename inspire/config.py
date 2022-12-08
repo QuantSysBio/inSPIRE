@@ -36,6 +36,7 @@ ALL_CONFIG_KEYS = [
     'searchResults',
     'searchEngine',
     'sourceFileName',
+    'silentExecution',
     'spectralAngleDfs',
     'spectralPredictor',
     'useAccessionStrata',
@@ -113,6 +114,7 @@ class Config:
         self.reduce = config_dict.get('reduce', False)
         self.rescore_method = config_dict.get('rescoreMethod', 'mokapot')
         self.sa_query_dfs = config_dict.get('spectralAngleDfs', None)
+        self.silent_execution = config_dict.get('silentExecution', False)
 
         self.filter_c = config_dict.get('filterCysteine', True)
         if self.spectral_predictor == 'prosit':
