@@ -140,7 +140,9 @@ def main():
         )
         final_rescoring(config)
 
-    if args.pipeline in ('generateReport', 'featureSelection+', 'rescore', 'core'):
+    if (
+        args.pipeline in ('featureSelection+', 'rescore', 'core') and not config.silent_execution
+    ) or args.pipeline == 'generateReport':
         print(
             OKGREEN_TEXT +
             'Generating inSPIRE Performance Report...' +
