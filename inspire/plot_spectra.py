@@ -205,6 +205,7 @@ def pair_plot(df_row, mz_accuracy, mz_units):
     """
     index = df_row['index']
     peptide = df_row['peptide']
+    pep_len = len(peptide)
     pred_intes = [-x for x in df_row['prositIons'].values()]
 
     pred_mzs, plotting_names = convert_names_and_mzs(
@@ -244,14 +245,19 @@ def pair_plot(df_row, mz_accuracy, mz_units):
                 }
             )
 
+    if pep_len < 20:
+        annot_height = 1.5
+    else:
+        annot_height = 0.7
+
     extra_traces = []
     annotations.append({
         'showarrow': False,
             'text': 'Experimental Spectrum',
             'x': 1300,
             'ax': 1300,
-            'y': 1.5,
-            'ay': 1.5,
+            'y': annot_height,
+            'ay': annot_height,
             'font_size': 12,
             'font_family': "Arial, monospace",
             'xref': f'x{index+1}',
