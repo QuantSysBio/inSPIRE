@@ -42,6 +42,7 @@ from inspire.prepare import create_prosit_mod_seq
 from inspire.retention_time import add_delta_irt
 from inspire.spectral_features import SPECTRAL_FEATURES, DELTA_FEATURES, create_spectral_features
 from inspire.utils import (
+    check_bad_mods,
     get_ox_flag,
     modify_sequence_for_skyline,
     remove_source_suffixes,
@@ -170,33 +171,20 @@ def filter_input_columns(combined_df, config, file_idx):
 
     use_cols += [SOURCE_INDEX_KEY]
 
-    use_cols += [PEPTIDE_KEY, ACCESSION_KEY]
-
     if config.use_accession_stratum:
         acc_cols = []
-        if config.raw_file_groups is not None:
-            for a_idx in range(len(config.accession_hierarchy)):
-                stratum_name = config.accession_hierarchy[int(a_idx)]
-                for file_group in config.raw_file_groups:
-                    f_names = config.raw_file_groups[file_group]
-                    combined_df[f'accession_{stratum_name}_{file_group}'] = combined_df.apply(
-                        lambda x, a=a_idx, g=f_names: (
-                            1 if x[ACCESSION_STRATUM_KEY] == a and x[SOURCE_KEY] in g else 0
-                        ),
-                        axis=1
-                    )
-                    acc_cols.append(f'accession_{stratum_name}_{file_group}')
-        else:
-            for a_idx in range(len(config.accession_hierarchy)):
-                stratum_name = config.accession_hierarchy[int(a_idx)]
-                combined_df[f'accession_{stratum_name}'] = combined_df[
-                    ACCESSION_STRATUM_KEY
-                ].apply(
-                    lambda x, val=a_idx: 1 if x == val else 0
-                )
-                acc_cols.append(f'accession_{stratum_name}')
+        for a_idx in range(len(config.accession_hierarchy)):
+            stratum_name = config.accession_hierarchy[int(a_idx)]
+            combined_df[f'accession_{stratum_name}'] = combined_df[
+                ACCESSION_STRATUM_KEY
+            ].apply(
+                lambda x, val=a_idx: 1 if x == val else 0
+            )
+            acc_cols.append(f'accession_{stratum_name}')
 
         use_cols += sorted(acc_cols)
+
+    use_cols += [PEPTIDE_KEY, ACCESSION_KEY]
 
     combined_df = combined_df[use_cols].rename(
         columns={ACCESSION_KEY: IN_ACCESSION_KEY[config.rescore_method]}
@@ -344,6 +332,7 @@ def process_single_file(
             set(scans.tolist()),
             config.scan_title_format,
             config.source_files,
+            combined_source_file=config.combined_scans_file is not None,
             with_retention_time=with_rt,
         )
 
@@ -430,7 +419,7 @@ def process_single_file(
     if isinstance(config.collision_energy, list):
         combined_df = combined_df.drop_duplicates(subset=['source', 'scan', 'peptide'])
 
-    combined_df = add_delta_irt(combined_df)
+    combined_df = add_delta_irt(combined_df, config, scan_file)
 
     print(
         OKCYAN_TEXT + '\t\t\tCreated Spectral and Delta RT Features.' + ENDC_TEXT
@@ -440,9 +429,25 @@ def process_single_file(
             lambda x, f_id=file_idx : f_id * max_scan  + x
         )
     else:
-        combined_df[PERC_SCAN_ID] = combined_df[MASCOT_PEP_QUERY_KEY].apply(
-            lambda x, f_id=file_idx : f_id * max_scan  + int(x.split('.mgf')[-1])
-        )
+        if config.combined_scans_file is None:
+            combined_df[PERC_SCAN_ID] = combined_df[MASCOT_PEP_QUERY_KEY].apply(
+                lambda x, f_id=file_idx : f_id * max_scan  + int(x.split('.mgf')[-1])
+            )
+        else:
+            if config.source_files is not None:
+                combined_df[PERC_SCAN_ID] = combined_df.apply(
+                    lambda x : (
+                        config.source_files.index(x[SOURCE_KEY]) * max_scan
+                    ) + int(x[MASCOT_PEP_QUERY_KEY].split('.mgf')[-1]),
+                    axis=1,
+                )
+            else:
+                source_files = combined_df[SOURCE_KEY].unique().tolist()
+                combined_df[PERC_SCAN_ID] = combined_df.apply(
+                    lambda x : (source_files.index(x[SOURCE_KEY]) * max_scan) + x[SCAN_KEY],
+                    axis=1,
+                )
+
     combined_df = filter_input_columns(combined_df, config, file_idx)
     combined_df = combined_df.sort_values(by=PERC_SCAN_ID)
 
@@ -552,17 +557,6 @@ def get_mod_score(df_row):
         return df_row[ENGINE_SCORE_KEY]
     return 0.7*df_row[ENGINE_SCORE_KEY]
 
-def check_bad_mods(ptm_str, bad_mods):
-    """ Function to check for the presence of ptms other than oxidation of methionine
-        or carbamidomehtylation of Cysteine.
-    """
-    if not isinstance(ptm_str, str):
-        return False
-
-    for mod_id in ptm_str:
-        if mod_id in bad_mods:
-            return True
-    return False
 
 def process_unknown_modifications(target_df, mods_df, config):
     """ Function to handle modifications which are unknown to the Prosit spectral predictor
@@ -658,9 +652,6 @@ def create_features(config):
         The Config object used throughout the pipeline.
     """
     target_df, mods_df = generic_read_df(config)
-
-    if config.use_accession_stratum:
-        target_df = process_accession_groups(target_df, config)
 
     target_df = process_unknown_modifications(target_df, mods_df, config)
 

@@ -73,20 +73,12 @@ def get_invitro_spi_acc_group(accession, search_engine):
     else:
         raise ValueError(f'Unrecognised Search Engine: {search_engine}')
     all_possible_accessions = accession.split(splitter)
-    assignment = None
+    assignment = 0
     for individiual_accession in all_possible_accessions:
         if 'PCP' in individiual_accession:
             return 0
         if 'PSP' in individiual_accession:
-            data = individiual_accession.split('_')
-            data = [x for x in data if x != 'Reversed']
-            range_1 = set(range(int(data[1]), int(data[2])))
-            range_2 = set(range(int(data[3]), int(data[4])))
-
-            if (list(set(range_1) & set(range_2)) and assignment is None):
-                assignment = 2
-            else:
-                assignment = 1
+            assignment = 1
     return assignment
 
 def validate_accession_group(df_row, proteome, rev_proteome, config):

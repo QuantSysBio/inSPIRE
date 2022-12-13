@@ -18,6 +18,8 @@ from inspire.feature_creation import create_features
 from inspire.feature_selection import select_features
 from inspire.rescore import final_rescoring
 from inspire.report import generate_report
+from inspire.utils import fetch_collision_energy
+from inspire.validate import validate_spliced
 import inspire
 
 print(f'\n---> Running inSPIRE version {inspire.__version__} <---\n')
@@ -83,13 +85,19 @@ def main():
         )
         download_models(force_reload=config.force_reload)
 
-    if args.pipeline == 'calibrate':
+    if args.pipeline == 'calibrate' or (
+        config.collision_energy is None and
+        not os.path.exists(f'{config.output_folder}/collisionEnergyStats.csv')
+    ):
         print(
             OKGREEN_TEXT +
             'Running CE Calibration...' +
             ENDC_TEXT
         )
         calibrate(config)
+
+    if config.collision_energy is None:
+        config.collision_energy = fetch_collision_energy(config.output_folder)
 
     if args.pipeline in ('spectralPrepare', 'prepare', 'core'):
         print(
@@ -149,6 +157,18 @@ def main():
             ENDC_TEXT
         )
         generate_report(config)
+
+    if (
+        args.pipeline in ('validate', 'featureSelection+', 'rescore', 'core', 'calibrate+core')
+        and config.use_accession_stratum
+    ):
+        print(
+            OKGREEN_TEXT +
+            'Validating spliced assignments...' +
+            ENDC_TEXT
+        )
+        validate_spliced(config)
+
 
     if args.pipeline == 'plotSpectra':
         print(

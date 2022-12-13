@@ -20,6 +20,7 @@ def process_mgf_file(
         scan_ids,
         scan_file_format,
         source_list,
+        combined_source_file=False,
         with_charge=False,
         with_retention_time=False,
     ):
@@ -62,7 +63,10 @@ def process_mgf_file(
                         spectrum['params']['title'].split('scan=')[-1]
                     )
                     scan_id = int(regex_match.group(1))
-                source = filename[:-4]
+                if combined_source_file:
+                    source = spectrum['params']['title'].split('File:"')[-1].split('.raw"')[0]
+                else:
+                    source = filename[:-4]
             else:
                 scan_id = int(spectrum['params']['title'].split(' Scan ')[-1].split(' (rt')[0])
                 source = source_list[

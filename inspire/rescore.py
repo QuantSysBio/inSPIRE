@@ -20,6 +20,7 @@ from inspire.constants import (
     OUT_SCORE_KEY,
     PEPTIDE_KEY,
     PSM_ID_KEY,
+    RT_KEY,
     SCAN_KEY,
     SOURCE_KEY,
     SPECTRAL_ANGLE_KEY,
@@ -166,7 +167,14 @@ def _add_key_features(target_psms, config):
     )
     input_df = input_df.drop_duplicates(subset=[psm_id_key, PEPTIDE_KEY])
 
-    key_features = [SPECTRAL_ANGLE_KEY, 'matchedCoverage', 'deltaRT', ENGINE_SCORE_KEY, CHARGE_KEY]
+    key_features = [
+        SPECTRAL_ANGLE_KEY,
+        'matchedCoverage',
+        RT_KEY,
+        'deltaRT',
+        ENGINE_SCORE_KEY,
+        CHARGE_KEY,
+    ]
     if config.use_accession_stratum:
         acc_cols = [x for x in input_df.columns if x.startswith('accession')]
         input_df[ACCESSION_STRATUM_KEY] = input_df.apply(

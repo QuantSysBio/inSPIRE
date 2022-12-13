@@ -647,6 +647,12 @@ def select_features(config):
         if config.use_binding_affinity == 'asFeature':
             feature_set += ['bindingAffinity']
 
+        if config.use_accession_stratum:
+            feature_set += [
+                col for col in all_features_df.columns # pylint: disable=no-member
+                if col.startswith('accession_')
+            ]
+
         if config.exclude_features is not None and config.exclude_features:
             exclude_features = (
                 config.exclude_features +

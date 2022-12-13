@@ -94,7 +94,7 @@ class Config:
 
         # Recommended:
         self.n_cores = config_dict.get('nCores', 1)
-        self.collision_energy = config_dict.get('collisionEnergy', 32)
+        self.collision_energy = config_dict.get('collisionEnergy', None)
         self.mz_accuracy = config_dict.get('mzAccuracy', 0.02)
         self.mz_units = config_dict.get('mzUnits', 'Da')
         self.fixed_modifications = config_dict.get('fixedModifications', None)
