@@ -17,9 +17,22 @@ from inspire.constants import (
     PTM_WEIGHT_KEY,
     SCAN_KEY,
     SOURCE_KEY,
+    SPECTRAL_ANGLE_KEY,
 )
 from inspire.input.mgf import process_mgf_file
 from inspire.input.mzml import process_mzml_file
+
+def fetch_collision_energy(output_folder):
+    """ Function to fetch the calibrated collision energy setting.
+    """
+    results_df = pd.read_csv(
+        f'{output_folder}/collisionEnergyStats.csv'
+    )
+    optimal_collision_energy = results_df['collisionEnergy'].iloc[
+        results_df[SPECTRAL_ANGLE_KEY].idxmax()
+    ]
+
+    return optimal_collision_energy
 
 def permute_ptms(peptide, ptm_seq, uniform_length=False):
     """ Function to generate all possible permutations on the PTMs of a peptide
@@ -83,6 +96,39 @@ def permute_seq(peptide, uniform_length=False):
     if uniform_length:
         permed_peps += [None]*(29-len(permed_peps))
     return permed_peps
+
+def check_bad_mods(ptm_str, bad_mods):
+    """ Function to check for the presence of ptms other than oxidation of methionine
+        or carbamidomehtylation of Cysteine.
+    """
+    if not isinstance(ptm_str, str):
+        return False
+
+    for mod_id in ptm_str:
+        if mod_id in bad_mods:
+            return True
+    return False
+
+def get_cam_flag(mods_df):
+    """ Function to get the flag for oxidation of methionine from the PTMs DataFrame.
+    Parameters
+    ----------
+    mods_df : pd.DataFrame
+        A small DataFrame detailing the PTMs found in the data.
+    Returns
+    -------
+    carb_flag : int
+        The flag for carbamidomtheylation of cysteine.
+    """
+    try:
+        carb_flag = int(mods_df[
+            (mods_df[PTM_NAME_KEY] == 'Carbamidomethylation') |
+            (mods_df[PTM_NAME_KEY] == 'Carbamidomethyl (C)')
+        ][PTM_ID_KEY].iloc[0])
+    except IndexError:
+        carb_flag = -2
+
+    return carb_flag
 
 def get_ox_flag(mods_df):
     """ Function to get the flag for oxidation of methionine from the PTMs DataFrame.
@@ -367,6 +413,7 @@ def fetch_scan_data(input_df, config, with_charge):
             set(scan_ids),
             config.scan_title_format,
             config.source_files,
+            combined_source_file=True,
             with_charge=with_charge,
         )]
     else:
@@ -385,6 +432,7 @@ def fetch_scan_data(input_df, config, with_charge):
                     set(scan_ids),
                     config.scan_title_format,
                     config.source_files,
+                    combined_source_file=False,
                     with_charge=with_charge,
                 )
             scan_dfs.append(scan_df)

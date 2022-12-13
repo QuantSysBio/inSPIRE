@@ -4,12 +4,16 @@
 import pandas as pd
 
 from inspire.constants import (
+    ACCESSION_STRATUM_KEY,
     BOLD_TEXT,
     ENDC_TEXT,
     ENGINE_SCORE_KEY,
+    KNOWN_PTM_WEIGHTS,
     LABEL_KEY,
     OKBLUE_TEXT,
     OKCYAN_TEXT,
+    PTM_ID_KEY,
+    PTM_NAME_KEY,
     PTM_SEQ_KEY,
     SCAN_KEY,
     SOURCE_KEY,
@@ -24,7 +28,12 @@ from inspire.feature_creation import combine_spectral_data
 from inspire.predict_spectra import predict_spectra
 from inspire.prepare import write_prosit_input_df
 from inspire.spectral_features import calculate_spectral_features
-from inspire.utils import get_ox_flag, remove_source_suffixes
+from inspire.utils import (
+    check_bad_mods,
+    get_ox_flag,
+    get_cam_flag,
+    remove_source_suffixes,
+)
 
 COLLISION_ENERGY_RANGE = [20 + i for i in range(21)]
 
@@ -36,7 +45,21 @@ def _get_top_hits(config):
     config : inspire.config.Config
         The Config object for the experiment.
     """
-    target_df, mods_df = generic_read_df(config)
+    target_df, mods_df = generic_read_df(config, save_dfs=False, overwrite_reduce=True)
+
+    unknown_mods = mods_df[
+        (mods_df[PTM_NAME_KEY] != 'Oxidation (M)') &
+        ((mods_df[PTM_NAME_KEY] != 'Carbamidomethyl (C)'))
+    ][PTM_ID_KEY].tolist()
+    unknown_mods = {str(x) for x in unknown_mods}
+
+    target_df['unknownModifications'] = target_df[PTM_SEQ_KEY].apply(
+        lambda x : check_bad_mods(x, unknown_mods)
+    )
+    target_df = target_df[~target_df['unknownModifications']]
+
+    if ACCESSION_STRATUM_KEY in target_df.columns:
+        target_df = target_df[target_df[ACCESSION_STRATUM_KEY] == 0]
 
     target_df = target_df[target_df[PTM_SEQ_KEY].isna()]
     top_5_pct_cut = target_df[ENGINE_SCORE_KEY].quantile(0.95)
@@ -100,6 +123,13 @@ def calibrate(config):
         scan_files = target_df[SOURCE_KEY].unique().tolist()
 
     ox_flag = get_ox_flag(mods_df)
+    cam_flag = get_cam_flag(mods_df)
+
+    mods_dict = {
+        0: 0.0,
+        int(cam_flag): KNOWN_PTM_WEIGHTS['Carbamidomethyl (C)'],
+        int(ox_flag): KNOWN_PTM_WEIGHTS['Oxidation (M)']
+    }
 
     scan_dfs = []
     for scan_file in scan_files:
@@ -119,7 +149,8 @@ def calibrate(config):
                 f'{config.scans_folder}/{scan_file}.{config.scans_format}',
                 set(scans.tolist()),
                 config.scan_title_format,
-                config.source_files
+                config.source_files,
+                combined_source_file=config.combined_scans_file is not None,
             )
         scan_dfs.append(scan_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY]))
     combined_scan_df = pd.concat(scan_dfs)
@@ -143,7 +174,7 @@ def calibrate(config):
     combined_df = combined_df.apply(
         lambda x : calculate_spectral_features(
             x,
-            {0: 0.0},
+            mods_dict,
             config.mz_accuracy,
             config.mz_units,
             None,

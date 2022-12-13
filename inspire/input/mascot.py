@@ -461,7 +461,14 @@ def _replace_ptm_id(ptm_seq, replacements):
             new_ptm_seq += char
     return new_ptm_seq
 
-def read_mascot_data(mascot_data, scan_title_format, source_list, reduce, source_filename):
+def read_mascot_data(
+        mascot_data,
+        scan_title_format,
+        source_list,
+        reduce,
+        source_filename,
+        with_accession=False,
+    ):
     """ Function to read in mascot search results from one or more files.
 
     Parameters
@@ -504,7 +511,14 @@ def read_mascot_data(mascot_data, scan_title_format, source_list, reduce, source
             None,
         )
 
-    hits_df = mascot_reduce_to_max(hits_df, reduce)
+    if with_accession:
+        hits_df['PSP'] = hits_df[ACCESSION_KEY].apply(
+            lambda x : 1 if 'PSP' in x else 0
+        )
+        hits_df = hits_df.sort_values(by='PSP')
+        hits_df = hits_df.sort_values(by=LABEL_KEY, ascending=False)
+
+    hits_df = mascot_reduce_to_max(hits_df, reduce, with_accession)
 
     hits_df = hits_df.apply(
         lambda x : separate_scan_and_source(x, scan_title_format, source_list, source_filename),
@@ -528,7 +542,7 @@ def read_mascot_data(mascot_data, scan_title_format, source_list, reduce, source
 
     return hits_df, variable_mods
 
-def mascot_reduce_to_max(main_df, reduce):
+def mascot_reduce_to_max(main_df, reduce, with_accession):
     """ Function to filter down to the best scoring PSM per spectrum.
 
     Parameters
@@ -541,7 +555,14 @@ def mascot_reduce_to_max(main_df, reduce):
     main_df : pd.DataFrame
         The search DataFrame with results filtered per PSM.
     """
-    main_df = main_df.sort_values(by=[LABEL_KEY, ENGINE_SCORE_KEY], ascending=False)
+    if with_accession:
+        main_df = main_df.sort_values(
+            by=[LABEL_KEY, 'PSP', ENGINE_SCORE_KEY], ascending=[False, True, False]
+        )
+    else:
+        main_df = main_df.sort_values(
+            by=[LABEL_KEY, ENGINE_SCORE_KEY], ascending=False
+        )
     if reduce:
         main_df['ilSub'] = main_df[PEPTIDE_KEY].apply(
             lambda x : x.replace('I', 'L')
