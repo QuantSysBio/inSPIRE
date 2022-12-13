@@ -262,6 +262,12 @@ def validate_spliced(config):
             f'{config.output_folder}/pre_finalAssignments.csv'
         )
 
+        final_df = final_df[
+            (final_df['spectralAngle'] > 0.7) &
+            (final_df['deltaRT'] < 150) &
+            (final_df['qValue'] < 0.01)
+        ]
+
         final_df.to_csv(
             f'{config.output_folder}/finalAssignments.csv',
             index=False,

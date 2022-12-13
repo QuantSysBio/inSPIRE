@@ -161,7 +161,10 @@ def filter_input_columns(combined_df, config, file_idx):
         use_cols += ['bindingAffinity']
 
     if config.combined_scans_file is not None:
-        scan_files = [remove_source_suffixes(x) for x in config.source_files]
+        if config.source_files is not None:
+            scan_files = [remove_source_suffixes(x) for x in config.source_files]
+        else:
+            scan_files = sorted(combined_df[SOURCE_KEY].unique().tolist())
         combined_df[SOURCE_INDEX_KEY] = combined_df[SOURCE_KEY].apply(scan_files.index)
     else:
         combined_df[SOURCE_INDEX_KEY] = file_idx
