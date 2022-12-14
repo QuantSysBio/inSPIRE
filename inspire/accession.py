@@ -169,9 +169,9 @@ def process_accession_groups(main_df, config):
 
         rev_prot_seqs = []
         for entry in deepcopy(prot_sequences):
-            entry[0] = 'reversed_' + entry[0]
-            entry[1] = entry[1][::-1]
-            rev_prot_seqs.append(entry)
+            new_entry = ('reversed_' + entry[0], entry[1][::-1])
+            rev_prot_seqs.append(new_entry)
+
         main_df = main_df.apply(
             lambda x : validate_accession_stratum(x, prot_sequences, rev_prot_seqs, config),
             axis=1
