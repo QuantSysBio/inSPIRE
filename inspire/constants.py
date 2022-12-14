@@ -309,7 +309,6 @@ DELTA_PRO_FEATURES = [
 
 MINIMAL_FEATURE_SET = [
     SPECTRAL_ANGLE_KEY,
-    ENGINE_SCORE_KEY,
     'matchedCoverage',
     'deltaRT',
 ]

@@ -81,7 +81,7 @@ def get_invitro_spi_acc_group(accession, search_engine):
             assignment = 1
     return assignment
 
-def validate_accession_group(df_row, proteome, rev_proteome, config):
+def validate_accession_stratum(df_row, proteome, rev_proteome, config):
     """ Function to validate the accession of a non-canonical PSM by checking for the
         sequence in the standard proteome.
 
@@ -89,9 +89,9 @@ def validate_accession_group(df_row, proteome, rev_proteome, config):
     ----------
     df_row : pd.Series
         An entry in a DataFrame of search results.
-    proteome : Bio.Seq
+    proteome : list of tuple
         The standard proteome.
-    rev_proteome : Bio.Seq
+    rev_proteome : list of tuple
         The reversed proteome.
     config : inspire.config.Config
         The Config object for the experiment.
@@ -101,29 +101,29 @@ def validate_accession_group(df_row, proteome, rev_proteome, config):
     df_row : pd.Series
         The input row updated with accession and accession group validated.
     """
-    pep_seq = df_row[PEPTIDE_KEY]
+    pep_seq = df_row[PEPTIDE_KEY].replace('I', 'L')
     if df_row[ACCESSION_STRATUM_KEY] == 0:
         return df_row
 
     if df_row[LABEL_KEY] == 1:
         for entry in proteome:
-            if pep_seq in entry.seq:
+            if pep_seq in entry[1]:
                 if config.accession_format == 'invitroSPI':
-                    position = entry.seq.index(pep_seq) + 1
+                    position = entry[1].index(pep_seq) + 1
                     df_row[ACCESSION_KEY] = f'PCP_{position}_{position+len(pep_seq)}'
                     df_row[ACCESSION_STRATUM_KEY] = 0
                 else:
-                    df_row[ACCESSION_KEY] = entry.id
+                    df_row[ACCESSION_KEY] = entry[0]
                     df_row[ACCESSION_STRATUM_KEY] = 0
     else:
         for entry in rev_proteome:
-            if pep_seq in entry.seq:
+            if pep_seq in entry[1]:
                 if config.accession_format == 'invitroSPI':
-                    position = entry.seq.index(pep_seq) + 1
+                    position = entry[1].index(pep_seq) + 1
                     df_row[ACCESSION_KEY] = f'PCP_{position}_{position+len(pep_seq)}'
                     df_row[ACCESSION_STRATUM_KEY] = 0
                 else:
-                    df_row[ACCESSION_KEY] = entry.id
+                    df_row[ACCESSION_KEY] = entry[0]
                     df_row[ACCESSION_STRATUM_KEY] = 0
 
     return df_row
@@ -161,15 +161,19 @@ def process_accession_groups(main_df, config):
 
     if config.proteome is not None:
         with open(config.proteome, 'r', encoding='UTF-8') as fasta_file:
-            prot_sequences = list(SeqIO.parse(fasta_file, 'fasta'))
+            prot_sequences = [
+                (entry.id, str(entry.seq).replace('I', 'L')) for entry in SeqIO.parse(
+                    fasta_file, 'fasta'
+                )
+            ]
 
         rev_prot_seqs = []
         for entry in deepcopy(prot_sequences):
-            entry.seq = entry.seq[::-1]
-            entry.id = 'reverse' + entry.id
+            entry[0] = 'reversed_' + entry[0]
+            entry[1] = entry[1][::-1]
             rev_prot_seqs.append(entry)
         main_df = main_df.apply(
-            lambda x : validate_accession_group(x, prot_sequences, rev_prot_seqs, config),
+            lambda x : validate_accession_stratum(x, prot_sequences, rev_prot_seqs, config),
             axis=1
         )
 
