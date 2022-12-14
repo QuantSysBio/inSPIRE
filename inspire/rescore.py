@@ -262,7 +262,10 @@ def final_rescoring(config):
 
     output_df = output_df.sort_values(by=FINAL_SCORE_KEY, ascending=False)
 
-    out_path = f'{config.output_folder}/finalAssignments.csv'
+    if config.use_accession_stratum:
+        out_path = f'{config.output_folder}/pre_finalAssignments.csv'
+    else:
+        out_path = f'{config.output_folder}/finalAssignments.csv'
 
     output_df.to_csv(out_path, index=False)
     print(

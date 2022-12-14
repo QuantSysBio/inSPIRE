@@ -149,16 +149,6 @@ def main():
         final_rescoring(config)
 
     if (
-        args.pipeline in ('featureSelection+', 'rescore', 'core') and not config.silent_execution
-    ) or args.pipeline == 'generateReport':
-        print(
-            OKGREEN_TEXT +
-            'Generating inSPIRE Performance Report...' +
-            ENDC_TEXT
-        )
-        generate_report(config)
-
-    if (
         args.pipeline in ('validate', 'featureSelection+', 'rescore', 'core', 'calibrate+core')
         and config.use_accession_stratum
     ):
@@ -169,6 +159,15 @@ def main():
         )
         validate_spliced(config)
 
+    if (
+        args.pipeline in ('featureSelection+', 'rescore', 'core') and not config.silent_execution
+    ) or args.pipeline == 'generateReport':
+        print(
+            OKGREEN_TEXT +
+            'Generating inSPIRE Performance Report...' +
+            ENDC_TEXT
+        )
+        generate_report(config)
 
     if args.pipeline == 'plotSpectra':
         print(
