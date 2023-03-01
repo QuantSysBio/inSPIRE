@@ -40,6 +40,12 @@ pip install inspirems
 inspire -h
 ```
 
+5) (Optional) If you wish to use Percolator for rescoring rather than Mokapot you will need to install it separately. On Linux, Percolator can be installed via conda with the command below. Otherwise see https://github.com/percolator/percolator.
+
+```
+conda install -c bioconda percolator
+```
+
 Once you have successfully installed inSPIRE you should run it specifying your pipeline and a config file. The core execution of inSPIRE will take the form:
 
 ```
