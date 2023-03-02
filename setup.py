@@ -3,9 +3,9 @@ from setuptools import setup
 
 setup(
     name='inspirems',
-    version=1.4,
+    version=1.5,
     description='Helping to integrate Spectral Predictors and Rescoring.',
-    author='John Cormican, Juliane Liepe',
+    author='John Cormican, Juliane Liepe, Martin Pasen',
     author_email='juliane.liepe@mpinat.mpg.de',
     packages=[
         'inspire',
