@@ -248,6 +248,29 @@ def remove_source_suffixes(source):
         return source[:-4]
     return source
 
+def _check_prosit_compliant_peptide(peptide):
+    """ Helper function to check that a peptide is within the Prosit length restricitons
+        and does not contain any non-standard amino acids.
+
+    Parameters
+    ----------
+    peptide : str
+        A peptide to be checked.
+
+    Returns
+    -------
+    prosit_compliant : bool
+        Whether the peptide is within the restrictions of Prosit.
+    """ 
+    if not isinstance(x, str):
+        return False
+    if len(x) < 7 or len(x) > 30:
+        return False
+    for non_standard_aa in 'BJOUXZ':
+        if non_standard_aa in peptide:
+            return False
+    return True
+
 def filter_for_prosit(search_df):
     """ Function to filter sequences not suitable for Prosit input.
 
@@ -262,12 +285,12 @@ def filter_for_prosit(search_df):
         The input DataFrame with sequences not suitable for Prosit input removed.
     """
     search_df = search_df.dropna(subset=[PEPTIDE_KEY, CHARGE_KEY])
-    search_df_filter = search_df[PEPTIDE_KEY].apply(
-        lambda x : isinstance(x, str) and 'U' not in x and len(x) > 6 and len(x) < 31
-    )
+    search_df_filter = search_df[PEPTIDE_KEY].apply(_check_prosit_compliant_peptide)
+
     search_df = search_df[search_df_filter]
     search_df = search_df[search_df[CHARGE_KEY] < 7]
     search_df.reset_index(drop=True, inplace=True)
+
     return search_df
 
 def _modify_ptm_seq(pep_seq, ptm_seq, ptm_locs, ptm_id):
