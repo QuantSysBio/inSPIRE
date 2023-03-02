@@ -262,9 +262,9 @@ def _check_prosit_compliant_peptide(peptide):
     prosit_compliant : bool
         Whether the peptide is within the restrictions of Prosit.
     """ 
-    if not isinstance(x, str):
+    if not isinstance(peptide, str):
         return False
-    if len(x) < 7 or len(x) > 30:
+    if len(peptide) < 7 or len(peptide) > 30:
         return False
     for non_standard_aa in 'BJOUXZ':
         if non_standard_aa in peptide:
