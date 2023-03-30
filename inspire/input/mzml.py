@@ -1,5 +1,7 @@
 """ Functions for loading experimental spectra from mzml files.
 """
+import os
+
 import numpy as np
 import pandas as pd
 from pyteomics import mzml
@@ -35,13 +37,20 @@ def process_mzml_file(mzml_filename, scan_ids, with_charge=False, with_retention
     mzml_filenames = []
     filename = mzml_filename.split('/')[-1]
 
+    if os.path.exists(mzml_filename.replace('.mzML', '_calibrated.mzML')):
+        input_name = mzml_filename.replace('.mzML', '_calibrated.mzML')
+    elif os.path.exists(mzml_filename):
+        input_name = mzml_filename
+    else:
+        input_name = mzml_filename.replace('.mzML', '_uncalibrated.mzML')
+
     if with_charge:
         charge_list = []
 
     if with_retention_time:
         rt_list = []
 
-    with mzml.read(mzml_filename) as reader:
+    with mzml.read(input_name) as reader:
         for spectrum in reader:
             scan_id = int(spectrum['id'].split('scan=')[1])
             if scan_ids is None or scan_id in scan_ids:

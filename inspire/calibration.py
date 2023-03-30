@@ -35,7 +35,7 @@ from inspire.utils import (
     remove_source_suffixes,
 )
 
-COLLISION_ENERGY_RANGE = [20 + i for i in range(21)]
+COLLISION_ENERGY_RANGE = list(range(20, 41))
 
 def _get_top_hits(config):
     """ Function to extract the top scoring hits for collision energy calibration.
@@ -61,18 +61,15 @@ def _get_top_hits(config):
     if ACCESSION_STRATUM_KEY in target_df.columns:
         target_df = target_df[target_df[ACCESSION_STRATUM_KEY] == 0]
 
-    target_df = target_df[target_df[PTM_SEQ_KEY].isna()]
     top_5_pct_cut = target_df[ENGINE_SCORE_KEY].quantile(0.95)
 
     target_df = target_df[
         (target_df[ENGINE_SCORE_KEY] > top_5_pct_cut) &
-        (target_df[LABEL_KEY] == 1)
+        (target_df[LABEL_KEY] == 1) #move this up
     ]
 
     if target_df.shape[0] > 1000:
-        target_df = target_df.sort_values(by=ENGINE_SCORE_KEY)
-        target_df = target_df.reset_index(drop=True)
-        target_df = target_df[target_df.index < 1000]
+        target_df = target_df.nlargest(1000, columns=[ENGINE_SCORE_KEY])
 
     return target_df, mods_df
 
@@ -96,6 +93,8 @@ def prepare_calibration(config):
             overwrite=idx==0,
         )
 
+    return target_df, mods_df
+
 def calibrate(config):
     """ Function to calibrate the optimal collision energy for Prosit input.
 
@@ -109,18 +108,12 @@ def calibrate(config):
         '\tSelecting top hits...' +
         ENDC_TEXT
     )
-    prepare_calibration(config)
+    target_df, mods_df = prepare_calibration(config)
     predict_spectra(config, 'calibrate')
 
-    target_df, mods_df = _get_top_hits(config)
     prosit_df = msp_to_df(
         f'{config.output_folder}/calibrationPredictions.msp', 'prosit', None,
     )
-
-    if config.combined_scans_file is not None:
-        scan_files = [remove_source_suffixes(config.combined_scans_file)]
-    else:
-        scan_files = target_df[SOURCE_KEY].unique().tolist()
 
     ox_flag = get_ox_flag(mods_df)
     cam_flag = get_cam_flag(mods_df)
@@ -130,6 +123,11 @@ def calibrate(config):
         int(cam_flag): KNOWN_PTM_WEIGHTS['Carbamidomethyl (C)'],
         int(ox_flag): KNOWN_PTM_WEIGHTS['Oxidation (M)']
     }
+
+    if config.combined_scans_file is not None:
+        scan_files = [remove_source_suffixes(config.combined_scans_file)]
+    else:
+        scan_files = target_df[SOURCE_KEY].unique().tolist()
 
     scan_dfs = []
     for scan_file in scan_files:
@@ -153,6 +151,7 @@ def calibrate(config):
                 combined_source_file=config.combined_scans_file is not None,
             )
         scan_dfs.append(scan_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY]))
+
     combined_scan_df = pd.concat(scan_dfs)
     print(
         OKCYAN_TEXT +

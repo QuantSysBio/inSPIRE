@@ -21,7 +21,6 @@ from inspire.constants import (
     SEQ_LEN_KEY,
     SOURCE_KEY,
 )
-from inspire.utils import filter_for_prosit
 
 # Define the relevant column names from MaxQuant search results.
 MQ_ACCESSION_KEY = 'Proteins'
@@ -190,9 +189,7 @@ def read_single_mq_data(mq_data):
         }
     )
 
-    # Filter for Prosit, clean up accession data, and add label.
-    mq_df = filter_for_prosit(mq_df)
-
+    # Clean up accession data, and add label.
     mq_df[ACCESSION_KEY] = mq_df[[MQ_ACCESSION_KEY, MQ_DECOY_KEY]].apply(
         lambda x : 'reverseSeq' if x[MQ_DECOY_KEY] == '+' else x[MQ_ACCESSION_KEY],
         axis=1

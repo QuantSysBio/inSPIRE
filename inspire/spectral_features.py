@@ -197,7 +197,7 @@ def get_matches(
     mz_errors = []
     assigned_inds = []
 
-    max_frag_charge = min(4, precursor_z+1)
+    max_frag_charge = min(4, precursor_z+1) #TODO we only care about the Prosit  ions
     match_idx = 0
     for ion_type in all_prosit_masses:
         for charge in range(1, max_frag_charge):
@@ -366,6 +366,8 @@ def calculate_spectral_features(
 
 
     median_mz_error, mz_error_variance = get_mz_error_stats(mz_errors, min(mz_accuracy, 0.04))
+    df_row[FRAG_MZ_ERR_MED_KEY] = median_mz_error
+    df_row[FRAG_MZ_ERR_VAR_KEY] = mz_error_variance
 
     matched_l2_norm = np.linalg.norm(matched_intensities, ord=2)
     total_l2_norm = np.linalg.norm(df_row[INTENSITIES_KEY], ord=2)
@@ -388,6 +390,21 @@ def calculate_spectral_features(
         ordered_matched_ions,
         ordered_prosit_ions,
     )
+
+    if len(truly_matched_intes) > 0:
+        spearman_total = spearmanr(normed_matched_intensities, ordered_prosit_intes)[0]
+        pearson_total = pearsonr(normed_matched_intensities, ordered_prosit_intes)[0]
+        if not np.isnan(spearman_total):
+            df_row[SPEARMAN_KEY] = spearman_total
+        else:
+            df_row[SPEARMAN_KEY] = 0.0
+        if not np.isnan(pearson_total):
+            df_row[PEARSON_KEY] = pearson_total
+        else:
+            df_row[PEARSON_KEY] = -1.0
+    else:
+        df_row[SPEARMAN_KEY] = 0.0
+        df_row[PEARSON_KEY] = 0.0
 
     if minimal_features:
         return df_row
@@ -461,20 +478,6 @@ def calculate_spectral_features(
         ordered_prosit_intes,
     )
 
-    if len(truly_matched_intes) > 0:
-        spearman_total = spearmanr(normed_matched_intensities, ordered_prosit_intes)[0]
-        pearson_total = pearsonr(normed_matched_intensities, ordered_prosit_intes)[0]
-        if not np.isnan(spearman_total):
-            df_row[SPEARMAN_KEY] = spearman_total
-        else:
-            df_row[SPEARMAN_KEY] = 0.0
-        if not np.isnan(pearson_total):
-            df_row[PEARSON_KEY] = pearson_total
-        else:
-            df_row[PEARSON_KEY] = -1.0
-    else:
-        df_row[SPEARMAN_KEY] = 0.0
-        df_row[PEARSON_KEY] = 0.0
     df_row['nMajorMatchedDivFrags'] = n_major_matched/n_frags_possible
     df_row['nMinorMatchedDivFrags'] = n_minor_matched/n_frags_possible
     df_row[MATCHED_IONS_KEY] = len(truly_matched_intes)/n_frags_possible
@@ -491,8 +494,6 @@ def calculate_spectral_features(
     else:
         df_row[PRECURSOR_INTE_KEY] = 0.0
 
-    df_row[FRAG_MZ_ERR_MED_KEY] = median_mz_error
-    df_row[FRAG_MZ_ERR_VAR_KEY] = mz_error_variance
 
     df_row = get_kr_feats(
         sequence, matched_intensities, ordered_prosit_intes, ordered_prosit_ions, df_row

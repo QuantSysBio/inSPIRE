@@ -21,7 +21,6 @@ from inspire.constants import (
     SEQ_LEN_KEY,
     SOURCE_KEY,
 )
-from inspire.utils import filter_for_prosit
 
 # Define separators within Mascot output and the names for relevant columns.
 MASCOT_HEADER_MARKER = 'Header'
@@ -278,7 +277,6 @@ def _read_mascot_dfs(
     )
 
     # Filter for Prosit and add feature columns not present.
-    hits_df = filter_for_prosit(hits_df)
     hits_df[MASS_DIFF_KEY] = hits_df[MASCOT_MASS_KEY] - hits_df[MASCOT_PRED_MASS_KEY]
     hits_df[SEQ_LEN_KEY] = hits_df[PEPTIDE_KEY].apply(len)
     hits_df['avgResidueMass'] = hits_df[MASCOT_MASS_KEY]/hits_df[SEQ_LEN_KEY]

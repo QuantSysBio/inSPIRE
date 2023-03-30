@@ -24,7 +24,7 @@ from inspire.constants import (
     SEQ_LEN_KEY,
     SOURCE_KEY,
 )
-from inspire.utils import filter_for_prosit, remove_source_suffixes
+from inspire.utils import remove_source_suffixes
 
 # Define the relevant column names from PEAKS DB search results.
 PEAKS_ACCESSION_KEY = 'Accession'
@@ -271,7 +271,6 @@ def read_single_peaks_data(df_loc):
 
     peaks_df[ACCESSION_KEY].fillna('unknown', inplace=True)
 
-    peaks_df = filter_for_prosit(peaks_df)
     adjusted_masses = peaks_df[PEAKS_MASS_KEY] + peaks_df[CHARGE_KEY]*PROTON
     peaks_df[MASS_DIFF_KEY] = (
         (peaks_df[PEAKS_MZ_KEY]*peaks_df[CHARGE_KEY]) - adjusted_masses

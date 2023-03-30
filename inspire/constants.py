@@ -239,6 +239,7 @@ RESIDUE_WEIGHTS = {
 
 KNOWN_PTM_WEIGHTS = {
     'Deamidated (N)': 0.984016,
+    'Deamidated (Q)': 0.984016,
     'Deamidated (NQ)': 0.984016,
     'Deamidation (NQ)': 0.984016,
     'Deamidation (N)': 0.984016,
@@ -256,6 +257,7 @@ KNOWN_PTM_WEIGHTS = {
 
 KNOWN_PTM_LOC = {
     'Deamidated (N)': 'N',
+    'Deamidated (Q)': 'Q',
     'Deamidated (NQ)': 'NQ',
     'Deamidation (NQ)': 'NQ',
     'Deamidation (N)': 'N',
@@ -271,6 +273,7 @@ KNOWN_PTM_LOC = {
 
 MS2PIP_NAME_MAPPINGS = {
     'Deamidated (N)': 'Deamidation',
+    'Deamidated (Q)': 'Deamidation',
     'Deamidated (NQ)': 'Deamidation',
     'Deamidation (NQ)': 'Deamidation',
     'Deamidation (N)': 'Deamidation',
@@ -309,8 +312,8 @@ DELTA_PRO_FEATURES = [
 
 MINIMAL_FEATURE_SET = [
     SPECTRAL_ANGLE_KEY,
-    'matchedCoverage',
     'deltaRT',
+    SPEARMAN_KEY,
 ]
 
 # Constants used by deltapro predictor.
