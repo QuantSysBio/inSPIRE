@@ -6,7 +6,6 @@ import os
 
 import pandas as pd
 
-from inspire.accession import process_accession_groups
 from inspire.basic_features import create_basic_features
 from inspire.constants import(
     ACCESSION_STRATUM_KEY,
@@ -14,7 +13,6 @@ from inspire.constants import(
     BASIC_FEATURES,
     CHARGE_KEY,
     ENDC_TEXT,
-    ENGINE_SCORE_KEY,
     LABEL_KEY,
     MINIMAL_FEATURE_SET,
     OKCYAN_TEXT,
@@ -42,6 +40,7 @@ from inspire.prepare import create_prosit_mod_seq
 from inspire.retention_time import add_delta_irt
 from inspire.spectral_features import SPECTRAL_FEATURES, DELTA_FEATURES, create_spectral_features
 from inspire.utils import (
+    accession_informed_filter,
     check_bad_mods,
     get_ox_flag,
     modify_sequence_for_skyline,
@@ -155,7 +154,10 @@ def filter_input_columns(combined_df, config, file_idx):
         if config.delta_method != 'ignore':
             use_cols += DELTA_FEATURES
 
-        use_cols += ['deltaRT']
+        use_cols.append('deltaRT')
+
+    if not config.delta_rt_per_file:
+        use_cols.append('iRT')
 
     if config.use_binding_affinity == 'asFeature':
         use_cols += ['bindingAffinity']
@@ -252,6 +254,12 @@ def write_with_spectral_features(
                     for line in in_file:
                         out_file.write(line)
                 os.remove(tab_file)
+
+    if not config.delta_rt_per_file:
+        all_features_df = pd.read_csv(f'{config.output_folder}/input_all_features.tab', sep='\t')
+        all_features_df = add_delta_irt(all_features_df, config, 'combined')
+        all_features_df.to_csv(f'{config.output_folder}/input_all_features.tab', sep='\t', index=False)
+
     print(
         OKCYAN_TEXT + '\t\t\tFull input DataFrame written to csv.' + ENDC_TEXT
     )
@@ -422,7 +430,10 @@ def process_single_file(
     if isinstance(config.collision_energy, list):
         combined_df = combined_df.drop_duplicates(subset=['source', 'scan', 'peptide'])
 
-    combined_df = add_delta_irt(combined_df, config, scan_file)
+    if config.delta_rt_per_file:
+        combined_df = add_delta_irt(combined_df, config, scan_file)
+    else:
+        combined_df['deltaRT'] = 0
 
     print(
         OKCYAN_TEXT + '\t\t\tCreated Spectral and Delta RT Features.' + ENDC_TEXT
@@ -516,7 +527,7 @@ def write_rescoring_features(
         mhc_pan_df = read_mhcpan_output(f'{config.output_folder}/mhcpan')
         mhc_pan_df = mhc_pan_df.rename(columns={
             'Peptide': PEPTIDE_KEY,
-            'Aff(nM)': 'bindingAffinity'
+            'Aff(nM)': 'bindingAffinity',
         })
         mhc_pan_df['bindingAffinity'] = mhc_pan_df['bindingAffinity'].apply(log10)
         mhc_pan_df = mhc_pan_df[[PEPTIDE_KEY, 'bindingAffinity']]
@@ -553,14 +564,6 @@ def write_rescoring_features(
         config,
     )
 
-def get_mod_score(df_row):
-    """ Helper function to compare different accession strata.
-    """
-    if df_row[ACCESSION_STRATUM_KEY] == 0:
-        return df_row[ENGINE_SCORE_KEY]
-    return 0.7*df_row[ENGINE_SCORE_KEY]
-
-
 def process_unknown_modifications(target_df, mods_df, config):
     """ Function to handle modifications which are unknown to the Prosit spectral predictor
         (as well as unmodified cysteines).
@@ -593,31 +596,7 @@ def process_unknown_modifications(target_df, mods_df, config):
         )
         count_before_drop = target_df.shape[0]
         if config.use_accession_stratum:
-            target_df['modEngineScore'] = target_df[
-                [ENGINE_SCORE_KEY, ACCESSION_STRATUM_KEY]
-            ].apply(get_mod_score, axis=1)
-            target_df['maxModScore'] = target_df.groupby(
-                [SOURCE_KEY, SCAN_KEY]
-            )['modEngineScore'].transform(max)
-
-            unknown_df = target_df[
-                (target_df['unknownModifications']) &
-                (target_df['maxModScore'] == target_df['modEngineScore'])
-            ]
-            unknown_df = unknown_df[[SOURCE_KEY, SCAN_KEY]].drop_duplicates()
-            unknown_df['drop'] = 'yes'
-            target_df = target_df[
-                ~target_df['unknownModifications']
-            ].drop(['modEngineScore', 'maxModScore', 'unknownModifications'], axis=1)
-
-            target_df = pd.merge(
-                target_df,
-                unknown_df,
-                how='left',
-                on=[SOURCE_KEY, SCAN_KEY]
-            )
-            target_df = target_df[target_df['drop'] != 'yes']
-            target_df = target_df.drop('drop', axis=1)
+            target_df = accession_informed_filter(target_df, 'unknownModifications')
         else:
             target_df = target_df[~target_df['unknownModifications']].drop(
                 ['unknownModifications'], axis=1

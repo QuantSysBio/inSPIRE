@@ -6,7 +6,9 @@ import re
 import pandas as pd
 
 from inspire.constants import (
+    ACCESSION_STRATUM_KEY,
     CHARGE_KEY,
+    ENGINE_SCORE_KEY,
     KNOWN_PTM_LOC,
     KNOWN_PTM_WEIGHTS,
     PEPTIDE_KEY,
@@ -144,7 +146,9 @@ def get_ox_flag(mods_df):
         The flag for oxidation of methionine.
     """
     try:
-        ox_flag = mods_df[mods_df[PTM_NAME_KEY] == 'Oxidation (M)'].index[0] + 1
+        ox_flag = int(
+            mods_df[mods_df[PTM_NAME_KEY] == 'Oxidation (M)'][PTM_ID_KEY].iloc[0]
+        )
     except IndexError:
         ox_flag = -1
 
@@ -248,7 +252,7 @@ def remove_source_suffixes(source):
         return source[:-4]
     return source
 
-def _check_prosit_compliant_peptide(peptide):
+def _check_prosit_compliant_peptide(df_row):
     """ Helper function to check that a peptide is within the Prosit length restricitons
         and does not contain any non-standard amino acids.
 
@@ -262,6 +266,7 @@ def _check_prosit_compliant_peptide(peptide):
     prosit_compliant : bool
         Whether the peptide is within the restrictions of Prosit.
     """ 
+    peptide = df_row[PEPTIDE_KEY]
     if not isinstance(peptide, str):
         return False
     if len(peptide) < 7 or len(peptide) > 30:
@@ -269,15 +274,56 @@ def _check_prosit_compliant_peptide(peptide):
     for non_standard_aa in 'BJOUXZ':
         if non_standard_aa in peptide:
             return False
+    if df_row[CHARGE_KEY] > 6:
+        return False
     return True
 
-def filter_for_prosit(search_df):
+def get_mod_score(df_row):
+    """ Helper function to compare different accession strata.
+    """
+    if df_row[ACCESSION_STRATUM_KEY] == 0:
+        return df_row[ENGINE_SCORE_KEY]
+    return 0.7*df_row[ENGINE_SCORE_KEY]
+
+def accession_informed_filter(target_df, drop_feature_key):
+    """ Function for filtering with competitors from lower accession strata excluded.
+    """
+    target_df['modEngineScore'] = target_df[
+        [ENGINE_SCORE_KEY, ACCESSION_STRATUM_KEY]
+    ].apply(get_mod_score, axis=1)
+    target_df['maxModScore'] = target_df.groupby(
+        [SOURCE_KEY, SCAN_KEY]
+    )['modEngineScore'].transform(max)
+
+    top_rank_mod_df = target_df[
+        (target_df[drop_feature_key]) &
+        (target_df['maxModScore'] == target_df['modEngineScore'])
+    ]
+    top_rank_mod_df = top_rank_mod_df[[SOURCE_KEY, SCAN_KEY]].drop_duplicates()
+    top_rank_mod_df['drop'] = 'yes'
+    target_df = target_df[
+        ~target_df[drop_feature_key]
+    ].drop(['modEngineScore', 'maxModScore', drop_feature_key], axis=1)
+
+    target_df = pd.merge(
+        target_df,
+        top_rank_mod_df,
+        how='left',
+        on=[SOURCE_KEY, SCAN_KEY]
+    )
+    target_df = target_df[target_df['drop'] != 'yes']
+    target_df = target_df.drop('drop', axis=1)
+    return target_df
+
+def filter_for_prosit(search_df, use_accession_stratum):
     """ Function to filter sequences not suitable for Prosit input.
 
     Parameters
     ----------
     search_df : pd.DataFrame
         A DataFrame of search results from an ms search engine.
+    use_accession_stratum : bool
+        Whether accession stratum is being used as a feature.
 
     Returns
     -------
@@ -285,11 +331,15 @@ def filter_for_prosit(search_df):
         The input DataFrame with sequences not suitable for Prosit input removed.
     """
     search_df = search_df.dropna(subset=[PEPTIDE_KEY, CHARGE_KEY])
-    search_df_filter = search_df[PEPTIDE_KEY].apply(_check_prosit_compliant_peptide)
-
-    search_df = search_df[search_df_filter]
-    search_df = search_df[search_df[CHARGE_KEY] < 7]
-    search_df.reset_index(drop=True, inplace=True)
+    search_df_filter = search_df[[PEPTIDE_KEY, CHARGE_KEY]].apply(
+        _check_prosit_compliant_peptide, axis=1
+    )
+    if use_accession_stratum:
+        search_df['prositNonCompliant'] = ~search_df_filter
+        search_df = accession_informed_filter(search_df, 'prositNonCompliant')
+    else:
+        search_df = search_df[search_df_filter]
+        search_df.reset_index(drop=True, inplace=True)
 
     return search_df
 

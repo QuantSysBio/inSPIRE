@@ -140,7 +140,7 @@ def apply_non_spectral_percolator(output_folder, fdr, rescore_method, use_score_
         'non_spectral_perc_input.tab',
         fdr,
         rescore_method,
-        'non_spectral'
+        'non_spectral',
     ).rename(columns={OUT_PSM_ID_KEY[rescore_method]: psm_id_key})
 
     non_spectral_psm_df = pd.merge(

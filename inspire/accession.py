@@ -11,6 +11,12 @@ from inspire.constants import (
     PEPTIDE_KEY,
 )
 
+ACCESSION_SPLITTERS = {
+    'mascot': ',',
+    'msfragger': ',',
+    'maxquant': ';',
+    'peaks': ':',
+}
 
 def get_accession_group(accession, search_engine, accession_hierarchy, accession_groups):
     """ Function to get the accession group from the accession of a peptide.
@@ -27,13 +33,8 @@ def get_accession_group(accession, search_engine, accession_hierarchy, accession
         A dictionary of mapping accession groups to the flag that will be seen
         in the accession.
     """
-    if search_engine == 'peaks':
-        splitter = ':'
-    elif search_engine == 'maxquant':
-        splitter = ';'
-    elif search_engine == 'mascot':
-        splitter = ','
-    else:
+    splitter = ACCESSION_SPLITTERS.get(search_engine)
+    if splitter is None:
         raise ValueError(f'Unrecognised Search Engine: {search_engine}')
     all_possible_accessions = accession.split(splitter)
     assignment = None
@@ -64,20 +65,16 @@ def get_invitro_spi_acc_group(accession, search_engine):
     assignment : int
         The accession group index as defined by the config.accession_hierarchy.
     """
-    if search_engine == 'peaks':
-        splitter = ':'
-    elif search_engine == 'maxquant':
-        splitter = ';'
-    elif search_engine == 'mascot':
-        splitter = ','
-    else:
+    splitter = ACCESSION_SPLITTERS.get(search_engine)
+    if splitter is None:
         raise ValueError(f'Unrecognised Search Engine: {search_engine}')
+
     all_possible_accessions = accession.split(splitter)
     assignment = 0
     for individiual_accession in all_possible_accessions:
-        if 'PCP' in individiual_accession:
+        if 'PCP_' in individiual_accession:
             return 0
-        if 'PSP' in individiual_accession:
+        if 'PSP_' in individiual_accession:
             assignment = 1
     return assignment
 
