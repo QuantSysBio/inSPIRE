@@ -44,6 +44,7 @@ ALL_CONFIG_KEYS = [
     'spectralPredictor',
     'useAccessionStrata',
     'useBindingAffinity',
+    'useIrtDelta',
     'useMinimalFeatures',
 ]
 
@@ -100,6 +101,7 @@ class Config:
 
         # Recommended:
         self.results_export = config_dict.get('resultsExport', 'psm')
+        self.use_irt_diff = config_dict.get('useIrtDelta', True)
         self.delta_rt_per_file = config_dict.get('rtPerFile', True)
         self.n_cores = config_dict.get('nCores', 1)
         self.collision_energy = config_dict.get('collisionEnergy', None)

@@ -32,6 +32,7 @@ def apply_rescoring(
         fdr,
         rescore_method,
         output_prefix,
+        results_out='psm',
     ):
     """ Function to apply percolator and return the PSMs matched.
 
@@ -56,11 +57,16 @@ def apply_rescoring(
     psm_output_key = f'{output_folder}/{output_prefix}.{rescore_method}.psms.txt'
     pep_output_key = f'{output_folder}/{output_prefix}.{rescore_method}.peptides.txt'
 
+    if results_out == 'psm':
+        export_loc = psm_output_key
+    else:
+        export_loc = pep_output_key
+
     if rescore_method == 'mokapot':
         rescore_name = 'mokapot'
         clis = (
-            f' --dest_dir {output_folder} --keep_decoys --verbosity 0 ' +
-            f' --train_fdr {fdr} -v 0 ' +
+            f' --dest_dir {output_folder} --keep_decoys  ' +
+            f' --train_fdr {fdr} ' +
             f' --test_fdr {fdr} --file_root {output_prefix} --save_models '
         )
         trailing_args = ''
@@ -69,7 +75,7 @@ def apply_rescoring(
         percolator_decoy_key = f'{output_folder}/{output_prefix}.{rescore_method}.decoy.psms.txt'
         weights_path = f'{output_folder}/{output_prefix}.{rescore_method}.weights.csv'
         clis = (
-            f' -U -F {fdr} -t {fdr} -i 10 -M {percolator_decoy_key} --post-processing-tdc  ' +
+            f' -F {fdr} -t {fdr} -i 10 -M {percolator_decoy_key} --post-processing-tdc  ' +
             f' -w {weights_path} --override ' +
             f' --results-psms {psm_output_key} --results-peptides {pep_output_key} '
         )
@@ -97,7 +103,8 @@ def apply_rescoring(
             stdout=log_file,
         )
 
-    results = pd.read_csv(psm_output_key, sep='\t')
+    results = pd.read_csv(export_loc, sep='\t')
+    results[PEPTIDE_KEY] = results[PEPTIDE_KEY].apply(lambda x : x[2:-2])
 
     return results
 
@@ -169,8 +176,8 @@ def _add_key_features(target_psms, config):
 
     key_features = [
         SPECTRAL_ANGLE_KEY,
-        'matchedCoverage',
         RT_KEY,
+        'spearmanR',
         'deltaRT',
         ENGINE_SCORE_KEY,
         CHARGE_KEY,
@@ -217,6 +224,7 @@ def final_rescoring(config):
         config.fdr,
         config.rescore_method,
         output_prefix,
+        config.results_export,
     )
 
     if 'PSMId' in target_psms.columns:
@@ -228,20 +236,6 @@ def final_rescoring(config):
         OKCYAN_TEXT + '\tRescoring complete.' + ENDC_TEXT
     )
     output_df, key_features = _add_key_features(target_psms, config)
-
-    output_df = output_df.apply(
-       lambda x: _split_psm_ids(x, psm_id_key),
-       axis=1
-    ).drop(psm_id_key, axis=1)
-
-    output_df = output_df.rename(
-        columns={
-            out_score_key: FINAL_SCORE_KEY,
-            out_q_key: FINAL_Q_VALUE_KEY,
-            out_accession_key: ACCESSION_KEY,
-            out_postep_key: FINAL_POSTEP_KEY,
-        }
-    )
 
     final_columns = (
         [
@@ -258,16 +252,55 @@ def final_rescoring(config):
         ]
     )
 
+    output_df = output_df.apply(
+       lambda x: _split_psm_ids(x, psm_id_key),
+       axis=1
+    ).drop(psm_id_key, axis=1)
+
+    if config.results_export == 'peptide':
+        psms_df = pd.read_csv(
+            f'{config.output_folder}/final.{config.rescore_method}.psms.txt',
+            sep='\t',
+        )
+        psms_df[PEPTIDE_KEY] = psms_df[PEPTIDE_KEY].apply(lambda x : x[2:-2])
+        if 'PSMId' in psms_df.columns:
+            psms_df = psms_df.rename( # pylint: disable=no-member
+                columns={'PSMId': psm_id_key}
+            )
+        psms_df, key_features = _add_key_features(psms_df, config)
+        psms_df = psms_df.apply(
+            lambda x: _split_psm_ids(x, psm_id_key),
+            axis=1
+        ).drop(psm_id_key, axis=1)
+        psms_df = psms_df.rename(
+            columns={
+                out_score_key: FINAL_SCORE_KEY,
+                out_q_key: FINAL_Q_VALUE_KEY,
+                out_accession_key: ACCESSION_KEY,
+                out_postep_key: FINAL_POSTEP_KEY,
+                }
+        )
+
+        psms_df = psms_df[final_columns]
+        psms_df.to_csv(
+            f'{config.output_folder}/finalPsmAssignments.csv',
+            index=False
+        )
+
+    output_df = output_df.rename(
+        columns={
+            out_score_key: FINAL_SCORE_KEY,
+            out_q_key: FINAL_Q_VALUE_KEY,
+            out_accession_key: ACCESSION_KEY,
+            out_postep_key: FINAL_POSTEP_KEY,
+        }
+    )
+
     output_df = output_df[final_columns]
 
     output_df = output_df.sort_values(by=FINAL_SCORE_KEY, ascending=False)
 
-    if config.use_accession_stratum:
-        out_path = f'{config.output_folder}/pre_finalAssignments.csv'
-    else:
-        out_path = f'{config.output_folder}/finalAssignments.csv'
-
-    output_df.to_csv(out_path, index=False)
+    output_df.to_csv(f'{config.output_folder}/finalAssignments.csv', index=False)
     print(
         OKCYAN_TEXT + '\tFinal assignments written to csv.' + ENDC_TEXT
     )

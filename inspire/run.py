@@ -19,7 +19,7 @@ from inspire.feature_selection import select_features
 from inspire.rescore import final_rescoring
 from inspire.report import generate_report
 from inspire.utils import fetch_collision_energy
-from inspire.validate import validate_spliced
+
 import inspire
 
 print(f'\n---> Running inSPIRE version {inspire.__version__} <---\n')
@@ -42,6 +42,7 @@ PIPELINE_OPTIONS = [
     'queryTable',
     'generateReport',
     'plotSpectra',
+    'validate',
 ]
 
 def get_arguments():
@@ -147,17 +148,6 @@ def main():
             ENDC_TEXT
         )
         final_rescoring(config)
-
-    if (
-        args.pipeline in ('validate', 'featureSelection+', 'rescore', 'core', 'calibrate+core')
-        and config.use_accession_stratum
-    ):
-        print(
-            OKGREEN_TEXT +
-            'Validating spliced assignments...' +
-            ENDC_TEXT
-        )
-        validate_spliced(config)
 
     if (
         args.pipeline in ('featureSelection+', 'rescore', 'core') and not config.silent_execution
