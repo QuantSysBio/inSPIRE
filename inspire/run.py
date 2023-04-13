@@ -42,7 +42,7 @@ PIPELINE_OPTIONS = [
     'queryTable',
     'generateReport',
     'plotSpectra',
-    'validate',
+    'spectralAngle',
 ]
 
 def get_arguments():
