@@ -86,7 +86,7 @@ def get_spectral_angle(config):
             axis=1,
         )
 
-        input_df = add_delta_irt(input_df, config, None)
-        input_df[input_cols + ['deltaRT', 'spectralAngle']].to_csv(
+
+        input_df[input_cols + ['spectralAngle']].to_csv(
             output_loc
         )

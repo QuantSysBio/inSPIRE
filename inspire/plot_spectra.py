@@ -445,6 +445,7 @@ def pair_plot(df_row, mz_accuracy, mz_units):
             rev_idx = len(peptide) - idx
             y_matched = False
             b_matched = False
+            npp_names = non_prosit_pred_peaks['names']
             if f'b{idx}' in matched_names:
                 annotations.append({
                     'showarrow': False,
@@ -475,6 +476,48 @@ def pair_plot(df_row, mz_accuracy, mz_units):
                     'align': 'left',
                 })
                 y_matched = True
+            for name in npp_names:
+                print(name)
+                if name == 'precursor':
+                    continue
+                frag_name = name.split('&')[0].split('*')[0].split('+')[0]
+                frag_type = frag_name[0]
+                frag_idx = int(frag_name[1:])
+                if rev_idx == frag_idx:
+                    if frag_type == 'y':
+                        if not y_matched:
+                            annotations.append({
+                                'showarrow': False,
+                                'text': name.split('+')[0],
+                                'x': 63 + (idx * 50),
+                                'ax': 63 + (idx * 50),
+                                'y': 1.49,
+                                'ay': 1.49,
+                                'font_size': 10,
+                                'font_family': "Arial, monospace",
+                                'xref': f'x{index+1}',
+                                'yref': f'y{index+1}',
+                                'align': 'left',
+                            })
+                        y_matched = True
+                if idx == frag_idx:
+                    if frag_type != 'y':
+                        if not b_matched:
+                            annotations.append({
+                                'showarrow': False,
+                                'text': name.split('+')[0],
+                                'x': 40 + (min1_idx * 50),
+                                'ax': 40 + (min1_idx * 50),
+                                'y': 1.02,
+                                'ay': 1.02,
+                                'font_size': 10,
+                                'font_family': "Arial, monospace",
+                                'xref': f'x{index+1}',
+                                'yref': f'y{index+1}',
+                                'align': 'left',
+                            })
+                        b_matched = True
+
         if idx > 0:
             if b_matched:
                 extra_traces.append(
@@ -538,7 +581,7 @@ def pair_plot(df_row, mz_accuracy, mz_units):
             if npp_name == 'precursor':
                 font_colour = 'plum'
             else:
-                font_colour = 'darkseagreen'
+                font_colour = 'black'
             annotations.append(
                 {
                     'x': npp_mz,
@@ -587,7 +630,7 @@ def pair_plot(df_row, mz_accuracy, mz_units):
             base='relative',
             alignmentgroup='experimental',
             name='Possible Ion Not Predicted by Prosit',
-            marker_color='darkseagreen',
+            marker_color='black',
             marker_line_width=0,
             width=4,
         ),
@@ -856,7 +899,7 @@ def add_legend(output_folder, experiment_title):
         go.Scatter(
             x=[1.0],
             y=[5.0],
-            marker={'size':22, 'color':'darkseagreen'},
+            marker={'size':22, 'color':'black'},
             text='    Possible ion unknown to Prosit.',
             textposition='middle right',
             textfont_size=22,

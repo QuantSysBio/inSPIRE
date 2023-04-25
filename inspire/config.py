@@ -11,6 +11,7 @@ from inspire.utils import read_distiller_log
 ALL_CONFIG_KEYS = [
     'accessionFormat',
     'collisionEnergy',
+    'contaminantData',
     'combinedScansFile',
     'deltaMethod',
     'distillerLog',
@@ -159,6 +160,7 @@ class Config:
         self.use_accession_stratum = config_dict.get('useAccessionStrata', False)
         self.proteome = config_dict.get('proteome')
         self.raw_file_groups = config_dict.get('rawFileGroupings')
+        self.contaminant_data = config_dict.get('contaminantData')
 
     def __str__(self):
         print_string = f'inSPIRE Settings for Experiment {self.experiment_title}:<br>'
