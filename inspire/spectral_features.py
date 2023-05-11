@@ -392,7 +392,9 @@ def calculate_spectral_features(
     if minimal_features:
         return df_row
 
-    df_row['spectrumDensity'] = len(df_row[MZS_KEY])/(df_row[MZS_KEY].max() - df_row[MZS_KEY].min())
+    mz_range = (df_row[MZS_KEY].max() - df_row[MZS_KEY].min())
+    if mz_range > 0:
+        df_row['spectrumDensity'] = len(df_row[MZS_KEY])/mz_range
 
     major_pred_inds = (ordered_prosit_intes >= PROSIT_MAJOR_MINOR_CUT_OFF)
 
