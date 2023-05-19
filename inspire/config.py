@@ -91,9 +91,12 @@ class Config:
         """
         # Required:
         self.experiment_title = config_dict['experimentTitle']
-        self.search_results = []
-        for result_group in config_dict['searchResults']:
-            self.search_results.extend(glob.glob(result_group))
+        if isinstance(config_dict['searchResults'], list):
+            self.search_results = []
+            for result_group in config_dict['searchResults']:
+                self.search_results.extend(glob.glob(result_group))
+        else:
+            self.search_results = config_dict['searchResults']
 
         self.search_engine = config_dict['searchEngine']
         self.output_folder = config_dict['outputFolder']
