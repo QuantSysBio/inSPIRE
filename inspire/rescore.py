@@ -178,6 +178,7 @@ def _add_key_features(target_psms, config):
         SPECTRAL_ANGLE_KEY,
         RT_KEY,
         'spearmanR',
+        'matchedCoverage',
         'deltaRT',
         ENGINE_SCORE_KEY,
         CHARGE_KEY,

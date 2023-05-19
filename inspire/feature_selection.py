@@ -648,11 +648,14 @@ def select_features(config):
             try:
                 irt_df = pd.read_csv(f'{config.output_folder}/rt_fit_{source}.csv')
                 irt_coeffs[source] = irt_df['coefficents'].mean()
+                if irt_coeffs[source] <= 0:
+                    irt_coeffs[source] = 1.0
             except:
                 irt_coeffs[source] = 1.0
+
         all_features_df['deltaRT'] = all_features_df[['deltaRT', 'source']].apply(
-            lambda df_row : (
-                df_row['deltaRT']/irt_coeffs.get(df_row['source'], 1.0)
+            lambda df_row : abs(
+                df_row['deltaRT']/irt_coeffs.get(df_row['source'], 1.0) 
             ),
             axis=1,
         )

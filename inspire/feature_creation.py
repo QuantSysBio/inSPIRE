@@ -143,7 +143,7 @@ def filter_input_columns(combined_df, config, file_idx):
             psm_id_key,
             LABEL_KEY,
             PERC_SCAN_ID
-        ] + BASIC_FEATURES + MINIMAL_FEATURE_SET
+        ] + BASIC_FEATURES + MINIMAL_FEATURE_SET + ['matchedCoverage']
     else:
         use_cols = [
             psm_id_key,
