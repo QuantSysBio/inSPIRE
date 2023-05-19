@@ -54,7 +54,6 @@ setup(
         'MarkupSafe==2.1.1',
         'mokapot==0.8.3',
         'matplotlib==3.5.3',
-        'ms2pip==3.9.0',
         'numba==0.56.0',
         'numexpr==2.8.3',
         'numpy==1.19.5',
@@ -102,6 +101,9 @@ setup(
         'xgboost==1.6.1',
         'zipp==3.8.1',
     ],
+    extras_require={
+        'ms2pip': ['ms2pip==3.9.0',],
+    },
     project_urls={
         'Homepage': 'https://github.com/QuantSysBio/inSPIRE',
         'Tracker': 'https://github.com/QuantSysBio/inSPIRE/issues',

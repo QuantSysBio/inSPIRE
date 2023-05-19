@@ -1,7 +1,10 @@
 """ Function for generating Prosit or MS2PIP spectral predictions.
 """
 from pathlib import Path
-from ms2pip.ms2pipC import MS2PIP
+try:
+    from ms2pip.ms2pipC import MS2PIP
+except ModuleNotFoundError:
+    print('Warning MS2PIP is not installed.')
 
 from inspire.prosit import (
     load_model, process_csv_file, prosit_predict, write_msp_file
