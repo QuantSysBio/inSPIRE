@@ -67,6 +67,9 @@ def predict_spectra(config, pipeline='core'):
         elif pipeline == 'calibrate':
             input_file = f'{config.output_folder}/calibrationInput.csv'
             out_file = f'{config.output_folder}/calibrationPredictions.msp'
+        elif pipeline == 'spectralAngle':
+            input_file = f'{config.output_folder}/saInput.csv'
+            out_file = f'{config.output_folder}/saPredictions.msp'
         elif pipeline == 'validation':
             input_file = f'{config.output_folder}/validationInput.csv'
             out_file = f'{config.output_folder}/validationPredictions.msp'

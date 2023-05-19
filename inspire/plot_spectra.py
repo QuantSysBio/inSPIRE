@@ -12,6 +12,8 @@ import plotly.io as pio
 from inspire.constants import (
     CHARGE_KEY,
     KNOWN_PTM_WEIGHTS,
+    ION_OFFSET,
+    NEUTRAL_LOSSES,
     PEPTIDE_KEY,
     PROTON,
     SCAN_KEY,
@@ -19,16 +21,15 @@ from inspire.constants import (
     SPECTRAL_ANGLE_KEY,
 )
 
-
 from inspire.input.msp import msp_to_df
-from inspire.mz_match import get_ion_masses
+from inspire.mz_match import get_ion_masses, compute_potential_mws
 from inspire.predict_spectra import predict_spectra
 from inspire.spectral_features import calculate_spectral_features
-from inspire.utils import fetch_scan_data, convert_mod_seq_to_ptm_seq
+from inspire.utils import convert_mod_seq_to_ptm_seq, fetch_scan_data
 
 PLOTS_PER_PAGE = 15
 PLOTS_PER_LINE = 3
-
+LOSS_NAMES = ['',  '*', '&#xb0;']
 
 def convert_names_and_mzs(mod_seq, pred_names):
     """ Function to generate plotting ion names and mzs.
@@ -92,7 +93,7 @@ def convert_names_and_mzs(mod_seq, pred_names):
         )
     return pred_mzs, plotting_names
 
-def get_unmatched(exp_mzs, exp_intes, matched_mzs, l2_norm):
+def get_unmatched(exp_mzs, exp_intes, matched_mzs, npp_mzs, prec_mzs, l2_norm):
     """ Function select and normalise the unmatched peaks from the experimental spectrum.
 
     Parameters
@@ -118,13 +119,145 @@ def get_unmatched(exp_mzs, exp_intes, matched_mzs, l2_norm):
     """
     unmatched_mzs, unmatched_intes = [], []
     for idx, e_mz in enumerate(exp_mzs):
-        if e_mz not in matched_mzs:
+        if e_mz not in matched_mzs and e_mz not in npp_mzs and e_mz not in prec_mzs:
             unmatched_mzs.append(e_mz)
             unmatched_intes.append(exp_intes[idx]/l2_norm)
 
     return {
         'mzs': unmatched_mzs,
         'intensities': unmatched_intes,
+    }
+
+def generate_all_mzs(sequence, prec_charge, ptm_id_weights, modifications=None):
+    """ Function to the get mz's for all the ions predicted by prosit.
+
+    Parameters
+    ----------
+    sequence : str
+        The peptide sequence for which we require molecular weights.
+    modifications : str
+        A string of the ptms for the sequence which will alter
+        the potential mzs.
+
+    Returns
+    -------
+    all_possible_ions : dict
+        A dictionary of all the mzs of all possible b and y ions
+        that could be produced.
+    """
+    sub_seq_mass, total_residue_mass = compute_potential_mws(
+        sequence=sequence,
+        modifications=modifications,
+        reverse=False,
+        ptm_id_weights=ptm_id_weights
+    )
+
+    rev_sub_seq_mass, _ = compute_potential_mws(
+        sequence=sequence,
+        modifications=modifications,
+        reverse=True,
+        ptm_id_weights=ptm_id_weights
+    )
+
+    # b- and y-ions for each of the charge options
+    possible_ions = {}
+    possible_ions['b'] = ION_OFFSET['b'] + sub_seq_mass
+    possible_ions['y'] = ION_OFFSET['y'] + rev_sub_seq_mass
+    possible_ions['a'] = ION_OFFSET['a'] + sub_seq_mass
+
+    all_mzs = [(total_residue_mass+(prec_charge*PROTON))/prec_charge]
+    names = ['precursor']
+
+    for ion_type in 'bya':
+        loss_list = [0.0] + NEUTRAL_LOSSES
+
+        for frag_idx, weight in enumerate(possible_ions[ion_type]):
+            for loss_idx, loss in enumerate(loss_list):
+                for charge in range(1, prec_charge+1):
+                    all_mzs.append(
+                        ((weight-loss) + (PROTON*charge))/charge
+                    )
+                    charge_name = '+'*charge
+                    names.append(
+                        f'{ion_type}{frag_idx+1}{LOSS_NAMES[loss_idx]}{charge_name}'
+                    )
+
+    return all_mzs, names
+
+def get_npp_ions(
+        exp_mzs,
+        exp_intes,
+        matched_mzs,
+        l2_norm,
+        peptide,
+        charge,
+        ptm_id_weights,
+        modifications,
+        mz_accuracy,
+        mz_units,
+    ):
+    """ Function to get the potential non-prosit-predicted ions.
+
+    Parameters
+    ----------
+    exp_mzs : list of float
+        A list of m/z values observed in the experimental spectrum.
+    exp_intes : list of int
+        A list of the intensities observed in the experimental spectrum.
+    matched_mzs : list of float
+        A list of the m/z values already matched to the Prosit predictions.
+    l2_norm : float
+        The L^2 norm of the Prosit matched ions in the experimental spectrum.
+    peptide : string
+        The peptide sequence of the precursor.
+    charge : int
+        The charge state of the peptide.
+    ptm_id_weights : dict
+        A dictionary mapping inSPIRE PTM IDs to their molecular weights.
+    modifications : str
+        The modifications of the peptide written as a string of inSPIRE IDs.
+    mz_accuracy : float
+        The accuracy of the mass spectrometer.
+    mz_units : str
+        Da or ppm
+
+    Returns
+    -------
+    npp_ions : dict
+        A dictionary of the m/z values, intensities, and names of non-prosit predicted ions.
+    prec_ion : dict
+        A dictionary of the m/z and intensity value of the precursor ion if observed in the MS2.
+    """
+    poss_mzs = []
+    poss_intes = []
+    poss_names = []
+    prec_mz = []
+    prec_inte = []
+    all_mzs, names = generate_all_mzs(peptide, charge, ptm_id_weights, modifications)
+
+    for idx, e_mz in enumerate(exp_mzs):
+        if e_mz not in matched_mzs:
+            if mz_units == 'ppm':
+                mz_err = e_mz*mz_accuracy*(10**-6)
+            else:
+                mz_err = mz_accuracy
+
+            for alt_idx, possible_mz in enumerate(all_mzs):
+                if abs(e_mz-possible_mz) < mz_err:
+                    if alt_idx == 0:
+                        prec_mz.append(exp_mzs[idx])
+                        prec_inte.append(exp_intes[idx]/l2_norm)
+                    poss_mzs.append(exp_mzs[idx])
+                    poss_intes.append(exp_intes[idx]/l2_norm)
+                    poss_names.append(names[alt_idx])
+
+    return {
+        'mzs': poss_mzs,
+        'intensities': poss_intes,
+        'names': poss_names,
+    }, {
+        'mzs': prec_mz,
+        'intensities': prec_inte,
     }
 
 def experiment_match(exp_mzs, exp_intes, pred_mzs, plotting_names, mz_accuracy, mz_units):
@@ -174,7 +307,7 @@ def experiment_match(exp_mzs, exp_intes, pred_mzs, plotting_names, mz_accuracy, 
             matched_pred_mzs.append(pred_m)
             matched_names.append(match_name.split('+')[0])
 
-    if len(matched_intes) > 5:
+    if len(matched_intes) > 2:
         l2_norm = np.linalg.norm(np.array(matched_intes), ord=2)
     else:
         l2_norm = np.max(exp_intes)
@@ -216,8 +349,24 @@ def pair_plot(df_row, mz_accuracy, mz_units):
     matched_peaks, l2_norm, matched_p_mz, matched_names = experiment_match(
         df_row['mzs'], df_row['intensities'], pred_mzs, plotting_names, mz_accuracy, mz_units
     )
+    non_prosit_pred_peaks, prec_peak = get_npp_ions(
+        df_row['mzs'], df_row['intensities'], matched_peaks['mzs'], l2_norm, peptide,
+        df_row['charge'],
+        {
+            0: 0.0,
+            1: KNOWN_PTM_WEIGHTS['Oxidation (M)'],
+            2: KNOWN_PTM_WEIGHTS['Carbamidomethylation'],
+        },
+        df_row['ptm_seq'], mz_accuracy, mz_units
+    )
+
     unmatched_peaks = get_unmatched(
-        df_row['mzs'], df_row['intensities'], matched_peaks['mzs'], l2_norm
+        df_row['mzs'],
+        df_row['intensities'],
+        matched_peaks['mzs'],
+        non_prosit_pred_peaks['mzs'],
+        prec_peak['mzs'],
+        l2_norm,
     )
 
     annotations = []
@@ -296,6 +445,7 @@ def pair_plot(df_row, mz_accuracy, mz_units):
             rev_idx = len(peptide) - idx
             y_matched = False
             b_matched = False
+            npp_names = non_prosit_pred_peaks['names']
             if f'b{idx}' in matched_names:
                 annotations.append({
                     'showarrow': False,
@@ -326,6 +476,48 @@ def pair_plot(df_row, mz_accuracy, mz_units):
                     'align': 'left',
                 })
                 y_matched = True
+            for name in npp_names:
+                print(name)
+                if name == 'precursor':
+                    continue
+                frag_name = name.split('&')[0].split('*')[0].split('+')[0]
+                frag_type = frag_name[0]
+                frag_idx = int(frag_name[1:])
+                if rev_idx == frag_idx:
+                    if frag_type == 'y':
+                        if not y_matched:
+                            annotations.append({
+                                'showarrow': False,
+                                'text': name.split('+')[0],
+                                'x': 63 + (idx * 50),
+                                'ax': 63 + (idx * 50),
+                                'y': 1.49,
+                                'ay': 1.49,
+                                'font_size': 10,
+                                'font_family': "Arial, monospace",
+                                'xref': f'x{index+1}',
+                                'yref': f'y{index+1}',
+                                'align': 'left',
+                            })
+                        y_matched = True
+                if idx == frag_idx:
+                    if frag_type != 'y':
+                        if not b_matched:
+                            annotations.append({
+                                'showarrow': False,
+                                'text': name.split('+')[0],
+                                'x': 40 + (min1_idx * 50),
+                                'ax': 40 + (min1_idx * 50),
+                                'y': 1.02,
+                                'ay': 1.02,
+                                'font_size': 10,
+                                'font_family': "Arial, monospace",
+                                'xref': f'x{index+1}',
+                                'yref': f'y{index+1}',
+                                'align': 'left',
+                            })
+                        b_matched = True
+
         if idx > 0:
             if b_matched:
                 extra_traces.append(
@@ -368,6 +560,44 @@ def pair_plot(df_row, mz_accuracy, mz_units):
                     )
                 )
 
+    if non_prosit_pred_peaks['intensities'] or prec_peak['intensities']:
+        max_npp = max(non_prosit_pred_peaks['intensities'] + prec_peak['intensities'])
+        if max_npp > 1:
+            unmatched_peaks['intensities'] = [x/max_npp for x in unmatched_peaks['intensities']]
+            matched_peaks['intensities'] = [x/max_npp for x in matched_peaks['intensities']]
+            non_prosit_pred_peaks['intensities'] = [
+                x/max_npp for x in non_prosit_pred_peaks['intensities']
+            ]
+            prec_peak['intensities'] = [x/max_npp for x in prec_peak['intensities']]
+
+    for npp_mz, npp_inte, npp_name in zip(
+        non_prosit_pred_peaks['mzs'],
+        non_prosit_pred_peaks['intensities'],
+        non_prosit_pred_peaks['names'],
+    ):
+        colours.append(colour)
+
+        if npp_inte > 0.4:
+            if npp_name == 'precursor':
+                font_colour = 'plum'
+            else:
+                font_colour = 'black'
+            annotations.append(
+                {
+                    'x': npp_mz,
+                    'ax': npp_mz,
+                    'y': npp_inte + 0.1,
+                    'ay': npp_inte + 0.1,
+                    'xref': f'x{index+1}',
+                    'yref': f'y{index+1}',
+                    'text': npp_name,
+                    'font_size': 8,
+                    'font_color': font_colour,
+                    'showarrow': False,
+                }
+            )
+
+
     traces = [
         go.Bar(
             x=pred_mzs,
@@ -395,6 +625,26 @@ def pair_plot(df_row, mz_accuracy, mz_units):
             width=4,
         ),
         go.Bar(
+            x=non_prosit_pred_peaks['mzs'],
+            y=non_prosit_pred_peaks['intensities'],
+            base='relative',
+            alignmentgroup='experimental',
+            name='Possible Ion Not Predicted by Prosit',
+            marker_color='black',
+            marker_line_width=0,
+            width=4,
+        ),
+        go.Bar(
+            x=prec_peak['mzs'],
+            y=prec_peak['intensities'],
+            base='relative',
+            alignmentgroup='experimental',
+            name='Precursor',
+            marker_color='plum',
+            marker_line_width=0,
+            width=4,
+        ),
+        go.Bar(
             x=matched_peaks['mzs'],
             y=matched_peaks['intensities'],
             base='relative',
@@ -418,7 +668,16 @@ def plot_spectra(config):
     config : inspire.config.Config
         The Config object used to run the inSPIRE experiment.
     """
-    input_df = pd.read_csv(f'{config.output_folder}/plotData.csv')
+    add_legend(config.output_folder, config.experiment_title)
+
+    if config.sa_query_dfs is None:
+        input_df = pd.read_csv(f'{config.output_folder}/plotData.csv')
+    else:
+        input_dfs = []
+        for in_file in config.sa_query_dfs:
+            input_dfs.append( pd.read_csv(in_file))
+        input_df = pd.concat(input_dfs)
+
 
     get_charge_from_scan_file = not CHARGE_KEY in input_df.columns
     scan_df = fetch_scan_data(input_df, config, get_charge_from_scan_file)
@@ -429,7 +688,14 @@ def plot_spectra(config):
         how='inner',
         on=[SOURCE_KEY, SCAN_KEY]
     )
-    n_groups = 1 + (input_df.shape[0] // PLOTS_PER_PAGE)
+
+    input_df['pepLen'] = input_df['peptide'].apply(len)
+    input_df = input_df[(input_df['pepLen'] > 6) & (input_df['pepLen'] < 31)]
+    input_df = input_df[input_df['charge'] < 7]
+
+    n_groups = (input_df.shape[0] // PLOTS_PER_PAGE)
+    if input_df.shape[0] % PLOTS_PER_PAGE:
+        n_groups += 1
 
     input_df['modified_sequence'] = input_df['modifiedSequence'].apply(
         lambda x : x.replace('[+16.0]', '(ox)').replace('[+57.0]', '')
@@ -446,7 +712,9 @@ def plot_spectra(config):
     )
 
     predict_spectra(config, pipeline='plotSpectra')
-    prosit_df = msp_to_df(f'{config.output_folder}/plotPredictions.msp', 'prosit', None)
+    prosit_df = msp_to_df(
+        f'{config.output_folder}/plotPredictions.msp', 'prosit', None,
+    )
     prosit_df = prosit_df.drop_duplicates(subset=['modified_sequence', CHARGE_KEY])
 
     input_df = pd.merge(
@@ -459,15 +727,15 @@ def plot_spectra(config):
     input_df = input_df.reset_index(drop=True)
     input_df['group'] = input_df.index // PLOTS_PER_PAGE
     input_df['index'] = input_df.index % PLOTS_PER_PAGE
+    input_df['ptm_seq'] = input_df['modifiedSequence'].apply(
+        convert_mod_seq_to_ptm_seq
+    )
     input_df['plot_data'] = input_df.apply(
         lambda x : pair_plot(x, config.mz_accuracy, config.mz_units),
         axis=1,
     )
 
     if SPECTRAL_ANGLE_KEY not in input_df.columns:
-        input_df['ptm_seq'] = input_df['modifiedSequence'].apply(
-            convert_mod_seq_to_ptm_seq
-        )
         input_df = input_df.apply(
             lambda x : calculate_spectral_features(
                 x,
@@ -491,12 +759,21 @@ def plot_spectra(config):
     for idx in range(input_df.shape[0]):
         seq = input_df[PEPTIDE_KEY].iloc[idx]
         scan_nr = input_df[SCAN_KEY].iloc[idx]
-        src = input_df[SOURCE_KEY].iloc[idx]
+        charge = input_df[CHARGE_KEY].iloc[idx]
+        src = input_df[SOURCE_KEY].iloc[idx].split('UnLabeled_')[-1]
         spectral_angle = round(input_df[SPECTRAL_ANGLE_KEY].iloc[idx], 2)
-        titles.append(
-            f'<b>Source</b> {src} <b>Scan</b> {scan_nr}<br><b>Peptide</b> {seq} ' +
-            f'<b>Spectral Angle</b> {spectral_angle}<br>'
-        )
+        if 'Context' in input_df.columns:
+            context = input_df['Context'].iloc[idx]
+            titles.append(
+                f'<b>Source</b> {src} <b>Scan</b> {scan_nr}<br><b>Peptide</b> {seq} ' +
+                f'<b>Charge</b> {charge} <b>Spectral Angle</b> {spectral_angle}<br>' +
+                f'<b>Context</b> {context}'
+            )
+        else:
+            titles.append(
+                f'<b>Source</b> {src} <b>Scan</b> {scan_nr}<br><b>Peptide</b> {seq} ' +
+                f'<b>Charge</b> {charge} <b>Spectral Angle</b> {spectral_angle}<br>'
+            )
 
     for group_idx in range(n_groups):
 
@@ -571,8 +848,8 @@ def plot_spectra(config):
             ticks="outside",
         )
 
-        if not config.silent_execution:
-            fig.show()
+        # if not config.silent_execution:
+        #     fig.show()
 
         pio.write_image(
             fig,
@@ -581,6 +858,9 @@ def plot_spectra(config):
         )
 
     merger = PdfFileMerger()
+    merger.append(
+        f'{config.output_folder}/spectralPlots_legend.pdf'
+    )
     for group_idx in range(n_groups):
         merger.append(
             f'{config.output_folder}/spectralPlots{group_idx}.pdf'
@@ -590,3 +870,144 @@ def plot_spectra(config):
         os.remove(
             f'{config.output_folder}/spectralPlots{group_idx}.pdf'
         )
+    os.remove(
+        f'{config.output_folder}/spectralPlots_legend.pdf'
+    )
+
+
+def add_legend(output_folder, experiment_title):
+    """ Function for adding a legend to the start of the spectrolPlots.pdf file.
+
+    Parameters
+    ----------
+    output_folder : str
+        The folder where all inSPIRE outputs are written.
+    experiment_title : str
+        The title of the experiment.
+    """
+    legend_traces = [
+        go.Scatter(
+            x=[1.0],
+            y=[7.5],
+            marker={'size':22, 'color':'black'},
+            text='    Experimental peak matched to a Prosit predicted peak.',
+            textposition='middle right',
+            textfont_size=22,
+            textfont_family='Helvetica',
+            mode='markers+text',
+        ),
+        go.Scatter(
+            x=[1.0],
+            y=[5.0],
+            marker={'size':22, 'color':'black'},
+            text='    Possible ion unknown to Prosit.',
+            textposition='middle right',
+            textfont_size=22,
+            textfont_family='Helvetica',
+            mode='markers+text',
+        ),
+        go.Scatter(
+            x=[1.0],
+            y=[2.5],
+            marker={'size':22, 'color':'plum'},
+            text='    Precursor matched peak.',
+            textposition='middle right',
+            textfont_size=22,
+            textfont_family='Helvetica',
+            mode='markers+text',
+        ),
+        go.Scatter(
+            x=[1.0],
+            y=[0.0],
+            marker={'size':22, 'color':'lightgrey'},
+            text='    Experimental peak not matched to any potential ion.',
+            textposition='middle right',
+            textfont_size=22,
+            textfont_family='Helvetica',
+            mode='markers+text',
+        ),
+        go.Scatter(
+            x=[1.0],
+            y=[7.5],
+            marker={'size':22, 'color':'#0095A8'},
+            text='    Prosit predicted peak matched to experimental spectrum.',
+            textposition='middle right',
+            textfont_size=22,
+            textfont_family='Helvetica',
+            mode='markers+text',
+        ),
+        go.Scatter(
+            x=[1.0],
+            y=[5.0],
+            marker={'size':22, 'color':'#FF7043'},
+            text='    Prosit predicted peak not matched to experimental spectrum.',
+            textposition='middle right',
+            textfont_size=22,
+            textfont_family='Helvetica',
+            mode='markers+text',
+        ),
+    ]
+
+    colour_key_fig = make_subplots(
+        rows=5,
+        cols=1,
+        subplot_titles=['', 'Experimental Spectrum Colour Code:', 'Prosit Spectrum Colour Code:'],
+    )
+    for trace in legend_traces[:4]:
+        colour_key_fig.add_trace(trace, row=2, col=1)
+    for trace in legend_traces[4:]:
+        colour_key_fig.add_trace(trace, row=3, col=1)
+
+    colour_key_fig.update_layout(
+        width=2100,
+        height=2500,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        showlegend=False,
+    )
+
+
+    colour_key_fig.update_xaxes(
+        showticklabels=True,
+        range=[0, 4],
+        dtick=300,
+        linecolor='black',
+        linewidth=0.5,
+        showgrid=False,
+        ticks="outside",
+        zeroline=False, # thick line at x=0
+        visible=False
+    )
+
+    colour_key_fig.update_yaxes(
+        showline=True,
+        linewidth=0.5,
+        linecolor='black',
+        range=[-2, 10],
+        tickvals = [-1.2+(i*0.4) for i in range(8)],
+        ticktext = [round(abs(-1.2+(i*0.4)), 1) for i in range(8)],
+        showgrid=False,
+        ticks="outside",
+        zeroline=False, # thick line at x=0
+        visible=False
+    )
+
+    colour_key_fig.update_annotations(
+        {
+            'font_size': 26,
+            'font_family': "Helvetica",
+        }
+    )
+
+    colour_key_fig.update_layout(
+        title_text=f'<b>inSPIRE Spectral Plotting for {experiment_title}</b>',
+        title_x=0.5,
+        title_font_size=30,
+        title_font_family='Helvetica',
+    )
+
+    pio.write_image(
+        colour_key_fig,
+        f'{output_folder}/spectralPlots_legend.pdf',
+        engine='kaleido',
+    )

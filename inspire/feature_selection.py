@@ -25,8 +25,10 @@ from inspire.constants import (
     OKCYAN_TEXT,
     OUT_SCORE_KEY,
     PEARSON_KEY,
+    PEPTIDE_KEY,
     PRECURSOR_INTE_KEY,
     PREFIX_KEYS,
+    SOURCE_KEY,
     SPEARMAN_KEY,
     SUFFIX_KEYS,
     SEQ_LEN_KEY,
@@ -636,6 +638,25 @@ def select_features(config):
         sep='\t'
     )
 
+    if config.use_irt_diff:
+        all_features_df[SOURCE_KEY] = all_features_df['specID'].apply(
+            lambda x : '_'.join(x.split('_')[:-2])
+        )
+        sources = all_features_df[SOURCE_KEY].unique().tolist()
+        irt_coeffs = {}
+        for source in sources:
+            try:
+                irt_df = pd.read_csv(f'{config.output_folder}/rt_fit_{source}.csv')
+                irt_coeffs[source] = irt_df['coefficents'].mean()
+            except:
+                irt_coeffs[source] = 1.0
+        all_features_df['deltaRT'] = all_features_df[['deltaRT', 'source']].apply(
+            lambda df_row : (
+                df_row['deltaRT']/irt_coeffs.get(df_row['source'], 1.0)
+            ),
+            axis=1,
+        )
+
     if config.max_for_selection < all_features_df.shape[0]:
         if config.minimal_features:
             feature_set = MINIMAL_FEATURE_SET
@@ -705,6 +726,9 @@ def write_final_feature_set(all_features_df, feature_set, config):
 
     prefix_keys = PREFIX_KEYS[config.rescore_method]
 
+    all_features_df[PEPTIDE_KEY] = all_features_df[PEPTIDE_KEY].apply(
+        lambda x : f'-.{x}.-'
+    )
     all_features_df = all_features_df[
         prefix_keys + feature_set + SUFFIX_KEYS[config.rescore_method]
     ]

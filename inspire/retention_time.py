@@ -75,32 +75,44 @@ def add_delta_irt(combined_df, config, scan_file):
     else:
         combined_df_irt_null_count = 1
 
-    for train, test in kfold.split(combined_df):
-        train_df = combined_df.iloc[train]
-        test_df = combined_df.iloc[test]
+    try:
+        for train, test in kfold.split(combined_df):
+            train_df = combined_df.iloc[train]
+            test_df = combined_df.iloc[test]
 
-        if ACCESSION_STRATUM_KEY in train_df.columns:
-            train_df = train_df[train_df[ACCESSION_STRATUM_KEY] == 0]
+            if ACCESSION_STRATUM_KEY in train_df.columns:
+                train_df = train_df[train_df[ACCESSION_STRATUM_KEY] == 0]
 
-        top_spec_angle_cut = train_df[SPECTRAL_ANGLE_KEY].quantile(0.9)
-        train_df = train_df[
-            (train_df[SPECTRAL_ANGLE_KEY] > top_spec_angle_cut) &
-            (train_df[LABEL_KEY] == 1)
-        ]
+            train_df = train_df[train_df[LABEL_KEY] == 1]
+            top_spec_angle_cut = train_df[SPECTRAL_ANGLE_KEY].quantile(0.9)
+            train_df = train_df[
+                train_df[SPECTRAL_ANGLE_KEY] > top_spec_angle_cut
+            ]
 
-        if combined_df_irt_null_count > 0:
-            test_df['predRT'] = _add_achrom_rt_preds(train_df, test_df)
-        else:
-            reg = LinearRegression().fit(
-                train_df[['iRT']],
-                train_df[RT_KEY]
-            )
-            coefficents.append(reg.coef_[0])
-            intercepts.append(reg.intercept_)
-            test_df['predRT'] = reg.predict(test_df[['iRT']])
+            if combined_df_irt_null_count > 0:
+                test_df['predRT'] = _add_achrom_rt_preds(train_df, test_df)
+            else:
+                reg = LinearRegression().fit(
+                    train_df[['iRT']],
+                    train_df[RT_KEY]
+                )
+                coefficents.append(reg.coef_[0])
+                intercepts.append(reg.intercept_)
+                test_df['predRT'] = reg.predict(test_df[['iRT']])
 
-        test_df['deltaRT'] = (test_df['predRT'] - test_df['retentionTime']).abs()
-        combined_df_list.append(test_df)
+            test_df['deltaRT'] = (test_df['predRT'] - test_df['retentionTime']).abs()
+            combined_df_list.append(test_df)
+        combined_df = pd.concat(combined_df_list)
+    except ValueError:
+        # Simplest way to avoid errors on tiny files.
+        reg = LinearRegression().fit(
+            combined_df[['iRT']],
+            combined_df[RT_KEY]
+        )
+        coefficents.append(reg.coef_[0])
+        intercepts.append(reg.intercept_)
+        combined_df['predRT'] = reg.predict(combined_df[['iRT']])
+        combined_df['deltaRT'] = (combined_df['predRT'] - combined_df['retentionTime']).abs()
 
     rt_df = pd.DataFrame({
         'coefficents': coefficents,
@@ -109,4 +121,4 @@ def add_delta_irt(combined_df, config, scan_file):
     if scan_file is not None:
         rt_df.to_csv(f'{config.output_folder}/rt_fit_{scan_file}.csv', index=False)
 
-    return pd.concat(combined_df_list)
+    return combined_df

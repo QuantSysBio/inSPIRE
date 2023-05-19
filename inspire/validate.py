@@ -6,6 +6,7 @@ import re
 from Bio import SeqIO
 import numpy as np
 import pandas as pd
+from scipy.stats import spearmanr
 
 from inspire.constants import (
     CHARGE_KEY,
@@ -15,6 +16,7 @@ from inspire.constants import (
     PROTON,
     RESIDUE_WEIGHTS,
     SCAN_KEY,
+    SPEARMAN_KEY,
     SOURCE_KEY,
 )
 from inspire.input.msp import msp_to_df
@@ -99,10 +101,13 @@ def get_sa(
         normed_matched_intensities,
         ordered_prosit_intes,
     )
-    ordered_matched_ions = ordered_prosit_ions[matched_intensities > 0.0]
-    df_row['matchedCoverage'], _, __ = get_coverage(
-        seq_len, ordered_matched_ions, per_letter=True
-    )
+    spearman_total = spearmanr(normed_matched_intensities, ordered_prosit_intes)[0]
+
+    if not np.isnan(spearman_total):
+        df_row[SPEARMAN_KEY] = spearman_total
+    else:
+        df_row[SPEARMAN_KEY] = 0.0
+
     return df_row
 
 
@@ -152,15 +157,10 @@ def get_mod_matched_seqs(mod_seq, pcp_pep):
         possible_mod_seqs.append(mod_str)
     return possible_mod_seqs
 
-def find_competitors(config):
+def find_competitors(final_df, config):
     """ Function to find isobaric nonspliced competitors to spliced peptides.
     """
-    final_df = pd.read_csv(
-        f'{config.output_folder}/pre_finalAssignments.csv'
-    )
-
     final_df = final_df[
-        (final_df['qValue'] < 0.01) &
         (final_df['accessionGroup'] == 'spliced')
     ]
 
@@ -171,7 +171,6 @@ def find_competitors(config):
     pcp_df = get_cleavage_peptides(config.proteome)
     pcp_df = pcp_df.drop_duplicates()
     pcp_df['label'] = 1
-
 
     merged_df = pd.merge(
         final_df[[
@@ -200,20 +199,17 @@ def find_competitors(config):
     merged_df['modified_sequence'] = merged_df['matched_pcps'].apply(
         lambda x : x.replace('[+16.0]', '(ox)').replace('[+57.0]', '')
     )
-    merged_df.to_csv(
-        f'{config.output_folder}/cleavageCompetitors.csv',
-        index=False
-    )
-    merged_df['collision_energy'] = config.collision_energy
-    merged_df = merged_df.rename(columns={'charge': 'precursor_charge'})
-    prosit_input_df = merged_df[[
+
+    prosit_input_df = merged_df.rename(columns={'charge': 'precursor_charge'})
+    prosit_input_df['collision_energy'] = config.collision_energy
+    prosit_input_df = prosit_input_df[[
         'modified_sequence', 'precursor_charge', 'collision_energy'
     ]].drop_duplicates()
     prosit_input_df.to_csv(
         f'{config.output_folder}/validationInput.csv', index=False
     )
     predict_spectra(config, 'validation')
-    return merged_df.shape[0]
+    return merged_df
 
 def calculate_competitor_spectral_data(competitors_df, config):
     """ Function to calculate spectral angles for isobaric nonspliced competitors.
@@ -249,63 +245,63 @@ def calculate_competitor_spectral_data(competitors_df, config):
 
 def validate_spliced(config):
     """ Funciton to validate spliced PSMs against isobaric nonspliced competitors.
-
     Parameters
     ----------
     config : inspire.config.Config
         The Config object for the experiment.
     """
-    n_competitors = find_competitors(config)
+    final_df = pd.read_csv(
+        f'{config.output_folder}/finalAssignments.csv'
+    )
+    final_df = final_df[final_df['qValue'] < 0.01]
+    # final_df = filter_contaminants(final_df, config)
+    competitors_df = find_competitors(final_df, config)
 
-    if not n_competitors:
-        final_df = pd.read_csv(
-            f'{config.output_folder}/pre_finalAssignments.csv'
-        )
-
-        final_df = final_df[
-            (final_df['spectralAngle'] > 0.7) &
-            (final_df['deltaRT'] < 150) &
-            (final_df['qValue'] < 0.01)
-        ]
-
+    if not competitors_df.shape[0]:
         final_df.to_csv(
-            f'{config.output_folder}/finalAssignments.csv',
+            f'{config.output_folder}/filtered_finalAssignments.csv',
             index=False,
         )
-        return
 
-    competitors_df = pd.read_csv(f'{config.output_folder}/cleavageCompetitors.csv')
     competitors_df = calculate_competitor_spectral_data(competitors_df, config)
 
-    if config.combined_scans_file is None:
-        rt_ints = {}
-        rt_coefs = {}
-        for raw_file in competitors_df[SOURCE_KEY].unique().tolist():
-            rt_df = pd.read_csv(
-                f'{config.output_folder}/rt_fit_{raw_file}.csv'
-            )
-            rt_ints[raw_file] = rt_df['intercepts'].mean()
-            rt_coefs[raw_file] = rt_df['coefficents'].mean()
-
-        competitors_df['deltaRT'] = competitors_df.apply(
-            lambda x : abs(
-                x['retentionTime'] - (rt_ints[x['source']] + (rt_coefs[x['source']]*x['iRT']))
-            ),
-            axis=1,
-        )
-    else:
+    rt_ints = {}
+    rt_coefs = {}
+    for raw_file in competitors_df[SOURCE_KEY].unique().tolist():
         rt_df = pd.read_csv(
-            f'{config.output_folder}/rt_fit_{config.combined_scans_file[:-4]}.csv'
+            f'{config.output_folder}/rt_fit_{raw_file}.csv'
         )
-        rt_int = rt_df['intercepts'].mean()
-        rt_coef = rt_df['coefficents'].mean()
-        competitors_df['deltaRT'] = competitors_df.apply(
-            lambda x : abs(x['retentionTime'] - (rt_int + (rt_coef*x['iRT']))),
-            axis=1
-        )
+        rt_ints[raw_file] = rt_df['intercepts'].mean()
+
+        rt_coefs[raw_file] = rt_df['coefficents'].mean()
+
+    competitors_df['predRT'] = competitors_df.apply(
+        lambda x : rt_ints[x['source']] + (rt_coefs[x['source']]*x['iRT']),
+        axis=1,
+    )
+    competitors_df['base_deltaRT'] = competitors_df.apply(
+        lambda x : abs(
+            (x['retentionTime'] - x['predRT'])
+        ),
+        axis=1,
+    )
+    competitors_df['deltaRT'] = competitors_df.apply(
+        lambda x : abs(
+            abs(
+                x['base_deltaRT']/rt_coefs.get(x['source'], 1.0)
+            ) if rt_coefs.get(x['source'], 1.0) > 0 else x['base_deltaRT']
+        ),
+        axis=1
+    )
 
     competitors_df['accession_spliced'] = 0
     competitors_df['accession_nonspliced'] = 1
+    competitors_df.drop(
+        ['matched_pcps','intensities','mzs','prositIons','iRT'], axis=1,
+    ).sort_values(by='spectralAngle', ascending=False).to_csv(
+        f'{config.output_folder}/cleavageCompetitors.csv',
+        index=False,
+    )
 
     weights_df = pd.read_csv(
         f'{config.output_folder}/final.percolatorSeparate.weights.csv',
@@ -313,21 +309,10 @@ def validate_spliced(config):
         sep='\t',
     )
 
-    feature_set = MINIMAL_FEATURE_SET + ['accession_nonspliced', 'accession_spliced']
-    no_rt_feats = [
-        a for a in feature_set if a != 'deltaRT'
-    ]
-    if 'deltaRT' in weights_df.columns:
-        scores = np.matmul(
-            competitors_df[feature_set].values,
-            weights_df[feature_set].transpose().values
-        )
-    else:
-        scores = np.matmul(
-            competitors_df[no_rt_feats].values,
-            weights_df[no_rt_feats].transpose().values
-        )
-
+    scores = np.matmul(
+        competitors_df[MINIMAL_FEATURE_SET].values,
+        weights_df[MINIMAL_FEATURE_SET].transpose().values
+    )
 
     bias_terms = weights_df['m0'].values
     scores += bias_terms.transpose()
@@ -343,39 +328,56 @@ def validate_spliced(config):
     competitors_df['index'] = competitors_df.index % 10
 
     final_df = pd.read_csv(
-        f'{config.output_folder}/pre_finalAssignments.csv'
+        f'{config.output_folder}/finalAssignments.csv'
     )
-
+    for possible_col in ['pcpPeptide',' modified_sequence']:
+        if possible_col in final_df.columns:
+            final_df = final_df.drop(possible_col, axis=1)
 
     final_df = pd.merge(
         final_df,
-        competitors_df[[SOURCE_KEY, SCAN_KEY, 'compScore', 'group', 'index']],
+        competitors_df[[SOURCE_KEY, SCAN_KEY, 'pcpPeptide', 'modified_sequence', 'compScore', 'group', 'index']],
         how='left',
         on=[SOURCE_KEY, SCAN_KEY]
     )
+    final_df[final_df['pcpPeptide'].apply(lambda x : isinstance(x, str))].to_csv(f'{config.output_folder}/competitorPsp.csv')
+    for raw_file in final_df[SOURCE_KEY].unique().tolist():
+        rt_df = pd.read_csv(
+            f'{config.output_folder}/rt_fit_{raw_file}.csv'
+        )
+        rt_ints[raw_file] = rt_df['intercepts'].mean()
+        rt_coefs[raw_file] = rt_df['coefficents'].mean()
+
+    final_df['deltaRT'] = final_df.apply(
+        lambda x : abs(
+            x['deltaRT']/rt_coefs.get(x['source'], 1.0) if rt_coefs.get(x['source'], 1.0) > 0 else x['deltaRT']
+        ),
+        axis=1,
+    )
+
     final_df['accession_nonspliced'] = final_df['accessionGroup'].apply(
         lambda x : 1 if x == 'nonspliced' else 0
     )
     final_df['accession_spliced'] = final_df['accessionGroup'].apply(
         lambda x : 1 if x == 'spliced' else 0
     )
-    if 'deltaRT' in weights_df.columns:
-        re_scores = np.matmul(
-            final_df[feature_set].values,
-            weights_df[feature_set].transpose().values
-        )
-    else:
-        re_scores = np.matmul(
-            final_df[no_rt_feats].values,
-            weights_df[no_rt_feats].transpose().values
-        )
+    re_scores = np.matmul(
+        final_df[MINIMAL_FEATURE_SET].values,
+        weights_df[MINIMAL_FEATURE_SET].transpose().values
+    )
+
     re_scores += bias_terms
     final_df['reScore1'] = re_scores[:,0]
-    final_df['reScore2'] = re_scores[:,0]
-    final_df['reScore3'] = re_scores[:,1]
+    final_df['reScore2'] = re_scores[:,1]
+    final_df['reScore3'] = re_scores[:,2]
     final_df['reScore'] = np.average(re_scores, axis=1)
 
     final_df['compScore']  = final_df['compScore'].fillna(-100_000)
+
+    final_df[final_df.apply(
+        lambda x : x['compScore'] is not None and x['reScore'] < x['compScore'],
+        axis=1,
+    )].to_csv(f'{config.output_folder}/knockout.csv', index=False)
 
     final_df = final_df[final_df.apply(
         lambda x : x['compScore'] is None or x['reScore'] > x['compScore'],
@@ -397,13 +399,66 @@ def validate_spliced(config):
         axis=1,
     )
 
+    final_df.to_csv(
+        f'{config.output_folder}/filtered_finalAssignments.csv',
+        index=False,
+    )
+
+
+def _separate_psm_id(df_row):
+    """ Function to separate contaminant assignments.
+    """
+    split_psm_id = df_row['specID'].split('_')
+    source = '_'.join(split_psm_id[:-2])
+    scan = int(split_psm_id[-2])
+    mod_pep = split_psm_id[-1]
+    df_row['source'] = source
+    df_row['scan'] = scan
+    df_row['contModPep'] = mod_pep
+    df_row['contPeptide'] = mod_pep.replace('[+1.0]', '').replace('[+16.0]', '').replace('[+57.0]', '')
+    return df_row
+
+def cont_filter(df_row):
+    if not isinstance(df_row['contPeptide'], str):
+        return True
+    if df_row['peptide'].replace('I', 'L') == df_row['contPeptide'].replace('I', 'L'):
+        return True
+    if df_row['spectralAngle'] < df_row['contamSA']:
+        return False
+    return True
+
+
+def filter_contaminants(final_df, config):
     final_df = final_df[
-        (final_df['spectralAngle'] > 0.7) &
-        (final_df['deltaRT'] < 150) &
         (final_df['qValue'] < 0.01)
     ]
 
-    final_df.to_csv(
-        f'{config.output_folder}/finalAssignments.csv',
-        index=False,
+    contam_df = pd.read_csv(
+        config.contaminant_data, sep='\t'
     )
+
+    contam_df = contam_df[['specID', 'deltaRT', 'spectralAngle']]
+    contam_df = contam_df[
+        (contam_df['spectralAngle'] > final_df['spectralAngle'].min()*0.9)
+    ]
+    contam_df = contam_df.apply(_separate_psm_id, axis=1)
+    contam_df = contam_df.sort_values(by='spectralAngle', ascending=False)
+    contam_df = contam_df.drop_duplicates(subset=['source', 'scan'])
+    contam_df = contam_df.drop(['specID'], axis=1)
+    contam_df = contam_df.rename(columns={
+        'spectralAngle': 'contamSA',
+        'deltaRT': 'contamDeltaRT',
+    })
+    contam_df = contam_df[['source', 'scan', 'contPeptide', 'contamSA']]
+
+    final_df = pd.merge(
+        final_df,
+        contam_df,
+        how='left',
+        on=['source', 'scan'],
+    )
+
+    filtered_final_df = final_df[final_df.apply(cont_filter, axis=1)]
+    filtered_final_df = filtered_final_df.drop(['contamSA', 'contPeptide'], axis=1)
+
+    return filtered_final_df

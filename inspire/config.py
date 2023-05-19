@@ -1,5 +1,6 @@
 """ Definition of Config class.
 """
+import glob
 import os
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from inspire.utils import read_distiller_log
 ALL_CONFIG_KEYS = [
     'accessionFormat',
     'collisionEnergy',
+    'contaminantData',
     'combinedScansFile',
     'deltaMethod',
     'distillerLog',
@@ -29,7 +31,9 @@ ALL_CONFIG_KEYS = [
     'proteome',
     'reduce',
     'rescoreMethod',
+    'resultsExport',
     'reuseInput',
+    'rtPerFile',
     'scansFolder',
     'scansFormat',
     'scanTitleFormat',
@@ -41,6 +45,7 @@ ALL_CONFIG_KEYS = [
     'spectralPredictor',
     'useAccessionStrata',
     'useBindingAffinity',
+    'useIrtDelta',
     'useMinimalFeatures',
 ]
 
@@ -86,13 +91,19 @@ class Config:
         """
         # Required:
         self.experiment_title = config_dict['experimentTitle']
-        self.search_results = config_dict['searchResults']
+        self.search_results = []
+        for result_group in config_dict['searchResults']:
+            self.search_results.extend(glob.glob(result_group))
+
         self.search_engine = config_dict['searchEngine']
         self.output_folder = config_dict['outputFolder']
         self.scans_folder = config_dict['scansFolder']
         self.scans_format = config_dict['scansFormat']
 
         # Recommended:
+        self.results_export = config_dict.get('resultsExport', 'psm')
+        self.use_irt_diff = config_dict.get('useIrtDelta', True)
+        self.delta_rt_per_file = config_dict.get('rtPerFile', True)
         self.n_cores = config_dict.get('nCores', 1)
         self.collision_energy = config_dict.get('collisionEnergy', None)
         self.mz_accuracy = config_dict.get('mzAccuracy', 0.02)
@@ -144,11 +155,12 @@ class Config:
         self.accession_hierarchy = config_dict.get('accessionHierarchy')
         self.accession_format = config_dict.get('accessionFormat')
         if self.accession_format == 'invitroSPI' and self.accession_hierarchy is None:
-            self.accession_hierarchy = ['nonspliced', 'cisspliced', 'transspliced']
+            self.accession_hierarchy = ['nonspliced', 'spliced']
 
         self.use_accession_stratum = config_dict.get('useAccessionStrata', False)
         self.proteome = config_dict.get('proteome')
         self.raw_file_groups = config_dict.get('rawFileGroupings')
+        self.contaminant_data = config_dict.get('contaminantData')
 
     def __str__(self):
         print_string = f'inSPIRE Settings for Experiment {self.experiment_title}:<br>'
@@ -284,10 +296,10 @@ class Config:
     def validate(self):
         """ Function to validate config settings.
         """
-        if self.search_engine not in ('mascot', 'maxquant', 'peaks'):
+        if self.search_engine not in ('mascot', 'maxquant', 'peaks', 'msfragger'):
             raise ValueError(
                 f'Unsupported Search Engine: "{self.search_engine}". Supported ' +
-                'engines are "mascot", "peaks", and "maxquant".'
+                'engines are "mascot", "peaks", "msfragger", and "maxquant".'
             )
 
         if self.scans_format not in ('mgf', 'mzML'):

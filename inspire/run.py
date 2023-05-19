@@ -11,6 +11,7 @@ from inspire.calibration import calibrate
 from inspire.config import Config
 from inspire.constants import ENDC_TEXT, OKGREEN_TEXT
 from inspire.download import download_data, download_models
+from inspire.get_spectral_angle import get_spectral_angle
 from inspire.plot_spectra import plot_spectra
 from inspire.predict_spectra import predict_spectra
 from inspire.prepare import prepare_for_spectral_prediction, prepare_for_mhcpan
@@ -20,6 +21,7 @@ from inspire.rescore import final_rescoring
 from inspire.report import generate_report
 from inspire.utils import fetch_collision_energy
 from inspire.validate import validate_spliced
+
 import inspire
 
 print(f'\n---> Running inSPIRE version {inspire.__version__} <---\n')
@@ -42,6 +44,8 @@ PIPELINE_OPTIONS = [
     'queryTable',
     'generateReport',
     'plotSpectra',
+    'spectralAngle',
+    'validate',
 ]
 
 def get_arguments():
@@ -149,6 +153,16 @@ def main():
         final_rescoring(config)
 
     if (
+        args.pipeline in ('featureSelection+', 'rescore', 'core') and not config.silent_execution
+    ) or args.pipeline == 'generateReport':
+        print(
+            OKGREEN_TEXT +
+            'Generating inSPIRE Performance Report...' +
+            ENDC_TEXT
+        )
+        generate_report(config)
+
+    if (
         args.pipeline in ('validate', 'featureSelection+', 'rescore', 'core', 'calibrate+core')
         and config.use_accession_stratum
     ):
@@ -159,15 +173,13 @@ def main():
         )
         validate_spliced(config)
 
-    if (
-        args.pipeline in ('featureSelection+', 'rescore', 'core') and not config.silent_execution
-    ) or args.pipeline == 'generateReport':
+    if args.pipeline == 'spectralAngle':
         print(
             OKGREEN_TEXT +
-            'Generating inSPIRE Performance Report...' +
+            'Calculating Spectral Angles...' +
             ENDC_TEXT
         )
-        generate_report(config)
+        get_spectral_angle(config)
 
     if args.pipeline == 'plotSpectra':
         print(
