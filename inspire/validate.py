@@ -254,7 +254,8 @@ def validate_spliced(config):
         f'{config.output_folder}/finalAssignments.csv'
     )
     final_df = final_df[final_df['qValue'] < 0.01]
-    # final_df = filter_contaminants(final_df, config)
+    if config.contaminant_data is not None:
+        final_df = filter_contaminants(final_df, config)
     competitors_df = find_competitors(final_df, config)
 
     if not competitors_df.shape[0]:
