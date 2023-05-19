@@ -374,10 +374,7 @@ def validate_spliced(config):
     final_df['reScore'] = np.average(re_scores, axis=1)
 
     final_df['compScore']  = final_df['compScore'].fillna(-100_000)
-    print(final_df[final_df.apply(
-        lambda x : x['compScore'] is not None and x['reScore'] < x['compScore'],
-        axis=1,
-    )].shape)
+
     final_df[final_df.apply(
         lambda x : x['compScore'] is not None and x['reScore'] < x['compScore'],
         axis=1,
