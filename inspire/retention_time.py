@@ -104,16 +104,26 @@ def add_delta_irt(combined_df, config, scan_file):
             combined_df_list.append(test_df)
         combined_df = pd.concat(combined_df_list)
     except ValueError:
-        # Simplest way to avoid errors on tiny files.
-        train_df = train_df[train_df[LABEL_KEY] == 1]
-        reg = LinearRegression().fit(
-            train_df[['iRT']],
-            train_df[RT_KEY]
-        )
-        coefficents.append(reg.coef_[0])
-        intercepts.append(reg.intercept_)
-        combined_df['predRT'] = reg.predict(combined_df[['iRT']])
-        combined_df['deltaRT'] = (combined_df['predRT'] - combined_df['retentionTime']).abs()
+        try:
+            # Simplest way to avoid errors on tiny files.
+            train_df = combined_df[combined_df[LABEL_KEY] == 1]
+            reg = LinearRegression().fit(
+                train_df[['iRT']],
+                train_df[RT_KEY]
+            )
+            coefficents.append(reg.coef_[0])
+            intercepts.append(reg.intercept_)
+            combined_df['predRT'] = reg.predict(combined_df[['iRT']])
+            combined_df['deltaRT'] = (combined_df['predRT'] - combined_df['retentionTime']).abs()
+        except ValueError:
+            reg = LinearRegression().fit(
+                combined_df[['iRT']],
+                combined_df[RT_KEY]
+            )
+            coefficents.append(reg.coef_[0])
+            intercepts.append(reg.intercept_)
+            combined_df['predRT'] = reg.predict(combined_df[['iRT']])
+            combined_df['deltaRT'] = (combined_df['predRT'] - combined_df['retentionTime']).abs()
 
     rt_df = pd.DataFrame({
         'coefficents': coefficents,
