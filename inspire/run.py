@@ -13,6 +13,7 @@ from inspire.constants import ENDC_TEXT, OKGREEN_TEXT
 from inspire.download import download_data, download_models
 from inspire.get_spectral_angle import get_spectral_angle
 from inspire.plot_spectra import plot_spectra
+from inspire.plot_isobars import plot_isobars
 from inspire.predict_spectra import predict_spectra
 from inspire.prepare import prepare_for_spectral_prediction, prepare_for_mhcpan
 from inspire.feature_creation import create_features
@@ -33,6 +34,7 @@ PIPELINE_OPTIONS = [
     'core',
     'downloadExample',
     'prepare',
+    'plotIsobars',
     'spectralPrepare',
     'panPrepare',
     'predictSpectra',
@@ -188,6 +190,15 @@ def main():
             ENDC_TEXT
         )
         plot_spectra(config)
+
+    if args.pipeline == 'plotIsobars':
+        print(
+            OKGREEN_TEXT +
+            'Plotting Isobars...' +
+            ENDC_TEXT
+        )
+        plot_isobars(config)
+
 
     print(
         OKGREEN_TEXT +

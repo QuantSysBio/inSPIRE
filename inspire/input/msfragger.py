@@ -328,10 +328,19 @@ def read_ms_fragger_data(ms_fragger_data, fixed_modifications, n_cores):
         with multiprocessing.Pool(processes=n_cores) as pool:
             results = pool.starmap(read_single_ms_fragger_data, func_args)
         mods_dfs = [res[1] for res in results if res is not None]
-        mods_df = pd.concat(mods_dfs).drop_duplicates(subset=['Name'])
-        mods_df = mods_df.reset_index(drop=True)
-        mods_df[PTM_IS_VAR_KEY] = mods_df[PTM_IS_VAR_KEY].astype(bool)
-        mods_df[PTM_ID_KEY] = mods_df[PTM_ID_KEY].astype(int)
+        if mods_dfs:
+            mods_df = pd.concat(mods_dfs).drop_duplicates(subset=['Name'])
+            mods_df = mods_df.reset_index(drop=True)
+            mods_df[PTM_IS_VAR_KEY] = mods_df[PTM_IS_VAR_KEY].astype(bool)
+            mods_df[PTM_ID_KEY] = mods_df[PTM_ID_KEY].astype(int)
+        else:
+            mods_df = pd.DataFrame({
+                PTM_ID_KEY: [],
+                PTM_IS_VAR_KEY:[],
+                PTM_NAME_KEY: [],
+                PTM_WEIGHT_KEY: []
+            })
+        
 
         # Combine DataFrames and validate that same PTMs are present.
         hits_df = pd.concat([res[0] for res in results if res is not None])

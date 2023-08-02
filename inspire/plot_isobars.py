@@ -27,8 +27,8 @@ from inspire.predict_spectra import predict_spectra
 from inspire.spectral_features import calculate_spectral_features
 from inspire.utils import convert_mod_seq_to_ptm_seq, fetch_scan_data
 
-PLOTS_PER_PAGE = 15
-PLOTS_PER_LINE = 3
+PLOTS_PER_PAGE = 5
+PLOTS_PER_LINE = 1
 LOSS_NAMES = ['',  '*', '&#xb0;']
 
 def convert_names_and_mzs(mod_seq, pred_names):
@@ -320,7 +320,7 @@ def experiment_match(exp_mzs, exp_intes, pred_mzs, plotting_names, mz_accuracy, 
     return matched_peaks, l2_norm, matched_pred_mzs, matched_names
 
 
-def pair_plot(df_row, mz_accuracy, mz_units):
+def isobar_pair_plot(df_row, mz_accuracy, mz_units, id_grp_name):
     """ Function to generate the traces and annotations needed for the pair plots
         of the spectra.
 
@@ -336,14 +336,18 @@ def pair_plot(df_row, mz_accuracy, mz_units):
     annotations : list of dict
         A list of the annotations needed for the bar plot.
     """
-    index = df_row['index']
-    peptide = df_row['peptide']
-    pep_len = len(peptide)
-    pred_intes = [-x for x in df_row['prositIons'].values()]
+    if id_grp_name:
+        index = (df_row['index'] * 2) + 1
+    else:
+        index = df_row['index'] * 2
 
+    peptide = df_row[f'{id_grp_name}peptide']
+    pep_len = len(peptide)
+    pred_intes = [-x for x in df_row[f'{id_grp_name}prositIons'].values()]
+    print(f'{id_grp_name}modified_sequence', df_row[f'{id_grp_name}modified_sequence'], df_row[f'{id_grp_name}peptide'])
     pred_mzs, plotting_names = convert_names_and_mzs(
-        df_row['modified_sequence'],
-        list(df_row['prositIons'].keys())
+        df_row[f'{id_grp_name}modified_sequence'],
+        list(df_row[f'{id_grp_name}prositIons'].keys())
     )
 
     matched_peaks, l2_norm, matched_p_mz, matched_names = experiment_match(
@@ -357,7 +361,7 @@ def pair_plot(df_row, mz_accuracy, mz_units):
             1: KNOWN_PTM_WEIGHTS['Oxidation (M)'],
             2: KNOWN_PTM_WEIGHTS['Carbamidomethylation'],
         },
-        df_row['ptm_seq'], mz_accuracy, mz_units
+        df_row[f'{id_grp_name}ptm_seq'], mz_accuracy, mz_units
     )
 
     unmatched_peaks = get_unmatched(
@@ -658,7 +662,7 @@ def pair_plot(df_row, mz_accuracy, mz_units):
     return traces, annotations
 
 
-def plot_spectra(config):
+def plot_isobars(config):
     """ Function to generate pair plots of selected PSMs (experimental vs. Prosit
         predicted spectra.).
 
@@ -669,10 +673,8 @@ def plot_spectra(config):
     """
     add_legend(config.output_folder, config.experiment_title)
 
-    input_df = pd.read_csv(f'{config.output_folder}/plotData.csv')
+    input_df = pd.read_csv(f'{config.output_folder}/isobarData.csv')
 
-
-    print(input_df)
     get_charge_from_scan_file = not CHARGE_KEY in input_df.columns
     scan_df = fetch_scan_data(input_df, config, get_charge_from_scan_file)
 
@@ -691,43 +693,55 @@ def plot_spectra(config):
     if input_df.shape[0] % PLOTS_PER_PAGE:
         n_groups += 1
 
-    input_df['modified_sequence'] = input_df['modifiedSequence'].apply(
-        lambda x : x.replace('[+16.0]', '(ox)').replace('[+57.0]', '')
-    )
-    input_df['precursor_charge'] = input_df[CHARGE_KEY]
+    for idx, id_grp_name in enumerate(['', 'isobar']):
+        input_df[f'{id_grp_name}modified_sequence'] = input_df[f'{id_grp_name}modifiedSequence'].apply(
+            lambda x : x.replace('[+16.0]', '(ox)').replace('[+57.0]', '')
+        )
+        input_df['precursor_charge'] = input_df[CHARGE_KEY]
 
-    if 'collisionEnergy' in input_df.columns:
-        input_df = input_df.rename(columns={'collisionEnergy': 'collision_energy'})
-    else:
-        input_df['collision_energy'] = config.collision_energy
+        if 'collisionEnergy' in input_df.columns:
+            input_df = input_df.rename(columns={'collisionEnergy': 'collision_energy'})
+        else:
+            input_df['collision_energy'] = config.collision_energy
 
-    input_df[['modified_sequence', 'precursor_charge', 'collision_energy']].to_csv(
-        f'{config.output_folder}/plotInput.csv', index=False,
-    )
+        input_df[[f'{id_grp_name}modified_sequence', 'precursor_charge', 'collision_energy']].rename(
+            columns={
+                f'{id_grp_name}modified_sequence': 'modified_sequence',
+            }
+        ).to_csv(
+            f'{config.output_folder}/plot{id_grp_name}Input.csv', index=False,
+        )
 
-    predict_spectra(config, pipeline='plotSpectra')
-    prosit_df = msp_to_df(
-        f'{config.output_folder}/plotPredictions.msp', 'prosit', None,
-    )
-    prosit_df = prosit_df.drop_duplicates(subset=['modified_sequence', CHARGE_KEY])
+        predict_spectra(config, pipeline=f'plot{id_grp_name}Spectra')
+        prosit_df = msp_to_df(
+            f'{config.output_folder}/plot{id_grp_name}Predictions.msp', 'prosit', None,
+        ).rename(columns={'modified_sequence': f'{id_grp_name}modified_sequence'})
+        prosit_df = prosit_df.drop_duplicates(subset=[f'{id_grp_name}modified_sequence', CHARGE_KEY])
+        prosit_df = prosit_df.rename(columns={
+                'prositIons': f'{id_grp_name}prositIons', 'modified_sequence': f'{id_grp_name}modified_sequence'}
+        )
 
-    input_df = pd.merge(
-        input_df,
-        prosit_df,
-        how='inner',
-        on=['modified_sequence', CHARGE_KEY]
-    )
 
+        input_df = pd.merge(
+            input_df,
+            prosit_df[[CHARGE_KEY, f'{id_grp_name}prositIons', f'{id_grp_name}modified_sequence']],
+            how='inner',
+            on=[f'{id_grp_name}modified_sequence', CHARGE_KEY]
+        )
+        print(input_df.columns)
+
+    input_df = input_df.sort_values(by='deltaRT')
     input_df = input_df.reset_index(drop=True)
     input_df['group'] = input_df.index // PLOTS_PER_PAGE
     input_df['index'] = input_df.index % PLOTS_PER_PAGE
-    input_df['ptm_seq'] = input_df['modifiedSequence'].apply(
-        convert_mod_seq_to_ptm_seq
-    )
-    input_df['plot_data'] = input_df.apply(
-        lambda x : pair_plot(x, config.mz_accuracy, config.mz_units),
-        axis=1,
-    )
+    for idx, id_grp_name in enumerate(['', 'isobar']):
+        input_df[f'{id_grp_name}ptm_seq'] = input_df[f'{id_grp_name}modifiedSequence'].apply(
+            convert_mod_seq_to_ptm_seq
+        )
+        input_df[f'{id_grp_name}plot_data'] = input_df.apply(
+            lambda x : isobar_pair_plot(x, config.mz_accuracy, config.mz_units, id_grp_name),
+            axis=1,
+        )
 
     if SPECTRAL_ANGLE_KEY not in input_df.columns:
         input_df = input_df.apply(
@@ -754,34 +768,42 @@ def plot_spectra(config):
         seq = input_df[PEPTIDE_KEY].iloc[idx]
         scan_nr = input_df[SCAN_KEY].iloc[idx]
         charge = input_df[CHARGE_KEY].iloc[idx]
+        isobar_seq = input_df['isobarpeptide'].iloc[idx]
+        isobar_irt = round(input_df['isobardeltaRT'].iloc[idx],2)
+        isobar_sa = round(input_df['isobarspectralAngle'].iloc[idx],2)
+        isobar_spear = round(input_df['isobarspearmanR'].iloc[idx],2)
+        spear = round(input_df['spearmanR'].iloc[idx],2)
         src = input_df[SOURCE_KEY].iloc[idx].split('UnLabeled_')[-1]
         spectral_angle = round(input_df[SPECTRAL_ANGLE_KEY].iloc[idx], 2)
-        if 'Context' in input_df.columns:
-            context = input_df['Context'].iloc[idx]
-            titles.append(
-                f'<b>Source</b> {src} <b>Scan</b> {scan_nr}<br><b>Peptide</b> {seq} ' +
-                f'<b>Charge</b> {charge} <b>Spectral Angle</b> {spectral_angle}<br>' +
-                f'<b>Context</b> {context}'
-            )
-        else:
-            titles.append(
-                f'<b>Source</b> {src} <b>Scan</b> {scan_nr}<br><b>Peptide</b> {seq} ' +
-                f'<b>Charge</b> {charge} <b>Spectral Angle</b> {spectral_angle}<br>'
-            )
+        delta_rt = round(input_df['deltaRT'].iloc[idx],2)
+        if isobar_irt > 4.25:
+            isobar_irt = f'<span style="color:red">{isobar_irt}</span>'
+        if delta_rt > 4.25:
+            delta_rt = f'<span style="color:red">{delta_rt}</span>'
+        titles.append(
+            f'<b>Source</b> {src} <b>Scan</b> {scan_nr}<br><b>Peptide</b> {seq} ' +
+            f'<b>Charge</b> {charge} <b>Spectral Angle</b> {spectral_angle}<br>' +
+            f'<b>Spearman Correlation</b>  {spear} <b>iRT Error:</b> {delta_rt}'
+        )
+        titles.append(
+            f'<b>Source</b> {src} <b>Scan</b> {scan_nr}<br><b>Peptide</b> {isobar_seq} ' +
+            f'<b>Charge</b> {charge} <b>Spectral Angle</b> {isobar_sa}<br>' +
+            f'<b>Spearman Correlation</b> {isobar_spear} <b>iRT Error:</b> {isobar_irt}'
+        )
+
 
     for group_idx in range(n_groups):
 
-        start_idx = PLOTS_PER_PAGE*group_idx
+        start_idx = PLOTS_PER_PAGE*2*group_idx
         sub_df = input_df[input_df['group'] == group_idx]
-        n_plots = sub_df.shape[0]
-        n_plot_rows = 1 + (n_plots//PLOTS_PER_LINE)
+        n_plots = sub_df.shape[0]*2
 
         fig = make_subplots(
-            rows=n_plot_rows,
-            cols=PLOTS_PER_LINE,
+            rows=PLOTS_PER_PAGE,
+            cols=2,
             subplot_titles = titles[start_idx:start_idx+n_plots],
         )
-        for idx in range(1, (n_plot_rows*PLOTS_PER_LINE)+1):
+        for idx in range(1, (PLOTS_PER_PAGE*2)+1):
             fig.update_layout(
                 {
                     f'xaxis{idx}':{'title_text': 'm/z'},
@@ -791,30 +813,43 @@ def plot_spectra(config):
 
         plot_data = sub_df['plot_data'].tolist()
         for idx, (traces, annotations) in enumerate(plot_data):
+            print(idx)
             for trace in traces:
                 fig.add_trace(
                     trace,
-                    row=1 + (idx//PLOTS_PER_LINE),
-                    col=1 + (idx%PLOTS_PER_LINE),
+                    row=idx+1,
+                    col=1,
+                )
+
+            fig.layout['annotations'] += tuple(annotations)
+        
+        plot_data = sub_df['isobarplot_data'].tolist()
+        for idx, (traces, annotations) in enumerate(plot_data):
+            for trace in traces:
+                fig.add_trace(
+                    trace,
+                    row=idx+1,
+                    col=2,
                 )
 
             fig.layout['annotations'] += tuple(annotations)
 
         for idx in range(sub_df.shape[0]):
-            fig.add_trace(
-                go.Scatter(
-                    x=[0, 1500],
-                    y=[0, 0],
-                    mode='lines',
-                    line={'width':0.5, 'color':'black'},
-                ),
-                row=1 + (idx//PLOTS_PER_LINE),
-                col=1 + (idx%PLOTS_PER_LINE),
-            )
+            for col in [1, 2]:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[0, 1500],
+                        y=[0, 0],
+                        mode='lines',
+                        line={'width':0.5, 'color':'black'},
+                    ),
+                    row=1 + idx,
+                    col=col,
+                )
 
         fig.update_layout(
-            width=2100,
-            height=n_plot_rows*500,
+            width=1400,
+            height=PLOTS_PER_PAGE*500,
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
             showlegend=False,
@@ -847,25 +882,25 @@ def plot_spectra(config):
 
         pio.write_image(
             fig,
-            f'{config.output_folder}/spectralPlots{group_idx}.pdf',
+            f'{config.output_folder}/isobarPlots{group_idx}.pdf',
             engine='kaleido',
         )
 
     merger = PdfFileMerger()
     merger.append(
-        f'{config.output_folder}/spectralPlots_legend.pdf'
+        f'{config.output_folder}/isobarPlots_legend.pdf'
     )
     for group_idx in range(n_groups):
         merger.append(
-            f'{config.output_folder}/spectralPlots{group_idx}.pdf'
+            f'{config.output_folder}/isobarPlots{group_idx}.pdf'
         )
-    merger.write(f'{config.output_folder}/spectralPlots.pdf')
+    merger.write(f'{config.output_folder}/isobarPlots.pdf')
     for group_idx in range(n_groups):
         os.remove(
-            f'{config.output_folder}/spectralPlots{group_idx}.pdf'
+            f'{config.output_folder}/isobarPlots{group_idx}.pdf'
         )
     os.remove(
-        f'{config.output_folder}/spectralPlots_legend.pdf'
+        f'{config.output_folder}/isobarPlots_legend.pdf'
     )
 
 
@@ -952,7 +987,7 @@ def add_legend(output_folder, experiment_title):
     for trace in legend_traces[4:]:
         colour_key_fig.add_trace(trace, row=3, col=1)
 
-    colour_key_fig.add_trace(
+        colour_key_fig.add_trace(
         go.Scatter(
             x=[1.0],
             y=[7.5],
@@ -978,6 +1013,7 @@ def add_legend(output_folder, experiment_title):
         row=4,
         col=1,
     )
+
 
     colour_key_fig.update_layout(
         width=2100,
@@ -1021,7 +1057,7 @@ def add_legend(output_folder, experiment_title):
     )
 
     colour_key_fig.update_layout(
-        title_text=f'<b>inSPIRE Spectral Plotting for {experiment_title}</b>',
+        title_text=f'<b>inSPIRE isobaric peptide comparisons for {experiment_title}</b>',
         title_x=0.5,
         title_font_size=30,
         title_font_family='Helvetica',
@@ -1029,6 +1065,6 @@ def add_legend(output_folder, experiment_title):
 
     pio.write_image(
         colour_key_fig,
-        f'{output_folder}/spectralPlots_legend.pdf',
+        f'{output_folder}/isobarPlots_legend.pdf',
         engine='kaleido',
     )

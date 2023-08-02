@@ -76,9 +76,12 @@ def predict_spectra(config, pipeline='core'):
         elif pipeline == 'validation':
             input_file = f'{config.output_folder}/validationInput.csv'
             out_file = f'{config.output_folder}/validationPredictions.msp'
-        else:
+        elif pipeline == 'plotSpectra':
             input_file = f'{config.output_folder}/plotInput.csv'
             out_file = f'{config.output_folder}/plotPredictions.msp'
+        else:
+            input_file = f'{config.output_folder}/plotisobarInput.csv'
+            out_file = f'{config.output_folder}/plotisobarPredictions.msp'
         input_df, prosit_input = process_csv_file(input_file)
 
         prosit_data = prosit_predict(prosit_input, d_irt)
