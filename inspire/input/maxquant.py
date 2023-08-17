@@ -22,6 +22,14 @@ from inspire.constants import (
     SOURCE_KEY,
 )
 
+MQ_ABBREVIATIONS = {
+    'ox': 'Oxidation (M)',
+    'ac': 'Acetyl (N-term)',
+    'dm': 'Deamidated',
+    'cm': 'Carbamidomethyl (C)',
+    'tm': 'TMT 6-plex',
+}
+
 # Define the relevant column names from MaxQuant search results.
 MQ_ACCESSION_KEY = 'Proteins'
 MQ_CHARGE_KEY = 'Charge'
@@ -112,12 +120,20 @@ def _create_ptm_seq_col(modified_seq, unqiue_mods):
         ptm_seq += f'{unqiue_mods[split_seq[0]]}.'
         main_seq = split_seq[1]
     elif split_seq[1].startswith('('):
-        main_seq = split_seq[1]
-        main_seq = main_seq[1:]
-        end_mod = main_seq.index(')') + 1
-        mod = main_seq[:end_mod]
-        main_seq = main_seq[end_mod + 1:]
-        ptm_seq += f'{str(unqiue_mods[mod])}.'
+        if split_seq[2].isupper():
+            main_seq = split_seq[1]
+            main_seq = main_seq[1:]
+            end_mod = main_seq.index(')') + 1
+            mod = main_seq[:end_mod]
+            main_seq = main_seq[end_mod + 1:]
+            ptm_seq += f'{str(unqiue_mods[mod])}.'
+        else:
+            main_seq = split_seq[1]
+            main_seq = main_seq[1:]
+            end_mod = main_seq.index(')')
+            mod = main_seq[:end_mod]
+            main_seq = main_seq[end_mod + 1:]
+            ptm_seq += f'{str(unqiue_mods[MQ_ABBREVIATIONS[mod]])}.'
     else:
         ptm_seq += '0.'
         main_seq = split_seq[1]
@@ -131,11 +147,18 @@ def _create_ptm_seq_col(modified_seq, unqiue_mods):
             ptm_seq += '0'
             main_seq = main_seq[1:]
         else:
-            main_seq = main_seq[2:]
-            end_mod = main_seq.index(')') + 1
-            mod = main_seq[:end_mod]
-            main_seq = main_seq[end_mod + 1:]
-            ptm_seq += str(unqiue_mods[mod])
+            if main_seq[2].isupper():
+                main_seq = main_seq[2:]
+                end_mod = main_seq.index(')') + 1
+                mod = main_seq[:end_mod]
+                main_seq = main_seq[end_mod + 1:]
+                ptm_seq += str(unqiue_mods[mod])
+            else:
+                main_seq = main_seq[2:]
+                end_mod = main_seq.index(')') 
+                mod = main_seq[:end_mod]
+                main_seq = main_seq[end_mod + 1:]
+                ptm_seq += str(unqiue_mods[MQ_ABBREVIATIONS[mod]])
 
     if split_seq[2]:
         ptm_seq += f'.{unqiue_mods[split_seq[2]]}'
