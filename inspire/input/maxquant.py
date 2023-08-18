@@ -26,7 +26,8 @@ MQ_ABBREVIATIONS = {
     'ox': 'Oxidation (M)',
     'ac': 'Acetyl (N-term)',
     'dm': 'Deamidated',
-    'cm': 'Carbamidomethyl (C)',
+    # 'cm': 'Carbamidomethyl (C)',
+    'cm': 'Carbamidomethylation',
     'tm': 'TMT 6-plex',
 }
 
