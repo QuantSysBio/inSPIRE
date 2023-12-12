@@ -152,7 +152,6 @@ def execute_msfragger(config):
     config : inSPIRE.config.Config
         Config object for the experiment.
     """
-    download_utils()
     home = str(Path.home())
     fragger_params_template = config.fragger_params
     contams_db = (
