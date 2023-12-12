@@ -5,6 +5,7 @@ import shutil
 
 import docker
 import pandas as pd
+import platform
 import polars as pl
 
 from inspire.constants import (
@@ -166,21 +167,33 @@ def execute_skyline(config):
     scans_folder_abs_path = os.path.abspath(config.scans_folder)
 
     # Execute docker
-    client = docker.from_env()
-    client.containers.run(
-        'proteowizard/pwiz-skyline-i-agree-to-the-vendor-licenses',
-        ' wine SkylineCmd --timestamp --dir=/data --in=skyline_config.sky ' +
-        ' --full-scan-rt-filter=ms2_ids --full-scan-rt-filter-tolerance=0.25 '
-        ' --import-search-file=inspire_identifications.ssl ' +
-        ' --import-fasta=inspire_identifications.fasta ' +
-        ' --import-search-include-ambiguous ' +
-        ' --report-add=skyline_report_template.skyr --report-name=myreport --report-invariant' +
-        f' --report-file=skyline_report.csv > {config.output_folder}/quant/skyline_log.txt',
-        tty=True,
-        stdin_open=True,
-        auto_remove=True,
-        volumes={scans_folder_abs_path: {'bind': '/data', 'mode': 'rw'}},
-    )
+    if platform.system() != 'Windows':
+        client = docker.from_env()
+        client.containers.run(
+            'proteowizard/pwiz-skyline-i-agree-to-the-vendor-licenses',
+            ' wine SkylineCmd --timestamp --dir=/data --in=skyline_config.sky ' +
+            ' --full-scan-rt-filter=ms2_ids --full-scan-rt-filter-tolerance=0.25 '
+            ' --import-search-file=inspire_identifications.ssl ' +
+            ' --import-fasta=inspire_identifications.fasta ' +
+            ' --import-search-include-ambiguous ' +
+            ' --report-add=skyline_report_template.skyr --report-name=myreport --report-invariant' +
+            f' --report-file=skyline_report.csv > {config.output_folder}/quant/skyline_log.txt',
+            tty=True,
+            stdin_open=True,
+            auto_remove=True,
+            volumes={scans_folder_abs_path: {'bind': '/data', 'mode': 'rw'}},
+        )
+    else:
+        os.system(
+            config.skyline_runner +
+            f' --timestamp --dir={scans_folder_abs_path} --in=skyline_config.sky ' +
+            ' --full-scan-rt-filter=ms2_ids --full-scan-rt-filter-tolerance=0.25 '
+            ' --import-search-file=inspire_identifications.ssl ' +
+            ' --import-fasta=inspire_identifications.fasta ' +
+            ' --import-search-include-ambiguous ' +
+            ' --report-add=skyline_report_template.skyr --report-name=myreport --report-invariant' +
+            f' --report-file=skyline_report.csv > {config.output_folder}/quant/skyline_log.txt',
+        )
 
     # Copy output back
     if os.path.exists(f'{config.scans_folder}/skyline_report.csv'):

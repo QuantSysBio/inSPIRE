@@ -66,6 +66,7 @@ ALL_CONFIG_KEYS = [
     'silentExecution',
     'skylineConfig',
     'skylineReportTemplate',
+    'skylineRunner',
     'skylineIdpCutOff',
     'skylineRatioCutOff',
     'spectralAngleDfs',
@@ -186,6 +187,7 @@ class Config:
         # Quantification
         self.quantification_cut_off = config_dict.get('quantCutOff', 0.01)
         self.technical_replicates = config_dict.get('technicalReplicates')
+        self.skyline_runner = config_dict.get('skylineRunner')
         self.skyline_config_file = config_dict.get(
             'skylineConfig', f'{home}/inSPIRE_models/utilities/skyline_config.sky'
         )

@@ -90,7 +90,6 @@ setup(
 		'tensorboard-data-server==0.7.2',
 		'tensorflow==2.15.0',
 		'tensorflow-estimator==2.15.0',
-		'tensorflow-io-gcs-filesystem==0.34.0',
 		'termcolor==2.3.0',
 		'threadpoolctl==3.2.0',
 		'typing_extensions==4.8.0',
