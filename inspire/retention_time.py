@@ -1,7 +1,10 @@
 """ Functions for calculating difference between predicted and detected
     retention times.
 """
+import os
+
 import pandas as pd
+import polars as pl
 from pyteomics import achrom
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import KFold
@@ -61,7 +64,7 @@ def add_delta_irt(combined_df, config, scan_file):
     combined_df : pd.DataFrame
         The DataFrame updated with a deltaRT column.
     """
-    if combined_df[RT_KEY].nunique() <= 1:
+    if combined_df[RT_KEY].n_unique() <= 1:
         combined_df['deltaRT'] = 0
         return combined_df
 
@@ -71,59 +74,105 @@ def add_delta_irt(combined_df, config, scan_file):
     intercepts = []
 
     if 'iRT' in combined_df.columns:
-        combined_df_irt_null_count = combined_df[combined_df['iRT'].isnull()].shape[0]
+        combined_df_irt_null_count = combined_df.filter(
+            pl.col('iRT').is_null()
+        ).shape[0]
     else:
         combined_df_irt_null_count = 1
 
+    if config.rt_fit_loc is not None:
+        if os.path.exists(f'{config.rt_fit_loc}/rt_fit_{scan_file}.csv'):
+            rt_df = pd.read_csv(f'{config.rt_fit_loc}/rt_fit_{scan_file}.csv')
+        else:
+            rt_dfs = [x for x in os.listdir(config.rt_fit_loc) if x.startswith('rt_fit')]
+            rt_df = pd.read_csv(f'{config.rt_fit_loc}/{rt_dfs[0]}')
+
+        coef = rt_df['coefficents'].mean()
+        intercept = rt_df['intercepts'].mean()
+        combined_df = combined_df.with_columns(
+            pl.col('iRT').apply(lambda x : (x*coef)+ intercept).alias('predRT')
+        )
+        combined_df = combined_df.with_columns(
+            (pl.col('predRT') - pl.col('retentionTime')).truediv(coef).abs().alias('deltaRT')
+        )
+        return combined_df
+
     try:
         for train, test in kfold.split(combined_df):
-            train_df = combined_df.iloc[train]
-            test_df = combined_df.iloc[test]
+            train_df = combined_df[train, :]
+            test_df = combined_df[test, :]
 
             if ACCESSION_STRATUM_KEY in train_df.columns:
-                train_df = train_df[train_df[ACCESSION_STRATUM_KEY] == 0]
+                train_df = train_df.filter(
+                    pl.col(ACCESSION_STRATUM_KEY).eq(0)
+                )
 
-            train_df = train_df[train_df[LABEL_KEY] == 1]
+            if LABEL_KEY in train_df.columns:
+                train_df = train_df.filter(
+                    pl.col(LABEL_KEY).eq(1)
+                )
+
             top_spec_angle_cut = train_df[SPECTRAL_ANGLE_KEY].quantile(0.9)
-            train_df = train_df[
-                train_df[SPECTRAL_ANGLE_KEY] > top_spec_angle_cut
-            ]
+            train_df = train_df.filter(
+                (pl.col(SPECTRAL_ANGLE_KEY) > top_spec_angle_cut)
+            )
 
             if combined_df_irt_null_count > 0:
                 test_df['predRT'] = _add_achrom_rt_preds(train_df, test_df)
             else:
                 reg = LinearRegression().fit(
-                    train_df[['iRT']],
-                    train_df[RT_KEY]
+                    train_df.select('iRT').to_numpy(),
+                    train_df[RT_KEY].to_numpy(),
                 )
                 coefficents.append(reg.coef_[0])
                 intercepts.append(reg.intercept_)
-                test_df['predRT'] = reg.predict(test_df[['iRT']])
+                pred_rt = pl.Series(
+                    reg.predict(test_df.select('iRT').to_numpy())
+                )
+                test_df = test_df.with_columns(
+                    pred_rt.alias('predRT')
+                )
 
-            test_df['deltaRT'] = (test_df['predRT'] - test_df['retentionTime']).abs()
+            test_df = test_df.with_columns(
+                (pl.col('predRT') - pl.col('retentionTime')).abs().alias('deltaRT')
+            )
             combined_df_list.append(test_df)
-        combined_df = pd.concat(combined_df_list)
     except ValueError:
         try:
             # Simplest way to avoid errors on tiny files.
-            train_df = combined_df[combined_df[LABEL_KEY] == 1]
+            train_df = train_df.filter(pl.col(LABEL_KEY).eq(1))
             reg = LinearRegression().fit(
-                train_df[['iRT']],
-                train_df[RT_KEY]
+                train_df.select('iRT').to_numpy(),
+                train_df[RT_KEY].to_numpy(),
             )
             coefficents.append(reg.coef_[0])
             intercepts.append(reg.intercept_)
-            combined_df['predRT'] = reg.predict(combined_df[['iRT']])
-            combined_df['deltaRT'] = (combined_df['predRT'] - combined_df['retentionTime']).abs()
+            pred_rt = pl.Series(
+                reg.predict(combined_df.select('iRT').to_numpy())
+            )
+            combined_df = combined_df.with_columns(
+                pred_rt.alias('predRT')
+            )
+            combined_df = combined_df.with_columns(
+                (pl.col('predRT') - pl.col('retentionTime')).abs().alias('deltaRT')
+            )
         except ValueError:
             reg = LinearRegression().fit(
-                combined_df[['iRT']],
-                combined_df[RT_KEY]
+                combined_df.select('iRT').to_numpy(),
+                combined_df[RT_KEY].to_numpy(),
             )
             coefficents.append(reg.coef_[0])
             intercepts.append(reg.intercept_)
-            combined_df['predRT'] = reg.predict(combined_df[['iRT']])
-            combined_df['deltaRT'] = (combined_df['predRT'] - combined_df['retentionTime']).abs()
+            pred_rt = pl.Series(
+                reg.predict(combined_df.select('iRT').to_numpy())
+            )
+            combined_df = combined_df.with_columns(
+                pred_rt.alias('predRT')
+            )
+            combined_df = combined_df.with_columns(
+                (pl.col('predRT') - pl.col('retentionTime')).abs().alias('deltaRT')
+            )
+
 
     rt_df = pd.DataFrame({
         'coefficents': coefficents,
@@ -132,4 +181,4 @@ def add_delta_irt(combined_df, config, scan_file):
     if scan_file is not None:
         rt_df.to_csv(f'{config.output_folder}/rt_fit_{scan_file}.csv', index=False)
 
-    return combined_df
+    return pl.concat(combined_df_list)

@@ -19,7 +19,7 @@ If you are working on Mac with an M1 chip you will require Miniforge. For all ot
 1) To start with create a new conda environment with python version 3.9:
 
 ```
-conda create --name inspire python=3.9
+conda create --name inspire python=3.11
 ```
 
 2) Activate this environment

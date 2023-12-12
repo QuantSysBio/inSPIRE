@@ -6,12 +6,10 @@ import numpy as np
 
 from inspire.constants import (
     BLOSUM6_1_VALUES,
-    INTENSITIES_KEY,
+    CHARGE_KEY,
     ION_OFFSET,
     KNOWN_PTM_WEIGHTS,
-    MZS_KEY,
     PEPTIDE_KEY,
-    PROSIT_IONS_KEY,
     PTM_SEQ_KEY,
     RESIDUE_WEIGHTS,
     SPECTRAL_ANGLE_KEY,
@@ -251,82 +249,7 @@ def convert_ptm_seq(ptm_seq, flip_idx):
     )
     return ptm_seq
 
-
-def get_brute_force_deltas(df_row, matched_dict, ptm_id_weights, mz_accuracy, spectral_predictor):
-    """ Function to calculate the Prosit delta values of PSM using the "brute force" method -
-        calculating all possible permuted spectral angles and comparing them to the original.
-
-    Parameters
-    ----------
-    df_row : pd.Series
-        A single row of the PSM dataframe.
-    matched_dict : dict
-        A dictionary of the Prosit matched ions in the experimental spectrum.
-    ptm_id_weights : dict
-        A dictionary providing the molecular weights of all PTMs.
-    mz_accuracy : float
-        The accuracy of the mass spectrometer.
-    spectral_predictor : str
-        Either prosit or ms2pip.
-
-    Returns
-    -------
-    df_row : pd.Series
-        The input row with Prosit-delta features added.
-    """
-    peptide = df_row[PEPTIDE_KEY]
-    pep_len = len(peptide)
-    deltas = []
-    for i in range(1, 30):
-        if not isinstance(df_row[f'flip{i}'], str) or df_row[f'flip{i}'] == peptide:
-            continue
-
-        flip_peptide = df_row[f'flip{i}'].replace('m', 'M')
-        pred_ions = df_row[f'flip{i}Ions']
-        if spectral_predictor == 'prosit':
-            flip_ptm = convert_ptm_seq(df_row[PTM_SEQ_KEY], i)
-        else:
-            flip_ptm = df_row[f'flip{i}Ptms']
-        rev_i = pep_len - i
-        differing_ions = [
-            f'b{i}', f'b{i}^2', f'b{i}^3', f'y{rev_i}', f'y{rev_i}^2', f'y{rev_i}^3',
-        ]
-        flip_matched = deepcopy(matched_dict)
-        for diff_ion in differing_ions:
-            flip_matched.pop(diff_ion, None)
-        flip_pred_ions = [x for x in differing_ions if x in pred_ions]
-
-        missing_preds = [x for x in pred_ions if x not in df_row['prositIons']]
-
-        missing_finds = [x for x in df_row['prositIons'] if x not in pred_ions]
-        for miss in missing_finds:
-            flip_matched.pop(miss, None)
-
-        all_recalc_ions = flip_pred_ions + missing_preds
-        if all_recalc_ions:
-            b_wt = compute_single_mz(flip_peptide, flip_ptm, 'b', i, ptm_id_weights)
-            y_wt = compute_single_mz(flip_peptide, flip_ptm, 'y', rev_i, ptm_id_weights)
-            for ion in flip_pred_ions:
-                ion_type = ion[0]
-                if ion_type == 'b':
-                    base_mass = b_wt
-                else:
-                    base_mass = y_wt
-                ion_data = ion.split('^')
-                if len(ion_data) == 1:
-                    frag_z = 1
-                else:
-                    frag_z = int(ion_data[-1])
-                mz_match, match_idx = match_mz(base_mass, frag_z, df_row[MZS_KEY], loss=0.0)
-                if abs(mz_match) < mz_accuracy:
-                    flip_matched[ion] = df_row[INTENSITIES_KEY][match_idx]
-
-        flip_sa = calculate_sa_from_dict(pred_ions, flip_matched)
-        deltas.append(flip_sa - df_row[SPECTRAL_ANGLE_KEY])
-
-    return calculate_delta_features(df_row, np.array(deltas))
-
-def calculate_delta_features(df_row, prot_deltas):
+def calculate_delta_features(results, prot_deltas):
     """ Function to calculate the Prosit delta features.
 
     Parameters
@@ -342,33 +265,33 @@ def calculate_delta_features(df_row, prot_deltas):
         The input row with Prosit-delta features added.
     """
     if prot_deltas.size != 0:
-        df_row['nDeltasAboveThreshold'] = len(
+        results['nDeltasAboveThreshold'] = len(
             prot_deltas[prot_deltas > -0.1]
         )/len(prot_deltas)
-        df_row['nDeltasAboveThresholdA'] = len(
+        results['nDeltasAboveThresholdA'] = len(
             prot_deltas[prot_deltas > -0.05]
         )/len(prot_deltas)
-        df_row['nDeltasAboveZero'] = len(
+        results['nDeltasAboveZero'] = len(
             prot_deltas[prot_deltas > 0.0]
         )/len(prot_deltas)
         delta_q1 = np.quantile(prot_deltas, 0.25)
         delta_q3 = np.quantile(prot_deltas, 0.75)
-        df_row['prositDeltaMedian'] = np.quantile(prot_deltas, 0.5)
-        df_row['prositDeltaQuartile1'] = delta_q1
-        df_row['prositDeltaQuartile3'] = delta_q3
-        df_row['minPrositDelta'] = np.min(prot_deltas)
-        df_row['maxPrositDelta'] = np.max(prot_deltas)
+        results['prositDeltaMedian'] = float(np.quantile(prot_deltas, 0.5))
+        results['prositDeltaQuartile1'] = float(delta_q1)
+        results['prositDeltaQuartile3'] = float(delta_q3)
+        results['minPrositDelta'] = float(np.min(prot_deltas))
+        results['maxPrositDelta'] = float(np.max(prot_deltas))
     else:
-        df_row['nDeltasAboveThreshold'] = -1.0
-        df_row['nDeltasAboveThresholdA'] = -1.0
-        df_row['nDeltasAboveZero'] = -1.0
-        df_row['prositDeltaMedian'] = -1.0
-        df_row['prositDeltaQuartile1'] = -1.0
-        df_row['prositDeltaQuartile3'] = -1.0
-        df_row['maxPrositDelta'] = -1.0
-        df_row['minPrositDelta'] = -1.0
+        results['nDeltasAboveThreshold'] = -1.0
+        results['nDeltasAboveThresholdA'] = -1.0
+        results['nDeltasAboveZero'] = -1.0
+        results['prositDeltaMedian'] = -1.0
+        results['prositDeltaQuartile1'] = -1.0
+        results['prositDeltaQuartile3'] = -1.0
+        results['maxPrositDelta'] = -1.0
+        results['minPrositDelta'] = -1.0
 
-    return df_row
+    return results
 
 def compute_pd_single_mw(sequence, ion_type, ion_idx):
     """ Function to compute the mw of a single ion.
@@ -398,7 +321,7 @@ def compute_pd_single_mw(sequence, ion_type, ion_idx):
     return tracking_mw + ION_OFFSET[ion_type]
 
 
-def get_new_inte(peptide, flip_ind, df_row, mz_accuracy, ion_series):
+def get_new_inte(peptide, flip_ind, charge, mzs, intes, mz_accuracy, ion_series):
     """ Function to get the potential new intensity.
     """
     if ion_series == 'b':
@@ -408,10 +331,10 @@ def get_new_inte(peptide, flip_ind, df_row, mz_accuracy, ion_series):
         base_mass = compute_pd_single_mw(peptide, 'y', len(peptide)-(flip_ind+1))
         base_mass += DELTA_PRO_RESIDUE_WEIGHTS[peptide[flip_ind-1]]
     match_inte = 0.0
-    for frag_z in range(1, min(df_row['charge'], 4)):
-        mz_match, match_idx = match_mz(base_mass, frag_z, df_row[MZS_KEY], loss=0.0)
+    for frag_z in range(1, min(charge, 4)):
+        mz_match, match_idx = match_mz(base_mass, frag_z, mzs, loss=0.0)
         if abs(mz_match) < mz_accuracy:
-            match_inte += df_row[INTENSITIES_KEY][match_idx]
+            match_inte += intes[match_idx]
     return match_inte
 
 def get_err_at_loc(pep_len, matched_ions, prosit_ions, loc, letter):
@@ -446,7 +369,11 @@ def get_err_at_loc(pep_len, matched_ions, prosit_ions, loc, letter):
     return sum_err
 
 def get_deltas(
+        results,
         df_row,
+        mzs,
+        intes,
+        prosit_preds,
         prosit_ions,
         matched_intes,
         prosit_intes,
@@ -463,7 +390,7 @@ def get_deltas(
         A row of a DataFrame containing spectral data.
     prosit_ions : dict
         The prosit predicted spectrum.
-    reg_model : sklearn.ensemble.RandomForestRegressor
+    reg_model : xgb.XGBRegressor
         The trained prosit-delta model.
 
     Returns
@@ -472,6 +399,7 @@ def get_deltas(
         The updated row containing prosit-delta features.
     """
     peptide = df_row[PEPTIDE_KEY]
+    charge = df_row[CHARGE_KEY]
     mod_seq = df_row['modified_sequence'].replace('M(ox)', 'm')
 
     true_l2_norm = np.linalg.norm(np.array(list(matched_dict.values())), ord=2)
@@ -487,7 +415,7 @@ def get_deltas(
         input_feats = np.zeros(
             shape=(len(flip_inds), len(DELTA_PRO_FEATURE_SET))
         )
-        input_feats[:, SPECTRAL_ANGLE_INDEX] = df_row[SPECTRAL_ANGLE_KEY]
+        input_feats[:, SPECTRAL_ANGLE_INDEX] = results[SPECTRAL_ANGLE_KEY]
         input_feats[:, BLOSUM_N_INDEX] = np.array([
             BLOSUM6_1_VALUES[peptide[idx-1]] for idx in flip_inds
         ])
@@ -495,7 +423,7 @@ def get_deltas(
             BLOSUM6_1_VALUES[peptide[idx]] for idx in flip_inds
         ])
         input_feats[:, CHARGE_INDEX] = df_row['charge']
-        input_feats[:, MATCHED_COV_INDEX] = df_row['matchedCoverage']
+        input_feats[:, MATCHED_COV_INDEX] = results['matchedCoverage']
         input_feats[:, CE_INDEX] = df_row['collisionEnergy']
         input_feats[:, C_NEIGHB_INDEX] = np.array(
             [-5.0 if idx > pep_len-3 else BLOSUM6_1_VALUES[peptide[idx+1]] for idx in flip_inds]
@@ -507,23 +435,34 @@ def get_deltas(
         input_feats[:, C_TERM_INDEX] = np.array([
             [pep_len-idx for idx in flip_inds]
         ])
+
         input_feats[:, Y_NEW_INTE_INDEX] = np.array(
-            [get_new_inte(mod_seq, flip_ind, df_row, mz_accuracy, 'y') for flip_ind in flip_inds]
+            [
+                get_new_inte(
+                    mod_seq, flip_ind, charge, mzs, intes, mz_accuracy, 'y'
+                ) for flip_ind in flip_inds
+            ]
         )
+
         input_feats[:, B_NEW_INTE_INDEX] = np.array(
-            [get_new_inte(mod_seq, flip_ind, df_row, mz_accuracy, 'b') for flip_ind in flip_inds]
+            [
+                get_new_inte(
+                    mod_seq, flip_ind, charge, mzs, intes, mz_accuracy, 'b'
+                ) for flip_ind in flip_inds
+            ]
         )
         input_feats[:, Y_ERR_INDEX] = np.array(
             [
                 get_err_at_loc(
-                    pep_len, normed_matched_dict, df_row[PROSIT_IONS_KEY], flip_ind, 'y'
+                    pep_len, normed_matched_dict, prosit_preds, flip_ind, 'y'
                 ) for flip_ind in flip_inds
             ]
         )
+
         input_feats[:, B_ERR_INDEX] = np.array(
             [
                 get_err_at_loc(
-                    pep_len, normed_matched_dict, df_row[PROSIT_IONS_KEY], flip_ind, 'b'
+                    pep_len, normed_matched_dict, prosit_preds, flip_ind, 'b'
                 ) for flip_ind in flip_inds
             ]
         )
@@ -549,6 +488,7 @@ def get_deltas(
                 ) for flip_idx in flip_inds
             ]
         )
+
         input_feats[:, Y_PROSIT_INTE_INDEX] = np.array(
             [
                 get_intes_at_loc(
@@ -642,4 +582,4 @@ def get_deltas(
     else:
         prot_deltas = np.array([])
 
-    return calculate_delta_features(df_row, prot_deltas)
+    return calculate_delta_features(results, prot_deltas)

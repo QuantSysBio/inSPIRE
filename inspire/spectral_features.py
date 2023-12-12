@@ -3,11 +3,11 @@
 
 # from copyreg import pickle
 from copy import deepcopy
+import gc
 from math import acos, pi
-from pathlib import Path
 from statistics import mean, variance
 
-import pickle
+import polars as pl
 import numpy as np
 from scipy.stats import spearmanr, pearsonr
 from sklearn.metrics import median_absolute_error
@@ -27,6 +27,8 @@ from inspire.constants import (
     PEARSON_KEY,
     PEPTIDE_KEY,
     PROSIT_IONS_KEY,
+    PROSIT_INTES_KEY,
+    PROSIT_SEQ_KEY,
     PROTON,
     PTM_ID_KEY,
     PTM_SEQ_KEY,
@@ -35,51 +37,39 @@ from inspire.constants import (
     SPECTRAL_ANGLE_KEY,
 )
 from inspire.mz_match import get_ion_masses, match_mz
-from inspire.prosit_delta import get_brute_force_deltas, get_deltas
+from inspire.prosit_delta import get_deltas
 from inspire.utils import get_ox_flag
 
+
 SPECTRAL_FEATURES = [
-
     SPECTRAL_ANGLE_KEY,
-
     SPEARMAN_KEY,
     PEARSON_KEY,
     MAE_KEY,
-
     FRAG_MZ_ERR_MED_KEY,
     FRAG_MZ_ERR_VAR_KEY,
-
     NOT_ASSIGNED_KEY,
     LOSS_IONS_KEY,
     PRECURSOR_INTE_KEY,
-
     'yIsDominantIonSeries',
     'bIsDominantIonSeries',
-
     'maxTypeSpectralAngle',
     'minTypeSpectralAngle',
-
     'fracMatchedKR',
     'possibleKrFragsDivTotal',
-
-
     'matchedCoverage',
     'minMatchedCoverage',
     'maxMatchedCoverage',
     'predCoverage',
     'predNotFoundCoverage',
-
     'nMajorMatchedDivFrags',
     'nMajorPredNotFoundDivFrags',
     'nMajorNotMatchableDivFrags',
     'spearmanMajorIons',
-
     'nMinorMatchedDivFrags',
     'nMinorNotMatchableDivFrags',
     'spearmanMinorIons',
-
     'spectrumDensity',
-
 ]
 
 DELTA_FEATURES = [
@@ -147,11 +137,11 @@ def check_for_precursor_peak(observed_mzs, obs_intes, precursor_mz, mz_accuracy,
     matched_mz_ind = np.argmin(
         np.abs(observed_mzs - precursor_mz)
     )
+
     if abs(observed_mzs[matched_mz_ind] - precursor_mz) < mz_accuracy:
         assigned_inds.append(matched_mz_ind)
         return obs_intes[matched_mz_ind], assigned_inds
     return 0, assigned_inds
-
 
 
 def get_matches(
@@ -193,11 +183,14 @@ def get_matches(
     # Loop over observed fragments matching them to all possible prosit ions.
     ordered_prosit = np.array(list(prosit_intensities.keys()), dtype='object')
     final_intensities = np.zeros(len(prosit_intensities))
+    observed_mzs = np.array(observed_mzs)
+    observed_intensities = np.array(observed_intensities)
+
     possible_loss_ions = []
     mz_errors = []
     assigned_inds = []
 
-    max_frag_charge = min(4, precursor_z+1) #TODO we only care about the Prosit  ions
+    max_frag_charge = min(4, precursor_z+1)
     match_idx = 0
     for ion_type in all_prosit_masses:
         for charge in range(1, max_frag_charge):
@@ -239,14 +232,14 @@ def get_matches(
                                     observed_intensities[loss_matched_mz_ind]
                                 )
                         assigned_inds.append(matched_mz_ind)
-                    # else:
-                    #     not_matched_intensities[ion_code] = observed_intensities[matched_mz_ind]
-                    # assigned_inds.append(matched_mz_ind)
+
     precursor_mz = (precursor_weight + (PROTON*precursor_z))/precursor_z
+
     if mz_units == 'ppm':
-        mz_err = (precursor_mz*mz_accuracy*(10**-6))
+        mz_err = precursor_mz*mz_accuracy*(10**-6)
     else:
         mz_err = mz_accuracy
+
     precursor_inte, assigned_inds = check_for_precursor_peak(
         observed_mzs,
         observed_intensities,
@@ -329,30 +322,31 @@ def calculate_spectral_features(
         model,
         ox_flag,
         delta_method,
-        spectral_predictor,
         minimal_features=False,
     ):
     """ Function to extract the ion intensities from the true spectra which match
     """
+    results = {}
     sequence = df_row[PEPTIDE_KEY]
     seq_len = len(sequence)
     n_frags_possible = seq_len - 1
+    mz_array = np.array(df_row[MZS_KEY])
+    intes_array = np.array(df_row[INTENSITIES_KEY])
 
-    prosit_preds = df_row[PROSIT_IONS_KEY]
+    prosit_preds = dict(zip(df_row[PROSIT_IONS_KEY], df_row[PROSIT_INTES_KEY]))
+
     potential_ion_mzs, precursor_weight = get_ion_masses(
         sequence,
         ptm_id_weights,
         df_row[PTM_SEQ_KEY]
     )
 
-
     (
-        match_info, precursor_inte,
-        unassigned_intensities, mz_errors, possible_alts,
+        match_info, precursor_inte, unassigned_intensities, mz_errors, possible_alts
     ) = get_matches(
         potential_ion_mzs,
         prosit_preds,
-        df_row[MZS_KEY],
+        mz_array,
         precursor_weight,
         df_row[INTENSITIES_KEY],
         mz_accuracy,
@@ -364,10 +358,7 @@ def calculate_spectral_features(
     ordered_prosit_intes = match_info['ordered_prosit_intes']
     truly_matched_intes = matched_intensities[matched_intensities > 0.0]
 
-
     median_mz_error, mz_error_variance = get_mz_error_stats(mz_errors, min(mz_accuracy, 0.04))
-    df_row[FRAG_MZ_ERR_MED_KEY] = median_mz_error
-    df_row[FRAG_MZ_ERR_VAR_KEY] = mz_error_variance
 
     matched_l2_norm = np.linalg.norm(matched_intensities, ord=2)
     total_l2_norm = np.linalg.norm(df_row[INTENSITIES_KEY], ord=2)
@@ -377,15 +368,15 @@ def calculate_spectral_features(
     else:
         normed_matched_intensities = matched_intensities
 
-
     ordered_matched_ions = ordered_prosit_ions[matched_intensities > 0.0]
 
-    df_row[SPECTRAL_ANGLE_KEY] = calculate_spectral_angle(
+    results[SPECTRAL_ANGLE_KEY] = calculate_spectral_angle(
         normed_matched_intensities,
         ordered_prosit_intes,
     )
-    df_row = get_coverage_features(
-        df_row,
+
+    results = get_coverage_features(
+        results,
         seq_len,
         ordered_matched_ions,
         ordered_prosit_ions,
@@ -395,27 +386,27 @@ def calculate_spectral_features(
         spearman_total = spearmanr(normed_matched_intensities, ordered_prosit_intes)[0]
         pearson_total = pearsonr(normed_matched_intensities, ordered_prosit_intes)[0]
         if not np.isnan(spearman_total):
-            df_row[SPEARMAN_KEY] = spearman_total
+            results[SPEARMAN_KEY] = float(spearman_total)
         else:
-            df_row[SPEARMAN_KEY] = 0.0
+            results[SPEARMAN_KEY] = 0.0
         if not np.isnan(pearson_total):
-            df_row[PEARSON_KEY] = pearson_total
+            results[PEARSON_KEY] = float(pearson_total)
         else:
-            df_row[PEARSON_KEY] = -1.0
+            results[PEARSON_KEY] = -1.0
     else:
-        df_row[SPEARMAN_KEY] = 0.0
-        df_row[PEARSON_KEY] = 0.0
+        results[SPEARMAN_KEY] = 0.0
+        results[PEARSON_KEY] = 0.0
 
     if minimal_features:
-        return df_row
+        return results
 
-    mz_range = (df_row[MZS_KEY].max() - df_row[MZS_KEY].min())
+    mz_range = (mz_array.max() - mz_array.min())
     if mz_range > 0:
-        df_row['spectrumDensity'] = len(df_row[MZS_KEY])/mz_range
+        results['spectrumDensity'] = len(mz_array)/mz_range
     else:
-        df_row['spectrumDensity'] = 1.0
+        results['spectrumDensity'] = 1.0
 
-    major_pred_inds = (ordered_prosit_intes >= PROSIT_MAJOR_MINOR_CUT_OFF)
+    major_pred_inds = ordered_prosit_intes >= PROSIT_MAJOR_MINOR_CUT_OFF
 
     major_prosit_preds = ordered_prosit_intes[major_pred_inds]
     minor_prosit_preds = ordered_prosit_intes[~major_pred_inds]
@@ -447,27 +438,26 @@ def calculate_spectral_features(
         if n_major_matched > 0:
             spearman_major = spearmanr(major_matched_ions, major_prosit_preds)[0]
             if not np.isnan(spearman_major):
-                df_row['spearmanMajorIons'] = spearman_major
+                results['spearmanMajorIons'] = float(spearman_major)
             else:
-                df_row['spearmanMajorIons'] = 0.0
+                results['spearmanMajorIons'] = 0.0
         else:
-            df_row['spearmanMajorIons'] = 0.0
+            results['spearmanMajorIons'] = 0.0
 
         if n_minor_matched > 0:
             spearman_minor = spearmanr(minor_matched_ions, minor_prosit_preds)[0]
             if not np.isnan(spearman_minor):
-                df_row['spearmanMinorIons'] = spearman_minor
+                results['spearmanMinorIons'] = float(spearman_minor)
             else:
-                df_row['spearmanMinorIons'] = 0.0
+                results['spearmanMinorIons'] = 0.0
         else:
-            df_row['spearmanMinorIons'] = 0.0
+            results['spearmanMinorIons'] = 0.0
 
     else:
         n_major_matched = 0.0
         n_minor_matched = 0.0
-        df_row['spearmanMajorIons'] = 0.0
-        df_row['spearmanMinorIons'] = 0.0
-
+        results['spearmanMajorIons'] = 0.0
+        results['spearmanMinorIons'] = 0.0
 
     n_major_not_matchable = len(
         [x for x in unassigned_intensities if x/total_l2_norm > SPECTRUM_MAJOR_MINOR_CUT_OFF]
@@ -475,37 +465,39 @@ def calculate_spectral_features(
     n_minor_not_matchable = len(unassigned_intensities)
 
 
-    df_row['nMajorPredNotFoundDivFrags'] = (n_major_pred - n_major_matched)/n_frags_possible
+    results['nMajorPredNotFoundDivFrags'] = (n_major_pred - n_major_matched)/n_frags_possible
 
-    df_row[MAE_KEY] = median_absolute_error(
+    results[MAE_KEY] = float(median_absolute_error(
         normed_matched_intensities,
         ordered_prosit_intes,
-    )
+    ))
 
-    df_row['nMajorMatchedDivFrags'] = n_major_matched/n_frags_possible
-    df_row['nMinorMatchedDivFrags'] = n_minor_matched/n_frags_possible
-    df_row[MATCHED_IONS_KEY] = len(truly_matched_intes)/n_frags_possible
+    results['nMajorMatchedDivFrags'] = n_major_matched/n_frags_possible
+    results['nMinorMatchedDivFrags'] = n_minor_matched/n_frags_possible
+    results[MATCHED_IONS_KEY] = len(truly_matched_intes)/n_frags_possible
 
-    df_row['nMajorNotMatchableDivFrags'] = n_major_not_matchable/n_frags_possible
-    df_row['nMinorNotMatchableDivFrags'] = n_minor_not_matchable/n_frags_possible
+    results['nMajorNotMatchableDivFrags'] = n_major_not_matchable/n_frags_possible
+    results['nMinorNotMatchableDivFrags'] = n_minor_not_matchable/n_frags_possible
 
-    df_row[NOT_ASSIGNED_KEY] = len(unassigned_intensities)/n_frags_possible
-    df_row[LOSS_IONS_KEY] = len(possible_alts)/n_frags_possible
+    results[NOT_ASSIGNED_KEY] = len(unassigned_intensities)/n_frags_possible
+    results[LOSS_IONS_KEY] = len(possible_alts)/n_frags_possible
 
 
     if precursor_inte:
-        df_row[PRECURSOR_INTE_KEY] = precursor_inte/(matched_l2_norm+precursor_inte)
+        results[PRECURSOR_INTE_KEY] = float(precursor_inte/(matched_l2_norm+precursor_inte))
     else:
-        df_row[PRECURSOR_INTE_KEY] = 0.0
+        results[PRECURSOR_INTE_KEY] = 0.0
 
+    results[FRAG_MZ_ERR_MED_KEY] = float(median_mz_error)
+    results[FRAG_MZ_ERR_VAR_KEY] = float(mz_error_variance)
 
-    df_row = get_kr_feats(
-        sequence, matched_intensities, ordered_prosit_intes, ordered_prosit_ions, df_row
+    results = get_kr_feats(
+        sequence, matched_intensities, ordered_prosit_intes, ordered_prosit_ions, results
     )
 
     pred_not_found_ions = ordered_prosit_ions[matched_intensities == 0.0]
 
-    df_row['predNotFoundCoverage'] = get_coverage(
+    results['predNotFoundCoverage'] = get_coverage(
         seq_len, pred_not_found_ions
     )
 
@@ -516,8 +508,8 @@ def calculate_spectral_features(
         idx for idx in range(len(ordered_prosit_ions)) if ordered_prosit_ions[idx][0] == 'b'
     ]
     if not truly_matched_intes.size:
-        df_row['maxTypeSpectralAngle'] = 0.0
-        df_row['minTypeSpectralAngle'] = 0.0
+        results['maxTypeSpectralAngle'] = 0.0
+        results['minTypeSpectralAngle'] = 0.0
     else:
         y_spectral_angle = calculate_spectral_angle(
             normed_matched_intensities[y_filter],
@@ -528,36 +520,31 @@ def calculate_spectral_features(
             ordered_prosit_intes[b_filter],
         )
 
-        if df_row['bIsDominantIonSeries'] == 1:
-            df_row['maxTypeSpectralAngle'] = b_spectral_angle
-            df_row['minTypeSpectralAngle'] = y_spectral_angle
-        elif df_row['yIsDominantIonSeries'] == 1:
-            df_row['maxTypeSpectralAngle'] = y_spectral_angle
-            df_row['minTypeSpectralAngle'] = b_spectral_angle
+        if results['bIsDominantIonSeries'] == 1:
+            results['maxTypeSpectralAngle'] = b_spectral_angle
+            results['minTypeSpectralAngle'] = y_spectral_angle
+        elif results['yIsDominantIonSeries'] == 1:
+            results['maxTypeSpectralAngle'] = y_spectral_angle
+            results['minTypeSpectralAngle'] = b_spectral_angle
         else:
-            df_row['maxTypeSpectralAngle'] = max([b_spectral_angle, y_spectral_angle])
-            df_row['minTypeSpectralAngle'] = min([b_spectral_angle, y_spectral_angle])
+            results['maxTypeSpectralAngle'] = max([b_spectral_angle, y_spectral_angle])
+            results['minTypeSpectralAngle'] = min([b_spectral_angle, y_spectral_angle])
 
     precursor_mz = (precursor_weight + (PROTON*df_row[CHARGE_KEY]))/df_row[CHARGE_KEY]
     if mz_units == 'ppm':
-        mz_err = (precursor_mz*mz_accuracy*(10**-6))
+        mz_err = precursor_mz*mz_accuracy*(10**-6)
     else:
         mz_err = mz_accuracy
-    if delta_method == 'bruteForce':
+
+    if delta_method == 'predictor':
         matched_dict = dict(zip(ordered_matched_ions.tolist(), truly_matched_intes.tolist()))
 
-        df_row = get_brute_force_deltas(
+        results = get_deltas(
+            results,
             df_row,
-            matched_dict,
-            ptm_id_weights,
-            mz_err,
-            spectral_predictor,
-        )
-    elif delta_method == 'predictor':
-        matched_dict = dict(zip(ordered_matched_ions.tolist(), truly_matched_intes.tolist()))
-
-        df_row = get_deltas(
-            df_row,
+            mz_array,
+            intes_array,
+            prosit_preds,
             ordered_prosit_ions,
             normed_matched_intensities,
             ordered_prosit_intes,
@@ -567,45 +554,44 @@ def calculate_spectral_features(
             matched_dict,
         )
 
-    return df_row
+    return results
 
 def get_coverage_features(
-        df_row,
+        results,
         seq_len,
         ordered_matched_ions,
         ordered_prosit_ions
     ):
     """ Function to get coverage features.
     """
-    df_row['predCoverage'], b_pred_coverage, y_pred_coverage = get_coverage(
+    results['predCoverage'], b_pred_coverage, y_pred_coverage = get_coverage(
         seq_len, ordered_prosit_ions, per_letter=True
     )
 
-    df_row['matchedCoverage'], b_matched_coverage, y_matched_coverage = get_coverage(
+    results['matchedCoverage'], b_matched_coverage, y_matched_coverage = get_coverage(
         seq_len, ordered_matched_ions, per_letter=True
     )
 
     if b_pred_coverage < y_pred_coverage:
-        df_row['minMatchedCoverage'] = b_matched_coverage
-        df_row['maxMatchedCoverage'] = y_matched_coverage
-        df_row['yIsDominantIonSeries'] = 1
-        df_row['bIsDominantIonSeries'] = 0
+        results['minMatchedCoverage'] = b_matched_coverage
+        results['maxMatchedCoverage'] = y_matched_coverage
+        results['yIsDominantIonSeries'] = 1
+        results['bIsDominantIonSeries'] = 0
     elif b_pred_coverage > y_pred_coverage:
-        df_row['yIsDominantIonSeries'] = 0
-        df_row['bIsDominantIonSeries'] = 1
-        df_row['minMatchedCoverage'] = y_matched_coverage
-        df_row['maxMatchedCoverage'] = b_matched_coverage
+        results['yIsDominantIonSeries'] = 0
+        results['bIsDominantIonSeries'] = 1
+        results['minMatchedCoverage'] = y_matched_coverage
+        results['maxMatchedCoverage'] = b_matched_coverage
     else:
-        df_row['minMatchedCoverage'] = min([y_matched_coverage, b_matched_coverage])
-        df_row['maxMatchedCoverage'] = max([y_matched_coverage, b_matched_coverage])
-        df_row['yIsDominantIonSeries'] = 0
-        df_row['bIsDominantIonSeries'] = 0
+        results['minMatchedCoverage'] = min([y_matched_coverage, b_matched_coverage])
+        results['maxMatchedCoverage'] = max([y_matched_coverage, b_matched_coverage])
+        results['yIsDominantIonSeries'] = 0
+        results['bIsDominantIonSeries'] = 0
 
-    return df_row
+    return results
 
 
-
-def get_kr_feats(sequence, matched_intensities, ordered_prosit_intes, ordered_prosit_ions, df_row):
+def get_kr_feats(sequence, matched_intensities, ordered_prosit_intes, ordered_prosit_ions, results):
     """ Function to get the difference between the spectral angle of.
     """
     seq_len = len(sequence)
@@ -641,21 +627,21 @@ def get_kr_feats(sequence, matched_intensities, ordered_prosit_intes, ordered_pr
         kr_matched_intensities = matched_intensities[kr_inds]
 
         if kr_prosit_intensities.size:
-            df_row['fracMatchedKR'] = len(
+            results['fracMatchedKR'] = len(
                 kr_matched_intensities[kr_matched_intensities > 0]
             )/len(kr_prosit_intensities)
         else:
-            df_row['fracMatchedKR'] = len(
+            results['fracMatchedKR'] = len(
                 matched_intensities[matched_intensities > 0]
             )/len(ordered_prosit_ions)
-        df_row['possibleKrFragsDivTotal'] = n_possible_kr/(seq_len-1)
+        results['possibleKrFragsDivTotal'] = n_possible_kr/(seq_len-1)
 
-        return df_row
+        return results
 
-    df_row['fracMatchedKR'] = 0.0
-    df_row['possibleKrFragsDivTotal'] = 0.0
+    results['fracMatchedKR'] = 0.0
+    results['possibleKrFragsDivTotal'] = 0.0
 
-    return df_row
+    return results
 
 def fetch_mod_weight_dict(mods_df):
     """ Function to fetch a dictionary of the weights of all modifications.
@@ -680,7 +666,8 @@ def fetch_mod_weight_dict(mods_df):
 
     return ptm_id_weights
 
-def create_spectral_features(spectral_df, mods_df, config):
+
+def create_spectral_features(mods_df, config, task_id, model):
     """ Function to calculate spectral features between experimental and prosit predicted
         spectra.
 
@@ -699,33 +686,48 @@ def create_spectral_features(spectral_df, mods_df, config):
         The input DataFrame with features added to describe the match between experimental
         and prosit predicted spectra.
     """
-    ox_flag = get_ox_flag(mods_df)
-    ptm_id_weights = fetch_mod_weight_dict(mods_df)
-    home = str(Path.home())
-    model_path = f'{home}/inSPIRE_models/models/prosit_delta_v1.pkl'
-    with open(model_path, 'rb') as fid:
-        model = pickle.load(fid)
-
-    # Avoid unecessary parallelism when model applied to small sets.
-    model.set_params(n_jobs=1)
-
-    spectral_df = spectral_df.apply(
-        lambda df_row : calculate_spectral_features(
-            df_row,
-            ptm_id_weights,
-            config.mz_accuracy,
-            config.mz_units,
-            model,
-            str(ox_flag),
-            config.delta_method,
-            config.spectral_predictor,
-            minimal_features=config.minimal_features,
-        ),
-        axis=1
+    spectral_df = pl.read_parquet(
+        f'{config.output_folder}/temp_{task_id}_in.parquet'
     )
 
+    ox_flag = get_ox_flag(mods_df)
+
+    ptm_id_weights = fetch_mod_weight_dict(mods_df)
+
+    spectral_df = spectral_df.with_columns(
+        pl.struct([
+            CHARGE_KEY,
+            'collisionEnergy',
+            INTENSITIES_KEY,
+            MZS_KEY,
+            PEPTIDE_KEY,
+            PROSIT_INTES_KEY,
+            PROSIT_IONS_KEY,
+            PROSIT_SEQ_KEY,
+            PTM_SEQ_KEY,
+        ]).apply(
+            lambda df_row : calculate_spectral_features(
+                df_row,
+                ptm_id_weights,
+                config.mz_accuracy,
+                config.mz_units,
+                model,
+                str(ox_flag),
+                config.delta_method,
+                minimal_features=config.minimal_features,
+            ),
+            skip_nulls=False,
+        ).alias('spectralResults')
+    )
+
+    spectral_df = spectral_df.filter(pl.col('spectralResults').is_not_null())
+    spectral_df = spectral_df.drop(
+        [MZS_KEY, INTENSITIES_KEY, PROSIT_INTES_KEY, PROSIT_IONS_KEY]
+    )
+    spectral_df = spectral_df.unnest('spectralResults')
+
     spectral_features = deepcopy(SPECTRAL_FEATURES)
-    if config.delta_method != 'ignore':
+    if config.delta_method != 'ignore' and not config.minimal_features:
         spectral_features += DELTA_FEATURES
 
     replace_feats = [
@@ -733,17 +735,22 @@ def create_spectral_features(spectral_df, mods_df, config):
         FRAG_MZ_ERR_MED_KEY,
         PEARSON_KEY,
     ]
-    if config.delta_method != 'ignore':
+    if config.delta_method != 'ignore' and not config.minimal_features:
         replace_feats += DELTA_FEATURES
 
     for feat in set(replace_feats):
         if feat in spectral_features and feat in spectral_df.columns:
-            spectral_df_var_median = spectral_df[
-                spectral_df[feat] > -1
-            ][feat].median()
+            spectral_df_var_median = pl.median(spectral_df.filter(
+                pl.col(feat).gt(-1)
+            )[feat])
 
-            spectral_df[feat] = spectral_df[feat].replace(
-                to_replace=-1,
-                value=spectral_df_var_median
+            spectral_df = spectral_df.with_columns(
+                pl.when(pl.col(feat).eq(-1)).then(spectral_df_var_median)
+                    .otherwise(pl.col(feat)).alias(feat)
             )
-    return spectral_df
+
+    spectral_df.write_parquet(
+        f'{config.output_folder}/temp_{task_id}_out.parquet'
+    )
+    del spectral_df
+    gc.collect()

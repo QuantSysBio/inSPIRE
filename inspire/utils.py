@@ -1,9 +1,12 @@
 """ Helpful functions used across the module.
 """
+import multiprocessing as mp
 import pickle
 import re
 
+from Bio import SeqIO
 import pandas as pd
+import polars as pl
 
 from inspire.constants import (
     ACCESSION_STRATUM_KEY,
@@ -23,6 +26,142 @@ from inspire.constants import (
 )
 from inspire.input.mgf import process_mgf_file
 from inspire.input.mzml import process_mzml_file
+
+def fetch_proteome(proteome, with_desc=True):
+    """ Function to read in proteome fasta file and return list of tuples containing:
+        0. protein name
+        1. protein sequence
+        2. protein description (optional)
+    """
+    if with_desc:
+        return [
+            (x.name, str(x.seq).replace('I', 'L'), x.description) for x in SeqIO.parse(
+                proteome, 'fasta',
+            )
+        ]
+    return [
+        (x.name, str(x.seq).replace('I', 'L')) for x in SeqIO.parse(
+            proteome, 'fasta',
+        )
+    ]
+
+def parallel_remap(combined_df, n_cores, proteome, out_column, trace_accession=True):
+    """ Function to remap peptides in a DataFrame to a proteome in parallel.
+
+    Parameters
+    ----------
+    combined_df : pl.DataFrame
+        DataFrame including peptides identified.
+    n_cores : int
+        The number of CPUs that should be used in parallel.
+    proteome : list of tuple
+        The liste of proteins (position 0 is name and position 1 is sequence).
+    out_column : str
+        The name of the column
+    trace_accession : bool (default=True)
+        Flag indicating if full accession should be trace or just a boolean flag if
+        peptide is found in proteome.
+    """
+    pep_df = combined_df.select(PEPTIDE_KEY).unique()
+    batch_size = pep_df.shape[0]//n_cores
+    batch_values = []
+    for batch_idx in range(n_cores):
+        batch_values.extend([batch_idx]*batch_size)
+
+    if (additional_psms := pep_df.shape[0]%n_cores):
+        batch_values.extend([n_cores-1]*additional_psms)
+
+    pep_df = pep_df.with_columns(
+        pl.Series(name='batch', values=batch_values)
+    )
+    pep_df_list = pep_df.partition_by('batch')
+    func_args = []
+    for sub_pep_df in pep_df_list:
+        func_args.append([sub_pep_df, proteome, out_column, trace_accession])
+
+    with mp.get_context('spawn').Pool(processes=n_cores) as pool:
+        pep_df_list = pool.starmap(_sub_remap, func_args)
+    remapped_pep_df = pl.concat(pep_df_list)
+
+    combined_df = combined_df.join(remapped_pep_df, how='inner', on='peptide')
+
+    return combined_df
+
+def _sub_remap(pep_df, proteome, out_column, trace_accession):
+    pep_df = pep_df.with_columns(
+        pl.col('peptide').apply(
+            lambda x : remap_to_proteome(x, proteome, trace_accession=trace_accession)
+        ).alias(out_column)
+    )
+    return pep_df
+
+
+def remap_to_proteome(
+        peptide,
+        proteome,
+        trace_accession=True
+    ):
+    """ Function to check for the presence of an identified peptide as either canonical
+        or spliced in the input proteome.
+    """
+    il_peptide = peptide.replace('I', 'L')
+    accession_stratum = 'unknown'
+    for protein in proteome:
+        if il_peptide in protein[1]:
+            if not trace_accession:
+                return True
+            if accession_stratum == 'unknown':
+                accession_stratum = protein[0]
+            else:
+                accession_stratum += f' {protein[0]}'
+
+    if not trace_accession:
+        return False
+    return accession_stratum
+
+def get_mod_score(df_row):
+    """ Helper function to compare different accession strata.
+    """
+    if df_row[ACCESSION_STRATUM_KEY] == 0:
+        return df_row[ENGINE_SCORE_KEY]
+    return 0.7*df_row[ENGINE_SCORE_KEY]
+
+def accession_informed_filter(target_df, drop_feature_key):
+    """ Function for filtering with competitors from lower accession strata excluded.
+    """
+    target_df = target_df.with_columns(
+        pl.struct(ENGINE_SCORE_KEY, ACCESSION_STRATUM_KEY).apply(
+            get_mod_score
+        ).alias('modEngineScore')
+    )
+
+    target_df = target_df.with_columns(
+        pl.col('modEngineScore').max().over(
+            [SOURCE_KEY, SCAN_KEY]
+        ).alias('maxModScore')
+    )
+
+    top_rank_mod_df = target_df.filter(
+        (pl.col(drop_feature_key)) &
+        (pl.col('maxModScore').eq(pl.col('modEngineScore')))
+    )
+    top_rank_mod_df = top_rank_mod_df.select([SOURCE_KEY, SCAN_KEY]).unique()
+    top_rank_mod_df = top_rank_mod_df.with_columns(
+        pl.lit('yes').alias('drop')
+    )
+    target_df = target_df.filter(
+        pl.col(drop_feature_key).is_not()
+    ).drop(['modEngineScore', 'maxModScore', drop_feature_key])
+
+    target_df = target_df.join(
+        top_rank_mod_df,
+        how='left',
+        on=[SOURCE_KEY, SCAN_KEY]
+    )
+    target_df = target_df.filter(pl.col('drop').ne('yes'))
+    target_df = target_df.drop('drop')
+
+    return target_df
 
 def fetch_collision_energy(output_folder):
     """ Function to fetch the calibrated collision energy setting.
@@ -146,9 +285,7 @@ def get_ox_flag(mods_df):
         The flag for oxidation of methionine.
     """
     try:
-        ox_flag = int(
-            mods_df[mods_df[PTM_NAME_KEY] == 'Oxidation (M)'][PTM_ID_KEY].iloc[0]
-        )
+        ox_flag = int(mods_df[mods_df[PTM_NAME_KEY] == 'Oxidation (M)'][PTM_ID_KEY].iloc[0])
     except IndexError:
         ox_flag = -1
 
@@ -200,8 +337,9 @@ def modify_sequence_for_skyline(df_row, mod_weights):
     modified_sequence : str
         The modified sequence in the correct format for Skyline.
     """
-    if not isinstance(df_row[PTM_SEQ_KEY], str):
+    if not isinstance(df_row[PTM_SEQ_KEY], str) or not df_row[PTM_SEQ_KEY]:
         return df_row[PEPTIDE_KEY]
+
     modified_sequence = ''
     for idx, entry in enumerate(df_row[PEPTIDE_KEY]):
         mod = df_row[PTM_SEQ_KEY][idx+2]
@@ -225,12 +363,11 @@ def read_distiller_log(distiller_log):
     """
     source_files = []
     with open(distiller_log, 'r', encoding='UTF-8') as distiller_output:
-        line = distiller_output.readline()
-        while line:
+        while (line := distiller_output.readline()):
             if line.startswith('Raw file '):
                 source = line.split('/')[-1].split('\\')[-1].split('.raw')[0]
                 source_files.append(source)
-            line = distiller_output.readline()
+
     return source_files
 
 def remove_source_suffixes(source):
@@ -252,94 +389,32 @@ def remove_source_suffixes(source):
         return source[:-4]
     return source
 
-def _check_prosit_compliant_peptide(df_row):
-    """ Helper function to check that a peptide is within the Prosit length restricitons
-        and does not contain any non-standard amino acids.
+
+def filter_for_prosit(search_df):
+    """ Function to filter sequences not suitable for Prosit input (polars DataFrame).
 
     Parameters
     ----------
-    peptide : str
-        A peptide to be checked.
-
-    Returns
-    -------
-    prosit_compliant : bool
-        Whether the peptide is within the restrictions of Prosit.
-    """ 
-    peptide = df_row[PEPTIDE_KEY]
-    if not isinstance(peptide, str):
-        return False
-    if len(peptide) < 7 or len(peptide) > 30:
-        return False
-    for non_standard_aa in 'BJOUXZ':
-        if non_standard_aa in peptide:
-            return False
-    if df_row[CHARGE_KEY] > 6:
-        return False
-    return True
-
-def get_mod_score(df_row):
-    """ Helper function to compare different accession strata.
-    """
-    if df_row[ACCESSION_STRATUM_KEY] == 0:
-        return df_row[ENGINE_SCORE_KEY]
-    return 0.7*df_row[ENGINE_SCORE_KEY]
-
-def accession_informed_filter(target_df, drop_feature_key):
-    """ Function for filtering with competitors from lower accession strata excluded.
-    """
-    target_df['modEngineScore'] = target_df[
-        [ENGINE_SCORE_KEY, ACCESSION_STRATUM_KEY]
-    ].apply(get_mod_score, axis=1)
-    target_df['maxModScore'] = target_df.groupby(
-        [SOURCE_KEY, SCAN_KEY]
-    )['modEngineScore'].transform(max)
-
-    top_rank_mod_df = target_df[
-        (target_df[drop_feature_key]) &
-        (target_df['maxModScore'] == target_df['modEngineScore'])
-    ]
-    top_rank_mod_df = top_rank_mod_df[[SOURCE_KEY, SCAN_KEY]].drop_duplicates()
-    top_rank_mod_df['drop'] = 'yes'
-    target_df = target_df[
-        ~target_df[drop_feature_key]
-    ].drop(['modEngineScore', 'maxModScore', drop_feature_key], axis=1)
-
-    target_df = pd.merge(
-        target_df,
-        top_rank_mod_df,
-        how='left',
-        on=[SOURCE_KEY, SCAN_KEY]
-    )
-    target_df = target_df[target_df['drop'] != 'yes']
-    target_df = target_df.drop('drop', axis=1)
-    return target_df
-
-def filter_for_prosit(search_df, use_accession_stratum):
-    """ Function to filter sequences not suitable for Prosit input.
-
-    Parameters
-    ----------
-    search_df : pd.DataFrame
+    search_df : pl.DataFrame
         A DataFrame of search results from an ms search engine.
-    use_accession_stratum : bool
-        Whether accession stratum is being used as a feature.
 
     Returns
     -------
-    search_df : pd.DataFrame
+    search_df : pl.DataFrame
         The input DataFrame with sequences not suitable for Prosit input removed.
     """
-    search_df = search_df.dropna(subset=[PEPTIDE_KEY, CHARGE_KEY])
-    search_df_filter = search_df[[PEPTIDE_KEY, CHARGE_KEY]].apply(
-        _check_prosit_compliant_peptide, axis=1
+    search_df = search_df.filter(
+        pl.col(PEPTIDE_KEY).is_not_null() & (pl.col(CHARGE_KEY).is_not_null())
     )
-    if use_accession_stratum:
-        search_df['prositNonCompliant'] = ~search_df_filter
-        search_df = accession_informed_filter(search_df, 'prositNonCompliant')
-    else:
-        search_df = search_df[search_df_filter]
-        search_df.reset_index(drop=True, inplace=True)
+    search_df = search_df.filter(
+        pl.col(PEPTIDE_KEY).apply(
+            lambda x : isinstance(x, str) and 'U' not in x and len(x) > 6 and len(x) < 31,
+            skip_nulls=False,
+        )
+    )
+    search_df = search_df.filter(
+        pl.col(CHARGE_KEY).lt(7)
+    )
 
     return search_df
 
@@ -367,6 +442,7 @@ def _modify_ptm_seq(pep_seq, ptm_seq, ptm_locs, ptm_id):
         if not isinstance(ptm_seq, str):
             return ptm_id + '.' + ''.join(['0']*len(pep_seq)) + '.0'
         return ptm_id + ptm_seq[1:]
+
 
     for loc in ptm_locs:
         edit_points = [m.start() for m in re.finditer(loc, pep_seq)]
@@ -410,14 +486,15 @@ def add_fixed_modifications(search_df, mods_df, fixed_modifications):
         ptm_names.append(modification)
         ptm_weights.append(ptm_weight)
         str_ptm_idx = str(ptm_idx)
-        search_df[PTM_SEQ_KEY] = search_df[[PEPTIDE_KEY, PTM_SEQ_KEY]].apply(
-            lambda x, mod=modification, ptm_id=str_ptm_idx : _modify_ptm_seq(
-                x[PEPTIDE_KEY],
-                x[PTM_SEQ_KEY],
-                KNOWN_PTM_LOC[mod],
-                ptm_id
-            ),
-            axis=1
+        search_df = search_df.with_columns(
+            pl.struct([PEPTIDE_KEY, PTM_SEQ_KEY]).apply(
+                lambda x, mod=modification, ptm_id=str_ptm_idx : _modify_ptm_seq(
+                    x[PEPTIDE_KEY],
+                    x[PTM_SEQ_KEY],
+                    KNOWN_PTM_LOC[mod],
+                    ptm_id
+                )
+            ).alias(PTM_SEQ_KEY)
         )
 
     fixed_ptm_df = pd.DataFrame({
@@ -461,22 +538,26 @@ def convert_mod_seq_to_ptm_seq(mod_seq):
     ptm_seq += '.0'
     return ptm_seq
 
-def fetch_scan_data(input_df, config, with_charge):
+def fetch_scan_data(input_df, config, with_charge, with_rt=False):
     """ Function to fetch the experimental scan data.
 
     Parameters
     ----------
-    input_df : pd.DataFrame
+    input_df : pd.DataFrame or pl.DataFrame
         The DataFrame of PSMs whose spectra we wish to plot.
     config : inspire.config.Config
         The Config object used to run the inSPIRE experiment.
 
     Returns
     -------
-    total_scan_df : pd.DataFrame
+    total_scan_df : pl.DataFrame
         A DataFrame of the necessary scan data.
     """
-    source_files = input_df[SOURCE_KEY].unique().tolist()
+    if isinstance(input_df, pd.DataFrame):
+        source_files = input_df[SOURCE_KEY].unique().tolist()
+    else:
+        source_files = input_df[SOURCE_KEY].unique().to_list()
+
     scan_dfs = []
     if config.combined_scans_file is not None:
         scan_ids = input_df[SCAN_KEY].tolist()
@@ -488,15 +569,21 @@ def fetch_scan_data(input_df, config, with_charge):
             config.source_files,
             combined_source_file=True,
             with_charge=with_charge,
+            with_retention_time=with_rt,
         )]
     else:
         for scan_file in source_files:
-            scan_ids = input_df[input_df[SOURCE_KEY] == scan_file][SCAN_KEY].tolist()
+            if isinstance(input_df, pd.DataFrame):
+                scan_ids = input_df[input_df[SOURCE_KEY] == scan_file][SCAN_KEY].tolist()
+            else:
+                scan_ids = input_df.filter(input_df[SOURCE_KEY] == scan_file)[SCAN_KEY].to_list()
+
             if config.scans_format == 'mzML':
                 scan_df = process_mzml_file(
                     f'{config.scans_folder}/{scan_file}.{config.scans_format}',
                     set(scan_ids),
                     with_charge=with_charge,
+                    with_retention_time=with_rt,
                 )
             else:
                 mgf_filename = f'{config.scans_folder}/{scan_file}.{config.scans_format}'
@@ -507,7 +594,25 @@ def fetch_scan_data(input_df, config, with_charge):
                     config.source_files,
                     combined_source_file=False,
                     with_charge=with_charge,
+                    with_retention_time=with_rt,
                 )
             scan_dfs.append(scan_df)
-    total_scan_df = pd.concat(scan_dfs)
+
+    total_scan_df = pl.concat(scan_dfs)
+
     return total_scan_df
+
+def is_control(source, control_flags):
+    """ Function to check if control flags are found in the source files where
+        a peptide was identified.
+
+    sources : list of str
+        A list of source files from which a single peptide was identified.
+    control_flags : list of str
+        A list of the control flags which mark a source file as a control file.
+    """
+    for c_flag in control_flags:
+        if c_flag in source:
+            return True
+
+    return False

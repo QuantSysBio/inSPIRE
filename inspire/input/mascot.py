@@ -3,6 +3,7 @@
 import re
 
 import pandas as pd
+import polars as pl
 
 from inspire.constants import (
     ACCESSION_KEY,
@@ -21,6 +22,7 @@ from inspire.constants import (
     SEQ_LEN_KEY,
     SOURCE_KEY,
 )
+from inspire.utils import filter_for_prosit
 
 # Define separators within Mascot output and the names for relevant columns.
 MASCOT_HEADER_MARKER = 'Header'
@@ -84,7 +86,6 @@ def _get_mascot_file_metadata(csv_file):
     """
     with open(csv_file, 'r', encoding='UTF-8') as open_file:
         line_idx = 0
-        line = open_file.readline()
         header_line = -1
         hits_line = -1
         queries_line = None
@@ -93,7 +94,7 @@ def _get_mascot_file_metadata(csv_file):
         search_params_line = -1
         scan_filename = ''
 
-        while line:
+        while (line := open_file.readline()):
             if header_line==-1 and MASCOT_HEADER_MARKER in line:
                 header_line = line_idx
             if (
@@ -113,7 +114,6 @@ def _get_mascot_file_metadata(csv_file):
             if queries_line is None and MASCOT_QUERIES_START_MARKER in line:
                 queries_line = line_idx
                 break
-            line = open_file.readline()
             line_idx += 1
 
     mod_ranges = {}
@@ -168,6 +168,7 @@ def separate_scan_and_source(df_row, scan_title_format, source_list=None, source
     df_row : pd.Series
         The input row updated with new columns.
     """
+    results = {}
     scan_title = df_row[MASCOT_SCAN_TITLE_KEY]
     if scan_title_format is None:
         df_row[SCAN_KEY] = int(scan_title.split('=')[-1].strip('~'))
@@ -182,73 +183,28 @@ def separate_scan_and_source(df_row, scan_title_format, source_list=None, source
 
         if source.endswith('.raw') or source.endswith('.mgf'):
             source = source[:-4]
-        df_row[SOURCE_KEY] = source
+        results[SOURCE_KEY] = source
 
     elif scan_title_format == 'mascotDistiller':
         scan_rt_details = scan_title.split(' Scan ')[-1].split(' (rt')
-        df_row[SCAN_KEY] = int(scan_rt_details[0])
+        results[SCAN_KEY] = int(scan_rt_details[0])
         source_idx = int(scan_title.split(' from file [')[-1].strip(']'))
         source_idx = int(scan_title.split(' from file [')[-1].strip(']'))
-        df_row[SOURCE_KEY] = source_list[source_idx]
-        df_row[RT_KEY] = float(scan_rt_details[-1][1:].split(')')[0])
+        results[SOURCE_KEY] = source_list[source_idx]
+        results[RT_KEY] = float(scan_rt_details[-1][1:].split(')')[0])
     elif scan_title_format == 'distiller':
         split_name = scan_title.split(' (rt=')
-        df_row[SCAN_KEY] = int(split_name[0].split(' Scan ')[-1])
-        df_row[RT_KEY] = float(split_name[-1].split(')')[0])
+        results[SCAN_KEY] = int(split_name[0].split(' Scan ')[-1])
+        results[RT_KEY] = float(split_name[-1].split(')')[0])
     else:
         raise ValueError('Oops')
-    return df_row
-
-def add_rt_data(hits_df, csv_filename, queries_line, scan_file):
-    """ Function to add retention time to the main mascot results DataFrame
-
-    Parameters
-    ----------
-    hits_df : pd.DataFrame
-        The main search results DataFrame from Mascot.
-    csv_filename : str
-        The path to the file containing Mascot search results.
-    queries_line : int
-        The line number where mascot queries begin.
-
-    Returns
-    -------
-    hits_df : pd.DataFrame
-        The input DataFrame with a retentionTime column added.
-    """
-    if queries_line is None:
-        hits_df[RT_KEY] = 0
-        return hits_df
-    queries_df = pd.read_csv(
-        csv_filename,
-        skiprows=lambda idx : _skip_logic(idx, queries_line+2),
-        usecols=['query_number', MASCOT_QUERIES_RT_KEY, MASCOT_QUERIES_INTENSITY_KEY]
-    )
-
-    queries_df = queries_df.rename(columns={
-        'query_number': MASCOT_PEP_QUERY_KEY,
-        MASCOT_QUERIES_RT_KEY: RT_KEY,
-        MASCOT_QUERIES_INTENSITY_KEY: 'ms1Intensity',
-    })
-    queries_df[MASCOT_PEP_QUERY_KEY] = queries_df[MASCOT_PEP_QUERY_KEY].apply(
-        lambda x : scan_file + str(x)
-    )
-
-    hits_df = pd.merge(
-        hits_df,
-        queries_df,
-        how='inner',
-        on=MASCOT_PEP_QUERY_KEY,
-    )
-
-    return hits_df
+    return results
 
 def _read_mascot_dfs(
         csv_filename,
         hits_line,
         queries_line,
         mods_range,
-        scan_title_format,
         scan_file,
     ):
     hits_df = pd.read_csv(
@@ -256,6 +212,7 @@ def _read_mascot_dfs(
         skiprows=lambda idx : _skip_logic(idx, hits_line, queries_line),
         usecols=REQUIRED_MASCOT_COLUMNS
     )
+    hits_df = pl.from_pandas(hits_df)
 
     mods_df = pd.read_csv(
         csv_filename,
@@ -265,43 +222,35 @@ def _read_mascot_dfs(
     mods_df[PTM_IS_VAR_KEY] = True
 
     # Rename to match inSPIRE naming scheme.
-    hits_df = hits_df.rename(
-        columns={
-            MASCOT_ACCESSION_KEY: ACCESSION_KEY,
-            MASCOT_CHARGE_KEY: CHARGE_KEY,
-            MASCOT_ENGINE_SCORE_KEY: ENGINE_SCORE_KEY,
-            MASCOT_PTM_SEQ_KEY: PTM_SEQ_KEY,
-            MASCOT_PEPTIDE_KEY: PEPTIDE_KEY,
-            MASCOT_MISS_KEY: 'missedCleavages',
-        }
-    )
+    hits_df = hits_df.rename({
+        MASCOT_ACCESSION_KEY: ACCESSION_KEY,
+        MASCOT_CHARGE_KEY: CHARGE_KEY,
+        MASCOT_ENGINE_SCORE_KEY: ENGINE_SCORE_KEY,
+        MASCOT_PTM_SEQ_KEY: PTM_SEQ_KEY,
+        MASCOT_PEPTIDE_KEY: PEPTIDE_KEY,
+        MASCOT_MISS_KEY: 'missedCleavages',
+    })
 
     # Filter for Prosit and add feature columns not present.
-    hits_df[MASS_DIFF_KEY] = hits_df[MASCOT_MASS_KEY] - hits_df[MASCOT_PRED_MASS_KEY]
-    hits_df[SEQ_LEN_KEY] = hits_df[PEPTIDE_KEY].apply(len)
-    hits_df['avgResidueMass'] = hits_df[MASCOT_MASS_KEY]/hits_df[SEQ_LEN_KEY]
-    hits_df.drop([MASCOT_MASS_KEY, MASCOT_PRED_MASS_KEY], axis=1, inplace=True)
-
-    hits_df[MASCOT_PEP_QUERY_KEY] = hits_df[MASCOT_PEP_QUERY_KEY].apply(
-        lambda x : scan_file + str(x)
+    hits_df = filter_for_prosit(hits_df)
+    hits_df = hits_df.with_columns(
+        (pl.col(MASCOT_MASS_KEY) - pl.col(MASCOT_PRED_MASS_KEY)).alias(MASS_DIFF_KEY),
+        pl.col(PEPTIDE_KEY).str.lengths().alias(SEQ_LEN_KEY),
+        (pl.col(MASCOT_MASS_KEY)/pl.col(SEQ_LEN_KEY)).alias('avgResidueMass'),
     )
 
-    if scan_title_format not in ('mascotDistiller', 'distiller'):
-        # Mascot keeps retention time data in a separate table,
-        # except if distiller is used in which case it is within the
-        # pep_scan_title_column.
-        hits_df = add_rt_data(
-            hits_df,
-            csv_filename,
-            queries_line,
-            scan_file,
-        )
+    hits_df = hits_df.drop([MASCOT_MASS_KEY, MASCOT_PRED_MASS_KEY])
 
-
-    hits_df[LABEL_KEY] = hits_df[MASCOT_DECOY_KEY].apply(
-        lambda x : -1 if 'Reversed' in x or 'random' in x or 'Random' in x else 1
+    hits_df = hits_df.with_columns(
+        pl.col(MASCOT_PEP_QUERY_KEY).apply(
+            lambda x : scan_file + str(x)
+        ).alias(MASCOT_PEP_QUERY_KEY),
+        pl.col(MASCOT_DECOY_KEY).apply(
+            lambda x : -1 if 'Reversed' in x or 'random' in x or 'Random' in x else 1
+        ).alias(LABEL_KEY)
     )
-    hits_df.drop([MASCOT_DECOY_KEY], axis=1, inplace=True)
+
+    hits_df = hits_df.drop([MASCOT_DECOY_KEY])
 
     # Add fixed mods
     if 'fixed' in mods_range:
@@ -353,11 +302,11 @@ def _add_fixed_mod(peptide, ptm_seq, fixed_ptm_dict):
         if residues == 'N-term':
             if not isinstance(ptm_seq, str):
                 ptm_seq = '0.' + ''.join(['0']*len(peptide)) + '.0'
-            ptm_seq = fixed_ptm_dict[residues] + ptm_seq[1:]
+            ptm_seq = str(fixed_ptm_dict[residues]) + ptm_seq[1:]
         elif residues == 'C-term':
             if not isinstance(ptm_seq, str):
                 ptm_seq = '0.' + ''.join(['0']*len(peptide)) + '.0'
-            ptm_seq = ptm_seq[:-1] + fixed_ptm_dict[residues]
+            ptm_seq = ptm_seq[:-1] + str(fixed_ptm_dict[residues])
         else:
             for res in residues:
                 ptm_postns = [m.start() for m in re.finditer(res, peptide)]
@@ -403,12 +352,13 @@ def read_single_mascot_data(input_filename, scan_title_format, variable_mods):
         hits_line,
         queries_line,
         mod_ranges,
-        scan_title_format,
         scan_file,
     )
 
     if scan_title_format == 'distiller':
-        hits_df[SOURCE_KEY] = scan_file.strip('.raw').strip('.mgf').strip('.temp')
+        hits_df = hits_df.with_columns(
+            pl.lit(scan_file.strip('.raw').strip('.mgf').strip('.temp')).alias(SOURCE_KEY)
+        )
 
     if variable_mods is None or new_variable_mods.equals(variable_mods):
         return hits_df, new_variable_mods
@@ -428,8 +378,10 @@ def read_single_mascot_data(input_filename, scan_title_format, variable_mods):
     replacements = {str(k): str(v) for k, v in zip(
         unmatched_df['newId'].tolist(), unmatched_df[PTM_ID_KEY].tolist()
     )}
-    hits_df[PTM_SEQ_KEY] = hits_df[PTM_SEQ_KEY].apply(
-        lambda x : _replace_ptm_id(x, replacements)
+    hits_df = hits_df.with_columns(
+        pl.col(PTM_SEQ_KEY).apply(
+            lambda x : _replace_ptm_id(x, replacements)
+        )
     )
 
     return hits_df, variable_mods
@@ -482,7 +434,7 @@ def read_mascot_data(
 
     Returns
     -------
-    hits_df : pd.DataFrame
+    hits_df : pl.DataFrame
         A DataFrame of all search results properly formatted for inSPIRE.
     mods_dfs : pd.DataFrame
         A small DataFrame detailing the ptms found in the data.
@@ -499,7 +451,7 @@ def read_mascot_data(
             )
             hits_dfs.append(hits_df)
             variable_mods_dfs.append(variable_mods)
-        hits_df = pd.concat(hits_dfs)
+        hits_df = pl.concat(hits_dfs)
         for i in range(len(variable_mods_dfs)-1):
             assert variable_mods_dfs[i].equals(variable_mods_dfs[i+1])
     else:
@@ -510,33 +462,31 @@ def read_mascot_data(
         )
 
     if with_accession:
-        hits_df['PSP'] = hits_df[ACCESSION_KEY].apply(
-            lambda x : 1 if 'PSP' in x else 0
+        hits_df = hits_df.with_columns(
+            pl.col(ACCESSION_KEY).apply(
+                lambda x : 1 if 'PSP' in x else 0
+            ).alias('PSP')
         )
-        hits_df = hits_df.sort_values(by='PSP')
-        hits_df = hits_df.sort_values(by=LABEL_KEY, ascending=False)
+        hits_df = hits_df.sort(by='PSP')
+        hits_df = hits_df.sort(by=LABEL_KEY, descending=True)
 
     hits_df = mascot_reduce_to_max(hits_df, reduce, with_accession)
 
-    hits_df = hits_df.apply(
-        lambda x : separate_scan_and_source(x, scan_title_format, source_list, source_filename),
-        axis=1
-    )
-    hits_df = hits_df.drop_duplicates(
+    hits_df = hits_df.with_columns(
+        pl.struct([MASCOT_SCAN_TITLE_KEY, SCAN_KEY]).apply(
+            lambda x : separate_scan_and_source(x, scan_title_format, source_list, source_filename),
+            skip_nulls=False,
+        ).alias('results')
+    ).unnest('results')
+    hits_df = hits_df.unique(
         subset=[SOURCE_KEY, SCAN_KEY, PEPTIDE_KEY]
     )
 
-    if reduce:
-        hits_df['scanCounts'] = hits_df.groupby(
-            [SOURCE_KEY, SCAN_KEY]
-        )[ENGINE_SCORE_KEY].transform('count')
-        hits_df['fromChimera'] = hits_df['scanCounts'].apply(lambda x : 1 if x > 1 else 0)
-        hits_df = hits_df.drop('scanCounts', axis=1)
-    else:
-        hits_df['fromChimera'] = 0
+    hits_df = hits_df.with_columns(
+        pl.lit(0).alias('fromChimera')
+    )
 
-
-    hits_df = hits_df.drop(MASCOT_SCAN_TITLE_KEY, axis=1)
+    hits_df = hits_df.drop(MASCOT_SCAN_TITLE_KEY)
 
     return hits_df, variable_mods
 
@@ -545,50 +495,34 @@ def mascot_reduce_to_max(main_df, reduce, with_accession):
 
     Parameters
     ----------
-    main_df : pd.DataFrame
+    main_df : pl.DataFrame
         A DataFrame of search results.
 
     Returns
     -------
-    main_df : pd.DataFrame
+    main_df : pl.DataFrame
         The search DataFrame with results filtered per PSM.
     """
     if with_accession:
-        main_df = main_df.sort_values(
-            by=[LABEL_KEY, 'PSP', ENGINE_SCORE_KEY], ascending=[False, True, False]
+        main_df = main_df.sort(
+            by=[LABEL_KEY, 'PSP', ENGINE_SCORE_KEY, PEPTIDE_KEY],
+            descending=[True, False, True, True],
         )
     else:
-        main_df = main_df.sort_values(
-            by=[LABEL_KEY, ENGINE_SCORE_KEY], ascending=False
+        main_df = main_df.sort(
+            by=[LABEL_KEY, ENGINE_SCORE_KEY, PEPTIDE_KEY], descending=True
         )
     if reduce:
-        main_df['ilSub'] = main_df[PEPTIDE_KEY].apply(
-            lambda x : x.replace('I', 'L')
+        main_df = main_df.with_columns(
+            pl.col(PEPTIDE_KEY).apply(
+                lambda x : x.replace('I', 'L').alias('ilSub')
+            )
         )
-        main_df = main_df.drop_duplicates(subset=[MASCOT_PEP_QUERY_KEY, 'ilSub'], keep='first')
-        main_df = main_df.drop('ilSub', axis=1)
+        main_df = main_df.unique(subset=[MASCOT_PEP_QUERY_KEY, 'ilSub'])
+        main_df = main_df.drop('ilSub')
 
-    main_df['max_pep_score'] = main_df.groupby(
-        [MASCOT_PEP_QUERY_KEY]
-    )[ENGINE_SCORE_KEY].transform(max)
-
-    main_df['pep_score_2'] = main_df.groupby(
-        [MASCOT_PEP_QUERY_KEY]
-    )[ENGINE_SCORE_KEY].transform(
-        lambda x : ([0.0] + sorted(list(x)))[-2]
+    main_df = main_df.with_columns(
+        pl.lit(0).alias(DELTA_SCORE_KEY)
     )
-
-    if reduce:
-        main_df = main_df[main_df[ENGINE_SCORE_KEY] == main_df['max_pep_score']]
-        main_df = main_df.drop_duplicates(subset=[MASCOT_PEP_QUERY_KEY])
-
-    main_df[DELTA_SCORE_KEY] = main_df[
-        [ENGINE_SCORE_KEY, 'max_pep_score', 'pep_score_2']
-    ].apply(
-        lambda x : x[ENGINE_SCORE_KEY] - x['pep_score_2'],
-        axis=1
-    )
-
-    main_df = main_df.drop(['max_pep_score', 'pep_score_2'], axis=1)
 
     return main_df

@@ -1,7 +1,7 @@
 """ Functions for calibrating the optimal collision energy setting
     for your experiment.
 """
-import pandas as pd
+import polars as pl
 
 from inspire.constants import (
     ACCESSION_STRATUM_KEY,
@@ -19,6 +19,13 @@ from inspire.constants import (
     SOURCE_KEY,
     SPECTRAL_ANGLE_KEY,
     UNDERLINE_TEXT,
+    CHARGE_KEY,
+    INTENSITIES_KEY,
+    MZS_KEY,
+    PEPTIDE_KEY,
+    PROSIT_INTES_KEY,
+    PROSIT_IONS_KEY,
+    PROSIT_SEQ_KEY,
 )
 from inspire.input.mgf import process_mgf_file
 from inspire.input.msp import msp_to_df
@@ -35,7 +42,7 @@ from inspire.utils import (
     remove_source_suffixes,
 )
 
-COLLISION_ENERGY_RANGE = list(range(20, 41))
+COLLISION_ENERGY_RANGE = [20 + i for i in range(21)]
 
 def _get_top_hits(config):
     """ Function to extract the top scoring hits for collision energy calibration.
@@ -45,7 +52,7 @@ def _get_top_hits(config):
     config : inspire.config.Config
         The Config object for the experiment.
     """
-    target_df, mods_df = generic_read_df(config, save_dfs=False, overwrite_reduce=True)
+    target_df, mods_df = generic_read_df(config, save_dfs=False, for_calibration=True)
 
     unknown_mods = mods_df[
         (mods_df[PTM_NAME_KEY] != 'Oxidation (M)') &
@@ -53,23 +60,36 @@ def _get_top_hits(config):
     ][PTM_ID_KEY].tolist()
     unknown_mods = {str(x) for x in unknown_mods}
 
-    target_df['unknownModifications'] = target_df[PTM_SEQ_KEY].apply(
-        lambda x : check_bad_mods(x, unknown_mods)
+    target_df = target_df.with_columns(
+        pl.col(PTM_SEQ_KEY).apply(
+            lambda x : check_bad_mods(x, unknown_mods),
+            skip_nulls=False,
+        ).alias('unknownModifications')
     )
-    target_df = target_df[~target_df['unknownModifications']]
+    target_df = target_df.filter(
+        ~pl.col('unknownModifications')
+    ).drop(
+        ['unknownModifications'],
+    )
 
     if ACCESSION_STRATUM_KEY in target_df.columns:
-        target_df = target_df[target_df[ACCESSION_STRATUM_KEY] == 0]
+        target_df = target_df.filter(pl.col(ACCESSION_STRATUM_KEY).eq(0))
 
-    top_5_pct_cut = target_df[ENGINE_SCORE_KEY].quantile(0.95)
+    target_df = target_df.filter(
+        target_df[LABEL_KEY] == 1
+    )
 
-    target_df = target_df[
-        (target_df[ENGINE_SCORE_KEY] > top_5_pct_cut) &
-        (target_df[LABEL_KEY] == 1) #move this up
-    ]
+    if config.rescore_method == 'percolatorSeparate':
+        score_cut_off = target_df[ENGINE_SCORE_KEY].quantile(0.98)
+    else:
+        score_cut_off = target_df[ENGINE_SCORE_KEY].quantile(0.90)
 
-    if target_df.shape[0] > 1000:
-        target_df = target_df.nlargest(1000, columns=[ENGINE_SCORE_KEY])
+    target_df = target_df.filter(
+        (target_df[ENGINE_SCORE_KEY] > score_cut_off)
+    )
+
+    if target_df.shape[0] > 600:
+        target_df = target_df.top_k(600, by=ENGINE_SCORE_KEY, descending=True)
 
     return target_df, mods_df
 
@@ -112,8 +132,13 @@ def calibrate(config):
     predict_spectra(config, 'calibrate')
 
     prosit_df = msp_to_df(
-        f'{config.output_folder}/calibrationPredictions.msp', 'prosit', None,
+        f'{config.output_folder}/calibrationPredictions.msp', 'prosit', None
     )
+
+    if config.combined_scans_file is not None:
+        scan_files = [remove_source_suffixes(config.combined_scans_file)]
+    else:
+        scan_files = target_df[SOURCE_KEY].unique().to_list()
 
     ox_flag = get_ox_flag(mods_df)
     cam_flag = get_cam_flag(mods_df)
@@ -124,35 +149,31 @@ def calibrate(config):
         int(ox_flag): KNOWN_PTM_WEIGHTS['Oxidation (M)']
     }
 
-    if config.combined_scans_file is not None:
-        scan_files = [remove_source_suffixes(config.combined_scans_file)]
-    else:
-        scan_files = target_df[SOURCE_KEY].unique().tolist()
-
     scan_dfs = []
     for scan_file in scan_files:
         if config.combined_scans_file is not None:
             filtered_search_df = target_df
         else:
-            filtered_search_df = target_df[target_df[SOURCE_KEY] == scan_file]
+            filtered_search_df = target_df.filter(
+                target_df[SOURCE_KEY].eq(scan_file)
+            )
 
         scans = filtered_search_df[SCAN_KEY].unique()
         if config.scans_format == 'mzML':
             scan_df = process_mzml_file(
                 f'{config.scans_folder}/{scan_file}.{config.scans_format}',
-                set(scans.tolist()),
+                set(scans.to_list()),
             )
         else:
             scan_df = process_mgf_file(
                 f'{config.scans_folder}/{scan_file}.{config.scans_format}',
-                set(scans.tolist()),
+                set(scans.to_list()),
                 config.scan_title_format,
                 config.source_files,
                 combined_source_file=config.combined_scans_file is not None,
             )
-        scan_dfs.append(scan_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY]))
-
-    combined_scan_df = pd.concat(scan_dfs)
+        scan_dfs.append(scan_df.unique(subset=[SOURCE_KEY, SCAN_KEY]))
+    combined_scan_df = pl.concat(scan_dfs)
     print(
         OKCYAN_TEXT +
         '\t\tCombining all spectral data...' +
@@ -170,34 +191,46 @@ def calibrate(config):
         '\t\tCalculating spectral angles...' +
         ENDC_TEXT
     )
-    combined_df = combined_df.apply(
-        lambda x : calculate_spectral_features(
-            x,
-            mods_dict,
-            config.mz_accuracy,
-            config.mz_units,
-            None,
-            '1',
-            config.delta_method,
-            config.spectral_predictor,
-            minimal_features=True,
-        ),
-        axis=1
-    )
-    results_df = combined_df.groupby('collisionEnergy', as_index=False)[
-        SPECTRAL_ANGLE_KEY
-    ].mean()
-    results_df.columns = ['collisionEnergy', SPECTRAL_ANGLE_KEY]
+    combined_df = combined_df.with_columns(
+         pl.struct([
+            CHARGE_KEY,
+            'collisionEnergy',
+            INTENSITIES_KEY,
+            MZS_KEY,
+            PEPTIDE_KEY,
+            PROSIT_INTES_KEY,
+            PROSIT_IONS_KEY,
+            PROSIT_SEQ_KEY,
+            PTM_SEQ_KEY,
+        ]).apply(
+            lambda x : calculate_spectral_features(
+                x,
+                mods_dict,
+                config.mz_accuracy,
+                config.mz_units,
+                None,
+                '1',
+                config.delta_method,
+                minimal_features=True,
+            ),
+            skip_nulls=False,
+        ).alias('spectralResults')
+    ).unnest('spectralResults')
 
-    optimal_collision_energy = results_df['collisionEnergy'].iloc[
-        results_df[SPECTRAL_ANGLE_KEY].idxmax()
-    ]
+    results_df = combined_df.groupby('collisionEnergy').agg(
+        pl.mean(SPECTRAL_ANGLE_KEY)
+    )
+
+    optimal_collision_energy = results_df.sort(
+        by='spectralAngle', descending=True,
+    )['collisionEnergy'].to_list()[0]
+
     print(
         OKBLUE_TEXT + BOLD_TEXT + UNDERLINE_TEXT +
         f'\n\t---> Optimal Collision Energy Setting: {optimal_collision_energy} <---\n' +
         ENDC_TEXT
     )
-    results_df.to_csv(
-        f'{config.output_folder}/collisionEnergyStats.csv',
-        index=False
+    results_df = results_df.sort(by='collisionEnergy')
+    results_df.write_csv(
+        f'{config.output_folder}/collisionEnergyStats.csv'
     )

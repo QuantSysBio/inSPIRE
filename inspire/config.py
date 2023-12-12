@@ -9,31 +9,54 @@ import yaml
 from inspire.utils import read_distiller_log
 
 ALL_CONFIG_KEYS = [
+    'accessionFlags',
     'accessionFormat',
+    'accessionKeys',
+    'alleles',
     'collisionEnergy',
     'contaminantData',
     'combinedScansFile',
+    'controlFlags',
     'deltaMethod',
     'distillerLog',
     'dropUnknownPTMs',
+    'epitopeCandidateCutOff',
     'excludeFeatures',
+    'engineScoreCut',
     'experimentTitle',
     'falseDiscoveryRate',
     'fixedModifications',
     'filterCysteine',
     'forceReload',
+    'fraggerMemory',
+    'fraggerDbSplits',
+    'fraggerPath',
+    'fraggerParams',
+    'hostOnlyResults',
+    'hostProteome',
     'includeFeatures',
+    'inferProteins',
+    'mapContaminants',
     'ms2pipModel',
+    'ms1Accuracy',
     'mzAccuracy',
+    'mzRange',
     'mzUnits',
     'nCores',
+    'netMHCpan',
     'outputFolder',
+    'pathogenProteome',
+    'plotSpectraSourceSplit',
+    'proteinDecoyKey',
     'proteome',
+    'quantCutOff',
+    'rtFitLoc',
     'reduce',
+    'remapToProteome',
+    'replaceIL',
     'rescoreMethod',
     'resultsExport',
     'reuseInput',
-    'rtPerFile',
     'scansFolder',
     'scansFormat',
     'scanTitleFormat',
@@ -41,12 +64,17 @@ ALL_CONFIG_KEYS = [
     'searchEngine',
     'sourceFileName',
     'silentExecution',
+    'skylineConfig',
+    'skylineReportTemplate',
+    'skylineIdpCutOff',
+    'skylineRatioCutOff',
     'spectralAngleDfs',
     'spectralPredictor',
     'useAccessionStrata',
     'useBindingAffinity',
     'useIrtDelta',
     'useMinimalFeatures',
+    'technicalReplicates',
 ]
 
 class Config:
@@ -70,7 +98,7 @@ class Config:
             self.search_results = self.search_results.replace('~', home).replace(
                 '%USERPROFILE%', home
             )
-        else:
+        elif isinstance(self.search_results, list):
             self.search_results = [
                 x.replace('~', home).replace('%USERPROFILE%', home) for x in self.search_results
             ]
@@ -85,30 +113,56 @@ class Config:
         if not os.path.exists(self.output_folder):
             os.makedirs(self.output_folder)
 
+        if not os.path.exists(f'{self.output_folder}/quant'):
+            os.makedirs(f'{self.output_folder}/quant')
+
+        if not os.path.exists(f'{self.output_folder}/epitope'):
+            os.makedirs(f'{self.output_folder}/epitope')
+
+        if not os.path.exists(f'{self.output_folder}/img'):
+            os.makedirs(f'{self.output_folder}/img')
 
     def _load_data(self, config_dict):
         """ Function to load data.
         """
+        home = str(Path.home())
+
         # Required:
         self.experiment_title = config_dict['experimentTitle']
-        if isinstance(config_dict['searchResults'], list):
+        self.output_folder = config_dict['outputFolder']
+        search_res = config_dict.get('searchResults')
+        if isinstance(search_res, list):
             self.search_results = []
-            for result_group in config_dict['searchResults']:
+            for result_group in search_res:
                 self.search_results.extend(glob.glob(result_group))
         else:
-            self.search_results = config_dict['searchResults']
-
+            self.search_results = search_res
+        if (
+            self.search_results is None and
+            os.path.exists(f'{self.output_folder}/fragger_searches.txt')
+        ):
+            with open(
+            f'{self.output_folder}/fragger_searches.txt',
+            mode='r',
+            encoding='UTF-8',
+        ) as search_file:
+                self.search_results = [line.rstrip() for line in search_file]
         self.search_engine = config_dict['searchEngine']
-        self.output_folder = config_dict['outputFolder']
         self.scans_folder = config_dict['scansFolder']
         self.scans_format = config_dict['scansFormat']
 
         # Recommended:
+        self.map_contaminants = config_dict.get('mapContaminants', 'standard')
         self.results_export = config_dict.get('resultsExport', 'psm')
         self.use_irt_diff = config_dict.get('useIrtDelta', True)
-        self.delta_rt_per_file = config_dict.get('rtPerFile', True)
+        self.proteome = config_dict.get('proteome')
+        if self.proteome is None:
+            self.infer_proteins = config_dict.get('inferProteins', False)
+        else:
+            self.infer_proteins = config_dict.get('inferProteins', True)
         self.n_cores = config_dict.get('nCores', 1)
         self.collision_energy = config_dict.get('collisionEnergy', None)
+        self.ms1_accuracy = config_dict.get('ms1Accuracy', 5)
         self.mz_accuracy = config_dict.get('mzAccuracy', 0.02)
         self.mz_units = config_dict.get('mzUnits', 'Da')
         self.fixed_modifications = config_dict.get('fixedModifications', None)
@@ -120,15 +174,42 @@ class Config:
         self.reuse_input = config_dict.get('reuseInput', False)
         self.minimal_features = config_dict.get('useMinimalFeatures', False)
 
+        # MSFragger
+        self.fragger_memory = config_dict.get('fraggerMemory', 60)
+        self.fragger_db_splits = config_dict.get('fraggerDbSplits', 4)
+        self.fragger_path = config_dict.get('fraggerPath')
+        self.fragger_params = config_dict.get(
+            'fraggerParams',
+            f'{home}/inSPIRE_models/utilities/fragger_template.params',
+        )
+
+        # Quantification
+        self.quantification_cut_off = config_dict.get('quantCutOff', 0.01)
+        self.technical_replicates = config_dict.get('technicalReplicates')
+        self.skyline_config_file = config_dict.get(
+            'skylineConfig', f'{home}/inSPIRE_models/utilities/skyline_config.sky'
+        )
+        self.skyline_report_template = config_dict.get(
+            'skylineReportTemplate', f'{home}/inSPIRE_models/utilities/skyline_report_template.skyr'
+        )
+        self.skyline_idp_cut_off = config_dict.get('skylineIdpCutOff', 0.5)
+        self.skyline_bg_ratio_cut_off = config_dict.get('skylineRatioCutOff', 0.8)
+
+        # Protein Inference
+        self.decoy_protein_flag = config_dict.get('proteinDecoyKey', 'rev_')
+
         # Optional
+        self.remap_to_proteome = config_dict.get('remapToProteome', False)
         self.fdr = config_dict.get('falseDiscoveryRate', 0.01)
-        self.max_for_selection = -1
         self.exclude_features = config_dict.get('excludeFeatures', [])
         self.include_features = config_dict.get('includeFeatures', None)
         self.reduce = config_dict.get('reduce', False)
-        self.rescore_method = config_dict.get('rescoreMethod', 'mokapot')
+        self.rescore_method = config_dict.get('rescoreMethod', 'percolator')
         self.sa_query_dfs = config_dict.get('spectralAngleDfs', None)
         self.silent_execution = config_dict.get('silentExecution', False)
+        self.plot_spectra_source_split = config_dict.get('plotSpectraSourceSplit')
+
+        self.rt_fit_loc = config_dict.get('rtFitLoc', None)
 
         self.filter_c = config_dict.get('filterCysteine', True)
         if self.spectral_predictor == 'prosit':
@@ -148,22 +229,34 @@ class Config:
 
         # NetMhcPan
         self.use_binding_affinity = config_dict.get('useBindingAffinity', None)
+        self.pan_command = config_dict.get('netMHCpan')
+        default_ba_pred_limit = 15
+        if self.use_binding_affinity == 'asFeature':
+            default_ba_pred_limit = 31
+        self.ba_pred_limit = config_dict.get('baPredictionLimit', default_ba_pred_limit)
 
         # MS2PIP Model
         self.ms2pip_model = config_dict.get('ms2pipModel', None)
 
 
         # Accession Groups
-        self.accession_groups = config_dict.get('accessionGroups')
-        self.accession_hierarchy = config_dict.get('accessionHierarchy')
+        self.accession_hierarchy = config_dict.get('accessionKeys')
+        self.accession_flags = config_dict.get('accessionFlags')
         self.accession_format = config_dict.get('accessionFormat')
         if self.accession_format == 'invitroSPI' and self.accession_hierarchy is None:
             self.accession_hierarchy = ['nonspliced', 'spliced']
 
         self.use_accession_stratum = config_dict.get('useAccessionStrata', False)
-        self.proteome = config_dict.get('proteome')
-        self.raw_file_groups = config_dict.get('rawFileGroupings')
-        self.contaminant_data = config_dict.get('contaminantData')
+
+        # Epitope validation
+        self.host_proteome = config_dict.get('hostProteome')
+        self.pathogen_proteome = config_dict.get('pathogenProteome')
+        self.control_flags = config_dict.get('controlFlags')
+        self.alleles = config_dict.get('alleles')
+        self.epitope_candidate_cut_off = config_dict.get('epitopeCandidateCutOff', 0.1)
+        self.host_only_results = config_dict.get('hostOnlyResults')
+        self.engine_score_cut = config_dict.get('engineScoreCut')
+        self.epitope_length_cut_off = config_dict.get('epitopeLengthCutOff', 15)
 
     def __str__(self):
         print_string = f'inSPIRE Settings for Experiment {self.experiment_title}:<br>'
@@ -267,32 +360,6 @@ class Config:
         """
 
         print_string += '</table>'
-        # if isinstance(self.search_results, str):
-        #     print_string += f'Search Results File:\t{self.search_results}\n'
-        # else:
-        #     print_string += f'Search Results Files:\t{", ".join(self.search_results)}\n'
-        # print_string += f'Search Engine:\t{self.search_engine}\n'
-        # print_string += f'MS/MS Scans Folder:\t{self.scans_folder}\n'
-        # print_string += f'Scans Format:\t{self.scans_format}\n'
-        # print_string += f'Output Folder:\t{self.output_folder}\n'
-
-        # print_string += f'Collision Energy:\t{self.collision_energy}\n'
-        # print_string += f'M/Z Accuracy on Mass Spectrometer:\t{self.mz_accuracy}\n'
-
-        # print_string += f'Maximum Samples for Feature Selection:\t{self.max_for_selection}\n'
-        # print_string += f'FDR:\t{self.fdr}\n'
-        # print_string += f'Rescore Method:\t{self.rescore_method}\n'
-        # print_string += f'Results Reduced to Maximum Engine Score:\t{self.reduce}\n'
-        # if self.exclude_features:
-        #     print_string += f'Features Excluded:\t{", ".join(self.exclude_features)}\n'
-
-        # if self.use_binding_affinity is not None:
-        #     print_string += f'Binding Affinity Used:\t{self.use_binding_affinity}\n'
-
-        # if self.scan_title_format == 'mascotDistiller':
-        #     print_string += 'Mascot Distiller used.\n'
-        #     print_string += f'Combined Scans File:\t{self.combined_scans_file}\n'
-        #     print_string += f'Original Source Files:\t{", ".join(self.source_files)}\n'
 
         return print_string
 

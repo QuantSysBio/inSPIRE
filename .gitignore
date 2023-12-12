@@ -147,6 +147,7 @@ example/output/rescore.log
 example/output/input_all_features.tab
 example/output/prosit*
 example/output/spectralPlots.pdf
+example/output/rt_fit_PR487_Michele_20180611_B07_rep1.csv
 example/.DS_Store
 
 inspire/model

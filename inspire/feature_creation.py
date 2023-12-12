@@ -1,10 +1,14 @@
 """ Functions for writing percolator/mokapot input using Prosit and other features.
 """
 from math import log10
-import multiprocessing
+import multiprocessing as mp
+from multiprocessing.managers import BaseManager
 import os
+from pathlib import Path
 
-import pandas as pd
+import numpy as np
+import polars as pl
+from xgboost import XGBRegressor
 
 from inspire.basic_features import create_basic_features
 from inspire.constants import(
@@ -38,16 +42,22 @@ from inspire.input.mzml import process_mzml_file
 from inspire.input.search_results import generic_read_df
 from inspire.prepare import create_prosit_mod_seq
 from inspire.retention_time import add_delta_irt
-from inspire.spectral_features import SPECTRAL_FEATURES, DELTA_FEATURES, create_spectral_features
+from inspire.spectral_features import (
+    SPECTRAL_FEATURES,
+    DELTA_FEATURES,
+    create_spectral_features,
+)
 from inspire.utils import (
     accession_informed_filter,
     check_bad_mods,
+    fetch_proteome,
     get_ox_flag,
     modify_sequence_for_skyline,
+    parallel_remap,
     remove_source_suffixes,
-    permute_seq,
-    permute_ptms,
 )
+
+BATCH_SIZE = 500
 
 def combine_spectral_data(search_df, scan_df, prosit_df, ox_flag, spectral_predictor):
     """ Function to combine DataFrame of PEAKS results with prosit predicted
@@ -68,11 +78,13 @@ def combine_spectral_data(search_df, scan_df, prosit_df, ox_flag, spectral_predi
         The DataFrame with all merged Data.
     """
     if spectral_predictor == 'prosit':
-        search_df['modified_sequence'] = search_df[[PEPTIDE_KEY, PTM_SEQ_KEY]].apply(
-            lambda x : create_prosit_mod_seq(x[PEPTIDE_KEY], x[PTM_SEQ_KEY], ox_flag),
-            axis=1
+        search_df = search_df.with_columns(
+            pl.struct([PEPTIDE_KEY, PTM_SEQ_KEY]).apply(
+                lambda x : create_prosit_mod_seq(x[PEPTIDE_KEY], x[PTM_SEQ_KEY], ox_flag),
+                skip_nulls=False,
+            ).alias('modified_sequence')
         )
-        prosit_df = prosit_df.drop_duplicates(
+        prosit_df = prosit_df.unique(
             subset=['modified_sequence', CHARGE_KEY, 'collisionEnergy']
         )
 
@@ -83,15 +95,13 @@ def combine_spectral_data(search_df, scan_df, prosit_df, ox_flag, spectral_predi
         ENDC_TEXT
     )
     if spectral_predictor == 'prosit':
-        df_with_prosit = pd.merge(
-            search_df,
+        df_with_prosit = search_df.join(
             prosit_df,
             how='inner',
             on=['modified_sequence', CHARGE_KEY]
         )
     elif spectral_predictor == 'ms2pip':
-        df_with_prosit = pd.merge(
-            search_df,
+        df_with_prosit = search_df.join(
             prosit_df,
             how='inner',
             on=[PEPTIDE_KEY, PTM_SEQ_KEY, CHARGE_KEY]
@@ -103,16 +113,16 @@ def combine_spectral_data(search_df, scan_df, prosit_df, ox_flag, spectral_predi
         + ENDC_TEXT
     )
 
-    scan_df[SOURCE_KEY] = scan_df[SOURCE_KEY].apply(
-        remove_source_suffixes
+    scan_df = scan_df.with_columns(
+        pl.col(SOURCE_KEY).apply(remove_source_suffixes).alias(SOURCE_KEY)
     )
 
-    final_df = pd.merge(
-        df_with_prosit,
+    final_df = df_with_prosit.join(
         scan_df,
         how='inner',
         on=[SOURCE_KEY, SCAN_KEY]
     )
+
     print(
         OKCYAN_TEXT +
         f'\t\t\t{final_df.shape[0]} after combination with experimental spectra.' +
@@ -142,8 +152,8 @@ def filter_input_columns(combined_df, config, file_idx):
         use_cols = [
             psm_id_key,
             LABEL_KEY,
-            PERC_SCAN_ID
-        ] + BASIC_FEATURES + MINIMAL_FEATURE_SET + ['matchedCoverage']
+            PERC_SCAN_ID,
+        ] + BASIC_FEATURES + MINIMAL_FEATURE_SET
     else:
         use_cols = [
             psm_id_key,
@@ -154,10 +164,7 @@ def filter_input_columns(combined_df, config, file_idx):
         if config.delta_method != 'ignore':
             use_cols += DELTA_FEATURES
 
-        use_cols.append('deltaRT')
-
-    if not config.delta_rt_per_file:
-        use_cols.append('iRT')
+        use_cols += ['deltaRT']
 
     if config.use_binding_affinity == 'asFeature':
         use_cols += ['bindingAffinity']
@@ -167,33 +174,51 @@ def filter_input_columns(combined_df, config, file_idx):
             scan_files = [remove_source_suffixes(x) for x in config.source_files]
         else:
             scan_files = sorted(combined_df[SOURCE_KEY].unique().tolist())
-        combined_df[SOURCE_INDEX_KEY] = combined_df[SOURCE_KEY].apply(scan_files.index)
+        combined_df = combined_df.with_columns(
+            pl.col(SOURCE_KEY).apply(scan_files.index).alias(SOURCE_INDEX_KEY)
+        )
     else:
-        combined_df[SOURCE_INDEX_KEY] = file_idx
+        combined_df = combined_df.with_columns(
+            pl.lit(file_idx).alias(SOURCE_INDEX_KEY)
+        )
 
     if isinstance(config.collision_energy, list):
         use_cols += ['collisionEnergy']
 
     use_cols += [SOURCE_INDEX_KEY]
 
+
     if config.use_accession_stratum:
-        acc_cols = []
+        acc_cols = [ACCESSION_STRATUM_KEY]
         for a_idx in range(len(config.accession_hierarchy)):
             stratum_name = config.accession_hierarchy[int(a_idx)]
-            combined_df[f'accession_{stratum_name}'] = combined_df[
-                ACCESSION_STRATUM_KEY
-            ].apply(
-                lambda x, val=a_idx: 1 if x == val else 0
+            combined_df = combined_df.with_columns(
+                pl.col(ACCESSION_STRATUM_KEY).apply(
+                    lambda x, val=a_idx: 1 if x == val else 0
+                ).alias(f'accession_{stratum_name}')
             )
             acc_cols.append(f'accession_{stratum_name}')
 
         use_cols += sorted(acc_cols)
 
-    use_cols += [PEPTIDE_KEY, ACCESSION_KEY]
+    use_cols += [PEPTIDE_KEY, IN_ACCESSION_KEY[config.rescore_method]]
 
-    combined_df = combined_df[use_cols].rename(
-        columns={ACCESSION_KEY: IN_ACCESSION_KEY[config.rescore_method]}
-    )
+    if config.remap_to_proteome:
+        proteome = fetch_proteome(config.proteome, with_desc=False)
+        combined_df = parallel_remap(
+            combined_df,
+            config.n_cores,
+            proteome,
+            IN_ACCESSION_KEY[config.rescore_method],
+        )
+        combined_df = combined_df.drop(ACCESSION_KEY)
+    else:
+        combined_df = combined_df.rename(
+            {ACCESSION_KEY: IN_ACCESSION_KEY[config.rescore_method]}
+        )
+
+    combined_df = combined_df.sort(by='tempIndex')
+    combined_df = combined_df.select(use_cols)
 
     return combined_df
 
@@ -213,60 +238,81 @@ def write_with_spectral_features(
     config : inspire.config.Config
         The Config object.
     """
-    if config.spectral_predictor == 'prosit':
-        prosit_predictions = f'{config.output_folder}/prositPredictions.msp'
-        prosit_df = msp_to_df(prosit_predictions, 'prosit', None)
-    elif config.spectral_predictor == 'ms2pip':
-        model = config.ms2pip_model
-        ms2pip_predictions = f'{config.output_folder}/ms2pipInput_{model}_predictions.msp'
-        prosit_df = msp_to_df(ms2pip_predictions, 'ms2pip', mods_df)
-
     if config.combined_scans_file is not None:
-        scan_files = [remove_source_suffixes(config.combined_scans_file)]
+        scan_files = sorted([remove_source_suffixes(config.combined_scans_file)])
     else:
-        scan_files = search_df[SOURCE_KEY].unique().tolist()
+        scan_files = sorted(search_df[SOURCE_KEY].unique().to_list())
 
+    search_df = search_df.with_row_count(name='tempIndex')
 
     max_scan = search_df[SCAN_KEY].max()
-    if config.n_cores == 1 or len(scan_files) == 1:
-        for file_idx, scan_file in enumerate(scan_files):
-            process_single_file(
-                search_df, mods_df, prosit_df, config, file_idx, scan_file, max_scan, False
-            )
-    else:
-        n_cores = min(config.n_cores, multiprocessing.cpu_count())
-        func_args = [
-            (search_df, mods_df, prosit_df, config,
-            file_idx, scan_file, max_scan, True)
-            for file_idx, scan_file in enumerate(scan_files)
-        ]
-        with multiprocessing.Pool(processes=n_cores) as pool:
-            results = pool.starmap(process_single_file, func_args)
-
-        if os.path.exists(f'{config.output_folder}/input_all_features.tab'):
-            os.remove(f'{config.output_folder}/input_all_features.tab')
-
-        with open(
-            f'{config.output_folder}/input_all_features.tab', 'w', encoding='UTF-8'
-        ) as out_file:
-            for tab_file in sorted(results):
-                with open(tab_file, 'r', encoding='UTF-8') as in_file:
-                    for line in in_file:
-                        out_file.write(line)
-                os.remove(tab_file)
-
-    if not config.delta_rt_per_file:
-        all_features_df = pd.read_csv(f'{config.output_folder}/input_all_features.tab', sep='\t')
-        all_features_df = add_delta_irt(all_features_df, config, 'combined')
-        all_features_df.to_csv(f'{config.output_folder}/input_all_features.tab', sep='\t', index=False)
+    for file_idx, scan_file in enumerate(scan_files):
+        func_args = generate_function_arguments(
+            search_df, mods_df, config, file_idx, scan_file
+        )
+        process_single_file(
+            func_args, config, file_idx, scan_file, max_scan
+        )
 
     print(
         OKCYAN_TEXT + '\t\t\tFull input DataFrame written to csv.' + ENDC_TEXT
     )
 
 
-def process_single_file(
-        search_df, mods_df, prosit_df, config, file_idx, scan_file, max_scan, in_parallel
+def add_perc_scan_id(combined_df, config, file_idx, max_scan):
+    """ Function add a Percolator scan ID to the DataFrame that will be unique
+        to scans across RAW files.
+
+    Parameters
+    ----------
+    combined_df : pl.DataFrame
+        DataFrame of PSMs with combined spectral information.
+    config : inspire.config.Config
+        Config object for the whole experiment.
+    file_idx : int
+        The index of the raw file being processed.
+    max_scan : int
+        The highest scan number across all files.
+
+    Returns
+    -------
+    combined_df : pl.DataFrame
+        Input DataFrame with scannr column added.
+    """
+    if config.search_engine != 'mascot':
+        combined_df = combined_df.with_columns(
+            pl.col(SCAN_KEY).apply(
+                lambda x, f_id=file_idx : f_id * max_scan  + x
+            ).alias(PERC_SCAN_ID)
+        )
+    else:
+        if config.combined_scans_file is None:
+            combined_df = combined_df.with_columns(
+                pl.col(MASCOT_PEP_QUERY_KEY).apply(
+                    lambda x, f_id=file_idx : f_id * max_scan  + int(x.split('.mgf')[-1])
+                ).alias(PERC_SCAN_ID)
+            )
+        else:
+            if config.source_files is not None:
+                combined_df = combined_df.with_columns(
+                    pl.struct([SOURCE_KEY, MASCOT_PEP_QUERY_KEY]).apply(
+                        lambda x : (
+                            config.source_files.index(x[SOURCE_KEY]) * max_scan
+                        ) + int(x[MASCOT_PEP_QUERY_KEY].split('.mgf')[-1]),
+                    ).alias(PERC_SCAN_ID)
+                )
+            else:
+                source_files = combined_df[SOURCE_KEY].unique().tolist()
+                combined_df = combined_df.with_columns(
+                    pl.struct([SOURCE_KEY, SCAN_KEY]).apply(
+                        lambda x : (source_files.index(x[SOURCE_KEY]) * max_scan) + x[SCAN_KEY],
+                    ).alias(PERC_SCAN_ID)
+                )
+
+    return combined_df
+
+def generate_function_arguments(
+        search_df, mods_df, config, file_idx, scan_file
     ):
     """ Function to process all PSMs from a single mgf or mzML file.
 
@@ -284,49 +330,34 @@ def process_single_file(
         The index of the file being processed.
     scan_file : str
         The name of the file being processed.
-    max_scan : int
-        The maximum scan number observed in the data.
-    in_parallel : bool
-        Whether the data is being processed sequentially or in parallel.
     """
-    delta_df = None
-    previous_ptm_name = None
-    previous_ions_name = None
-    previous_name = None
-    if config.delta_method == 'bruteForce' and config.spectral_predictor == 'prosit':
-        delta_predictions = f'{config.output_folder}/deltaPredictions.msp'
-        delta_df = msp_to_df(delta_predictions, 'prosit', None)
-        delta_df['modified_sequence'] = delta_df['modified_sequence'].apply(
-            lambda x : x.replace('M(ox)', 'm')
-        )
-        delta_df = delta_df.rename(columns={'precursor_charge': CHARGE_KEY})
-        previous_name = 'modified_sequence'
-        previous_ions_name = 'prositIons'
-        delta_df = delta_df[['modified_sequence', CHARGE_KEY, 'prositIons']]
-        delta_df = delta_df.drop_duplicates(subset=['modified_sequence', CHARGE_KEY])
-    if config.delta_method == 'bruteForce' and config.spectral_predictor == 'ms2pip':
-        model = config.ms2pip_model
-        delta_predictions = f'{config.output_folder}/deltaInput_{model}_predictions.msp'
-        delta_df = msp_to_df(delta_predictions, 'ms2pip', mods_df)
-        previous_ptm_name = PTM_SEQ_KEY
-        previous_ions_name = 'prositIons'
-        previous_name = 'peptide'
-
     ox_flag = get_ox_flag(mods_df)
+    if config.spectral_predictor == 'prosit':
+        prosit_predictions = f'{config.output_folder}/prositPredictions.msp'
+        prosit_df = msp_to_df(prosit_predictions, 'prosit', None)
+    elif config.spectral_predictor == 'ms2pip':
+        model = config.ms2pip_model
+        ms2pip_predictions = f'{config.output_folder}/ms2pipInput_{model}_predictions.msp'
+        prosit_df = msp_to_df(ms2pip_predictions, 'ms2pip', mods_df)
+
     print(
         OKCYAN_TEXT +
-        f'\t\tProcessing scan file {file_idx}.' +
+        f'\t\tProcessing scan file {file_idx}, {scan_file}.' +
         ENDC_TEXT
     )
     if config.combined_scans_file is not None:
         filtered_search_df = search_df
     else:
-        filtered_search_df = search_df[search_df[SOURCE_KEY] == scan_file]
+        filtered_search_df = search_df.filter(
+            pl.col(SOURCE_KEY).eq(scan_file)
+        )
 
-    scans = filtered_search_df[SCAN_KEY].unique()
+    scans = filtered_search_df.select(SCAN_KEY).to_series().unique()
 
-    if RT_KEY not in filtered_search_df.columns or filtered_search_df[RT_KEY].nunique() <= 1:
-        filtered_search_df = filtered_search_df.drop(RT_KEY, axis=1)
+    if RT_KEY not in filtered_search_df.columns:
+        with_rt = True
+    elif filtered_search_df.select(RT_KEY).n_unique() <= 1:
+        filtered_search_df = filtered_search_df.drop(RT_KEY)
         with_rt = True
     else:
         with_rt = False
@@ -334,20 +365,21 @@ def process_single_file(
     if config.scans_format == 'mzML':
         scan_df = process_mzml_file(
             f'{config.scans_folder}/{scan_file}.{config.scans_format}',
-            set(scans.tolist()),
+            set(scans.to_list()),
             with_retention_time=with_rt,
         )
     else:
         scan_df = process_mgf_file(
             f'{config.scans_folder}/{scan_file}.{config.scans_format}',
-            set(scans.tolist()),
+            set(scans.to_list()),
             config.scan_title_format,
             config.source_files,
             combined_source_file=config.combined_scans_file is not None,
             with_retention_time=with_rt,
+            with_ms1=True,
         )
 
-    scan_df = scan_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY])
+    scan_df = scan_df.unique(subset=[SOURCE_KEY, SCAN_KEY])
     combined_df = combine_spectral_data(
         filtered_search_df,
         scan_df,
@@ -355,63 +387,6 @@ def process_single_file(
         ox_flag,
         config.spectral_predictor,
     )
-
-    if config.delta_method == 'bruteForce':
-        if config.spectral_predictor == 'prosit':
-            combined_df['mSeq'] = combined_df['modified_sequence'].apply(
-                lambda x : x.replace('M(ox)', 'm')
-            )
-            combined_df['permSeqs'] = combined_df['mSeq'].apply(
-                lambda x : permute_seq(x, uniform_length=True)
-            )
-            combined_df[[f'flip{idx}' for idx in range(1, 30)]] = pd.DataFrame(
-                combined_df.permSeqs.tolist(), index=combined_df.index
-            )
-
-            for i in range(1, 30):
-                delta_df = delta_df.rename(columns={
-                    previous_name: f'flip{i}',
-                    previous_ions_name: f'flip{i}Ions',
-                })
-                combined_df = pd.merge(
-                    combined_df,
-                    delta_df,
-                    how='left',
-                    on=[f'flip{i}', CHARGE_KEY]
-                )
-                previous_name = f'flip{i}'
-                previous_ions_name = f'flip{i}Ions'
-        else:
-            combined_df['permSeqs'] = combined_df['peptide'].apply(
-                lambda x : permute_seq(x, uniform_length=True)
-            )
-
-            combined_df[[f'flip{idx}' for idx in range(1, 30)]] = pd.DataFrame(
-                combined_df.permSeqs.tolist(), index=combined_df.index
-            )
-            combined_df['permPtms'] = combined_df[['peptide', PTM_SEQ_KEY]].apply(
-                lambda x : permute_ptms(x['peptide'], x[PTM_SEQ_KEY], uniform_length=True),
-                axis=1
-            )
-            combined_df[[f'flip{idx}Ptms' for idx in range(1, 30)]] = pd.DataFrame(
-                combined_df.permPtms.tolist(), index=combined_df.index
-            )
-
-            for i in range(1, 30):
-                delta_df = delta_df.rename(columns={
-                    previous_name: f'flip{i}',
-                    previous_ions_name: f'flip{i}Ions',
-                    previous_ptm_name: f'flip{i}Ptms'
-                })
-                combined_df = pd.merge(
-                    combined_df,
-                    delta_df,
-                    how='left',
-                    on=[f'flip{i}', f'flip{i}Ptms', CHARGE_KEY]
-                )
-                previous_name = f'flip{i}'
-                previous_ions_name = f'flip{i}Ions'
-                previous_ptm_name = f'flip{i}Ptms'
 
     print(
         OKCYAN_TEXT + '\t\t\tCombined DB Search, Spectral, and Prosit Data.' + ENDC_TEXT
@@ -425,51 +400,120 @@ def process_single_file(
         )
         return None
 
-    combined_df = create_spectral_features(combined_df, mods_df, config)
-    combined_df = combined_df.sort_values(by='spectralAngle', ascending=False)
-    if isinstance(config.collision_energy, list):
-        combined_df = combined_df.drop_duplicates(subset=['source', 'scan', 'peptide'])
+    n_batches = combined_df.shape[0]//BATCH_SIZE
+    additional_psms = combined_df.shape[0]%BATCH_SIZE
+    batch_values = []
+    for batch_idx in range(n_batches):
+        batch_values.extend([batch_idx]*BATCH_SIZE)
+    batch_values.extend([n_batches]*additional_psms)
 
-    if config.delta_rt_per_file:
-        combined_df = add_delta_irt(combined_df, config, scan_file)
-    else:
-        combined_df['deltaRT'] = 0
+    combined_df = combined_df.with_columns(
+        pl.Series(name='batch', values=batch_values)
+    )
+    combined_df_list = combined_df.partition_by('batch')
+    func_args = []
+    for idx, comb_df in enumerate(combined_df_list):
+        comb_df.write_parquet(f'{config.output_folder}/temp_{idx}_in.parquet')
+        func_args.append([mods_df, config, idx])
+
+    return func_args
+
+
+class ChildRegressor(XGBRegressor):
+    """ Class to allow use of Prosit-delta predictor in shared memory.
+    """
+    def __init__(self):
+        super().__init__()
+        home = str(Path.home())
+        self.load_model(f'{home}/inSPIRE_models/models/prosit_delta_v1.json')
+        self.set_params(n_jobs=1)
+
+    def best_score(self):
+        return 1.0
+
+    def coef_(self):
+        return np.array([1.0])
+
+    def feature_names_in_(self):
+        return np.array([''])
+
+    def intercept_(self):
+        return np.array([1.0])
+
+class CustomManager(BaseManager):
+    # nothing
+    pass
+
+def process_single_file(
+        func_args, config, file_idx, scan_file, max_scan
+    ):
+    """ Function to process PSMs from a single raw file in parallel.
+
+    Parameters
+    ----------
+    func_args : list of tuples
+        A list of the arugments to be passed to each parallel execution of
+        the create_spectral_features function.
+    config : inspire.config.Config
+        The Config object for the whole experiment.
+    file_idx : int
+        The index of the file being processed.
+    scan_file : str
+        The name of the file being processed.
+    max_scan : int
+        The maximum scan value in the dataset (needed to ensure uniqueness
+        in Percolator scan ID).
+    """
+    CustomManager.register('ChildRegressor', ChildRegressor)
+    with CustomManager() as manager:
+        if config.delta_method != 'ignore' and not config.minimal_features:
+            model = manager.ChildRegressor()
+            # Avoid unecessary parallelism when model applied to small sets.
+            model.set_params(n_jobs=1)
+        else:
+            model = None
+
+        for entry in func_args:
+            entry.append(model)
+
+        func_args = [tuple(arg_group) for arg_group in func_args]
+
+        with mp.get_context('spawn').Pool(processes=config.n_cores) as pool:
+            pool.starmap(create_spectral_features, func_args)
+
+    results_dfs = [
+        pl.read_parquet(
+            f'{config.output_folder}/temp_{idx}_out.parquet'
+        ) for idx in range(len(func_args))
+    ]
+    select_columns = results_dfs[0].columns
+
+    combined_df = pl.concat([x.select(select_columns) for x in results_dfs])
+
+    for idx in range(len(func_args)):
+        os.remove(f'{config.output_folder}/temp_{idx}_in.parquet')
+        os.remove(f'{config.output_folder}/temp_{idx}_out.parquet')
+
+    combined_df = combined_df.sort(by='spectralAngle', descending=True)
+    if isinstance(config.collision_energy, list):
+        combined_df = combined_df.unique(subset=['source', 'scan', 'peptide'])
+
+
+    combined_df = add_delta_irt(combined_df, config, scan_file)
 
     print(
         OKCYAN_TEXT + '\t\t\tCreated Spectral and Delta RT Features.' + ENDC_TEXT
     )
-    if config.search_engine != 'mascot':
-        combined_df[PERC_SCAN_ID] = combined_df[SCAN_KEY].apply(
-            lambda x, f_id=file_idx : f_id * max_scan  + x
-        )
-    else:
-        if config.combined_scans_file is None:
-            combined_df[PERC_SCAN_ID] = combined_df[MASCOT_PEP_QUERY_KEY].apply(
-                lambda x, f_id=file_idx : f_id * max_scan  + int(x.split('.mgf')[-1])
-            )
-        else:
-            if config.source_files is not None:
-                combined_df[PERC_SCAN_ID] = combined_df.apply(
-                    lambda x : (
-                        config.source_files.index(x[SOURCE_KEY]) * max_scan
-                    ) + int(x[MASCOT_PEP_QUERY_KEY].split('.mgf')[-1]),
-                    axis=1,
-                )
-            else:
-                source_files = combined_df[SOURCE_KEY].unique().tolist()
-                combined_df[PERC_SCAN_ID] = combined_df.apply(
-                    lambda x : (source_files.index(x[SOURCE_KEY]) * max_scan) + x[SCAN_KEY],
-                    axis=1,
-                )
+    combined_df = add_perc_scan_id(combined_df, config, file_idx, max_scan)
 
     combined_df = filter_input_columns(combined_df, config, file_idx)
-    combined_df = combined_df.sort_values(by=PERC_SCAN_ID)
+    combined_df = combined_df.sort(by=PERC_SCAN_ID)
 
-    file_loc = _write_to_tab_file(combined_df, file_idx, config.output_folder, in_parallel)
+    file_loc = _write_to_tab_file(combined_df, file_idx, config.output_folder)
 
     return file_loc
 
-def _write_to_tab_file(combined_df, file_idx, output_folder, in_parallel):
+def _write_to_tab_file(combined_df, file_idx, output_folder):
     """ Function to write percolator input in tab format.
 
     Parameters
@@ -481,29 +525,20 @@ def _write_to_tab_file(combined_df, file_idx, output_folder, in_parallel):
     output_folder : str
         The folder where all inSPIRE output is written.
     """
-    if in_parallel:
-        filename = f'input_all_features{file_idx}.tab'
-    else:
-        filename = 'input_all_features.tab'
     if file_idx == 0:
-        combined_df.to_csv(
-            f'{output_folder}/{filename}',
-            sep='\t',
-            index=False,
+        combined_df.write_csv(
+            f'{output_folder}/input_all_features.tab',
+            separator='\t',
         )
     else:
-        if in_parallel:
-            write_mode = 'w'
-        else:
-            write_mode = 'a'
-        combined_df.to_csv(
-            f'{output_folder}/{filename}',
-            sep='\t',
-            index=False,
-            mode=write_mode,
-            header=False,
-        )
-    return f'{output_folder}/{filename}'
+        with open(f'{output_folder}/input_all_features.tab', mode='ab') as out_file:
+            combined_df.write_csv(
+                out_file,
+                separator='\t',
+                has_header=False,
+            )
+
+    return f'{output_folder}/input_all_features.tab'
 
 def write_rescoring_features(
         search_df,
@@ -525,14 +560,15 @@ def write_rescoring_features(
 
     if config.use_binding_affinity == 'asFeature':
         mhc_pan_df = read_mhcpan_output(f'{config.output_folder}/mhcpan')
-        mhc_pan_df = mhc_pan_df.rename(columns={
+        mhc_pan_df = mhc_pan_df.rename({
             'Peptide': PEPTIDE_KEY,
-            'Aff(nM)': 'bindingAffinity',
+            'Aff(nM)': 'bindingAffinity'
         })
-        mhc_pan_df['bindingAffinity'] = mhc_pan_df['bindingAffinity'].apply(log10)
-        mhc_pan_df = mhc_pan_df[[PEPTIDE_KEY, 'bindingAffinity']]
-        feature_df = pd.merge(
-            feature_df,
+        mhc_pan_df = mhc_pan_df.with_columns(
+            pl.col('bindingAffinity').apply(log10).alias('bindingAffinity')
+        )
+        mhc_pan_df = mhc_pan_df.select([PEPTIDE_KEY, 'bindingAffinity'])
+        feature_df = feature_df.join(
             mhc_pan_df,
             on=PEPTIDE_KEY,
             how='inner'
@@ -543,14 +579,19 @@ def write_rescoring_features(
         mod_weights = {}
     else:
         mod_weights = dict(zip(mods_df[PTM_ID_KEY].tolist(), mods_df[PTM_WEIGHT_KEY].tolist()))
-    feature_df['modSeq'] = feature_df.apply(
-        lambda x : modify_sequence_for_skyline(x, mod_weights),
-        axis=1
+
+    feature_df = feature_df.with_columns(
+        pl.struct([PEPTIDE_KEY, PTM_SEQ_KEY]).apply(
+            lambda x : modify_sequence_for_skyline(x, mod_weights),
+            skip_nulls=False,
+        ).alias('modSeq')
     )
 
-    feature_df[psm_id_key] = feature_df[[SOURCE_KEY, SCAN_KEY, 'modSeq']].apply(
-        lambda x : str(x[SOURCE_KEY]) + '_' + str(x[SCAN_KEY]) + '_' + str(x['modSeq']),
-        axis=1
+    feature_df = feature_df.with_columns(
+        pl.struct([SOURCE_KEY, SCAN_KEY, 'modSeq']).apply(
+            lambda x : str(x[SOURCE_KEY]) + '_' + str(x[SCAN_KEY]) + '_' + str(x['modSeq']),
+            skip_nulls=False,
+        ).alias(psm_id_key)
     )
     print(
         OKCYAN_TEXT +
@@ -591,16 +632,20 @@ def process_unknown_modifications(target_df, mods_df, config):
             (mods_df[PTM_NAME_KEY] != 'Carbamidomethyl (C)')
         ][PTM_ID_KEY].tolist()
         unknown_mods = {str(x) for x in unknown_mods}
-        target_df['unknownModifications'] = target_df[PTM_SEQ_KEY].apply(
-            lambda x : check_bad_mods(x, unknown_mods)
+        target_df = target_df.with_columns(
+            pl.col(PTM_SEQ_KEY).apply(
+                lambda x : check_bad_mods(x, unknown_mods),
+                skip_nulls=False,
+            ).alias('unknownModifications')
         )
         count_before_drop = target_df.shape[0]
         if config.use_accession_stratum:
             target_df = accession_informed_filter(target_df, 'unknownModifications')
         else:
-            target_df = target_df[~target_df['unknownModifications']].drop(
-                ['unknownModifications'], axis=1
-            )
+            target_df = target_df.filter(
+                pl.col('unknownModifications').is_not()
+            ).drop('unknownModifications')
+
         count_after_drop = target_df.shape[0]
         filtered_psms = count_before_drop - count_after_drop
         print(
@@ -614,7 +659,9 @@ def process_unknown_modifications(target_df, mods_df, config):
             (mods_df[PTM_NAME_KEY] == 'Carbamidomethyl (C)')
         ].shape[0] and config.filter_c:
         count_before_drop = target_df.shape[0]
-        target_df = target_df[target_df[PEPTIDE_KEY].apply(lambda x : 'C' not in x)]
+        target_df = target_df.filter(
+            pl.col(PEPTIDE_KEY).apply(lambda x : 'C' not in x)
+        )
         count_after_drop = target_df.shape[0]
         filtered_psms = count_before_drop - count_after_drop
         print(

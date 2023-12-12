@@ -3,6 +3,7 @@
 from copy import deepcopy
 
 import pandas as pd
+import polars as pl
 
 from inspire.constants import (
     ACCESSION_KEY,
@@ -13,7 +14,6 @@ from inspire.constants import (
     LABEL_KEY,
     MASS_DIFF_KEY,
     PEPTIDE_KEY,
-    PROTON,
     PTM_ID_KEY,
     PTM_IS_VAR_KEY,
     PTM_NAME_KEY,
@@ -24,7 +24,7 @@ from inspire.constants import (
     SEQ_LEN_KEY,
     SOURCE_KEY,
 )
-from inspire.utils import remove_source_suffixes
+from inspire.utils import filter_for_prosit, remove_source_suffixes
 
 # Define the relevant column names from PEAKS DB search results.
 PEAKS_ACCESSION_KEY = 'Accession'
@@ -35,28 +35,42 @@ PEAKS_LEN_KEY = 'Length'
 PEAKS_MASS_KEY = 'Mass'
 PEAKS_MZ_KEY = 'm/z'
 PEAKS_PEPTIDE_KEY = 'Peptide'
+PEAKS_PPM_KEY = 'ppm'
 PEAKS_PTM_KEY = 'PTM'
 PEAKS_RETENTION_TIME_KEY = 'RT'
 PEAKS_SCAN_KEY = 'Scan'
 PEAKS_SCORE_KEY = '-10lgP'
 PEAKS_SOURCE_KEY = 'Source File'
-PEAKS_INTENSITY_KEY = 'Area'
 PEAKS_RELEVANT_COLUMNS = [
     PEAKS_ACCESSION_KEY,
     PEAKS_ASCORE_KEY,
     PEAKS_CHARGE_KEY,
     PEAKS_CHIMERA_KEY,
     PEAKS_LEN_KEY,
-    PEAKS_INTENSITY_KEY,
     PEAKS_MASS_KEY,
     PEAKS_MZ_KEY,
     PEAKS_PEPTIDE_KEY,
+    PEAKS_PPM_KEY,
     PEAKS_PTM_KEY,
     PEAKS_RETENTION_TIME_KEY,
     PEAKS_SCAN_KEY,
     PEAKS_SCORE_KEY,
     PEAKS_SOURCE_KEY,
 ]
+
+ID_NUMBERS = {
+    'Deamidation (NQ)': 9,
+    'Deamidation (N)': 8,
+    'Deamidation (Q)': 7,
+    'Phospho (S)': 6,
+    'Phospho (T)': 5,
+    'Phospho (Y)': 4,
+    'Acetylation (N-term)': 3,
+    'Acetylation (Protein N-term)': 3,
+    'Oxidation (M)': 2,
+    'Carbamidomethyl (C)': 1,
+    'Carbamidomethylation': 1,
+}
 
 def _extract_terminus_ptms(mod_list, var_mods, terminus):
     """ Helper function to extract any ptms at the N or C termini.
@@ -88,7 +102,7 @@ def _extract_terminus_ptms(mod_list, var_mods, terminus):
         mod_list.remove(term_mod)
     return mod_list, term_flag
 
-def _separate_peaks_ptms(df_row, var_mods):
+def separate_peaks_ptms(df_row, var_mods):
     """ Helper function to remove ptm markers from the Peaks Peptide column and create a
         separate ptm_seq column containing ptm data.
 
@@ -104,6 +118,7 @@ def _separate_peaks_ptms(df_row, var_mods):
     df_row : pd.Series
         The updated row with peptide and ptms separated.
     """
+    results = {}
     peptide = df_row[PEAKS_PEPTIDE_KEY]
     ptms = df_row[PEAKS_ASCORE_KEY]
     ptm_prefix = '0'
@@ -113,9 +128,9 @@ def _separate_peaks_ptms(df_row, var_mods):
         ptm_list = [a.strip(' ') for a in ptms.split(';')]
         ptm_list = [b.split(':')[1].strip(' ') for b in ptm_list]
     else:
-        df_row[PEPTIDE_KEY] = peptide
-        df_row[PTM_SEQ_KEY] = None
-        return df_row
+        results[PEPTIDE_KEY] = peptide
+        results[PTM_SEQ_KEY] = None
+        return results
     pep_seq = ''
     ptm_seq = ''
     idx = 0
@@ -154,17 +169,16 @@ def _separate_peaks_ptms(df_row, var_mods):
                 mod_list, ptm_suffix = _extract_terminus_ptms(mod_list, var_mods, 'C')
 
             if mod_list:
-                assert len(mod_list) == 1
                 ptm_seq += str(var_mods[mod_list[0]])
             else:
                 ptm_seq += '0'
         idx += 1
 
-    df_row[PEPTIDE_KEY] = pep_seq
-    df_row[PTM_SEQ_KEY] = '.'.join([ptm_prefix, ptm_seq, ptm_suffix])
-    return df_row
+    results[PEPTIDE_KEY] = pep_seq
+    results[PTM_SEQ_KEY] = '.'.join([ptm_prefix, ptm_seq, ptm_suffix])
+    return results
 
-def _collect_peaks_var_mods(peaks_df):
+def collect_peaks_var_mods(peaks_df):
     """ Helper function to collect all of the ptms present in PEAKS DB search results.
 
     Parameters
@@ -178,18 +192,22 @@ def _collect_peaks_var_mods(peaks_df):
         A small DataFrame listing the unique ptms found in the data.
     """
     var_mod_df = deepcopy(peaks_df[[PEAKS_PTM_KEY, PEAKS_PEPTIDE_KEY]])
-    var_mod_df['ptm_names'] = var_mod_df[PEAKS_PTM_KEY].apply(
-        lambda x: None if not isinstance(x, str) else [a.strip(' ') for a in x.split(';')]
+    var_mod_df = var_mod_df.with_columns(
+        pl.col(PEAKS_PTM_KEY).apply(
+            lambda x: None if not isinstance(x, str) else [a.strip(' ') for a in x.split(';')],
+            skip_nulls=False,
+        ).alias('ptm_names')
     )
-    var_mod_df['peaks_ptm_weights'] = var_mod_df[PEAKS_PEPTIDE_KEY].replace(
-        to_replace=r'[A-Za-z ]',
-        value='',
-        regex=True,
-    ).apply(lambda x : [a.strip('(').strip(')') for a in x.split(')(')])
 
-    var_mod_df = var_mod_df[
-        (var_mod_df['ptm_names'].notnull()) & (var_mod_df['peaks_ptm_weights'].notnull())
-    ]
+    var_mod_df = var_mod_df.with_columns(
+        pl.col(PEAKS_PEPTIDE_KEY).str.replace_all(r'[A-Za-z]', '').apply(
+            lambda x : [a.strip('(').strip(')') for a in x.split(')(')]
+        ).alias('peaks_ptm_weights')
+    )
+
+    var_mod_df = var_mod_df.filter(
+        (pl.col('ptm_names').is_not_null()) & (pl.col('peaks_ptm_weights').is_not_null())
+    )
 
     if not var_mod_df.shape[0]:
         return pd.DataFrame({
@@ -198,12 +216,13 @@ def _collect_peaks_var_mods(peaks_df):
             PTM_ID_KEY: [],
         })
 
-    var_mod_df['combined_ptm_data'] = var_mod_df.apply(
-        lambda x : list(zip(x['ptm_names'], x['peaks_ptm_weights'])),
-        axis=1
+    var_mod_df = var_mod_df.with_columns(
+        pl.struct(['ptm_names', 'peaks_ptm_weights']).apply(
+            lambda x : ["~".join(y) for y in zip(x['ptm_names'], x['peaks_ptm_weights'])]
+        ).alias('combined_ptm_data')
     )
 
-    ptms = var_mod_df['combined_ptm_data'].explode().unique()
+    ptms = [x.split('~') for x in var_mod_df['combined_ptm_data'].explode().unique()]
 
     ptm_names = [name for name, _ in ptms]
 
@@ -215,9 +234,10 @@ def _collect_peaks_var_mods(peaks_df):
     })
     ptms_df = ptms_df.drop_duplicates(PTM_NAME_KEY)
 
-    ptms_df = ptms_df.sort_values(by=PTM_NAME_KEY)
-    ptms_df.reset_index(inplace=True, drop=True)
-    ptms_df[PTM_ID_KEY] = ptms_df.index +1
+    ptms_df[PTM_ID_KEY] = ptms_df[PTM_NAME_KEY].apply(
+        lambda x : ID_NUMBERS[x]
+    )
+    ptms_df = ptms_df.sort_values(by=PTM_ID_KEY).reset_index(drop=True)
     ptms_df[PTM_IS_VAR_KEY] = True
 
     return ptms_df
@@ -237,58 +257,66 @@ def read_single_peaks_data(df_loc):
     mods_dfs : pd.DataFrame
         A small DataFrame detailing the ptms found in the data.
     """
-    peaks_df = pd.read_csv(df_loc, usecols=PEAKS_RELEVANT_COLUMNS)
+    peaks_df = pl.read_csv(df_loc, columns=PEAKS_RELEVANT_COLUMNS)
 
     # Separate PTMs.
-    var_mods = _collect_peaks_var_mods(peaks_df)
+    var_mods = collect_peaks_var_mods(peaks_df)
     var_mod_dict = dict(zip(var_mods[PTM_NAME_KEY].tolist(), var_mods[PTM_ID_KEY].tolist()))
 
     if var_mod_dict:
-        peaks_df = peaks_df.apply(
-            lambda x: _separate_peaks_ptms(x, var_mod_dict),
-            axis=1
-        )
+        peaks_df = peaks_df.with_columns(
+            pl.struct([PEAKS_PEPTIDE_KEY, PEAKS_ASCORE_KEY]).apply(
+                lambda x: separate_peaks_ptms(x, var_mod_dict)
+            ).alias('results')
+        ).unnest('results')
+        peaks_df = peaks_df.drop(PEAKS_PEPTIDE_KEY)
     else:
-        peaks_df = peaks_df.rename( # pylint: disable=no-member
-            columns={PEAKS_PEPTIDE_KEY: PEPTIDE_KEY}
+        peaks_df = peaks_df.rename(
+            {PEAKS_PEPTIDE_KEY: PEPTIDE_KEY}
         )
-        peaks_df[PTM_SEQ_KEY] = None
+        peaks_df = peaks_df.with_columns(
+            pl.lit(None).alias(PTM_SEQ_KEY)
+        )
 
     # Rename to match inSPIRE naming scheme.
-    peaks_df = peaks_df.rename(columns={
+    peaks_df = peaks_df.rename({
         PEAKS_ACCESSION_KEY: ACCESSION_KEY,
         PEAKS_CHARGE_KEY: CHARGE_KEY,
         PEAKS_LEN_KEY: SEQ_LEN_KEY,
         PEAKS_RETENTION_TIME_KEY: RT_KEY,
         PEAKS_SCORE_KEY: ENGINE_SCORE_KEY,
-        PEAKS_INTENSITY_KEY: 'ms1Intensity',
+        PEAKS_PPM_KEY: MASS_DIFF_KEY,
     })
 
     # Filter for Prosit and add feature columns not present.
-    peaks_df['fromChimera'] = peaks_df[PEAKS_CHIMERA_KEY].apply(
-        lambda x : 1 if x == 'Yes' else 0
+    peaks_df = peaks_df.with_columns(
+        pl.col(PEAKS_CHIMERA_KEY).apply(
+            lambda x : 1 if x == 'Yes' else 0
+        ).alias('fromChimera'),
+        pl.col(ACCESSION_KEY).fill_null(
+            pl.lit('unknown'),
+        ).alias(ACCESSION_KEY),
     )
 
-    peaks_df[ACCESSION_KEY].fillna('unknown', inplace=True)
+    peaks_df = filter_for_prosit(peaks_df)
+    peaks_df = peaks_df.with_columns(
+        (pl.col(PEAKS_MASS_KEY)/pl.col(SEQ_LEN_KEY)).alias('avgResidueMass'),
+        pl.lit(0).alias(DELTA_SCORE_KEY),
+        pl.lit(0).alias('missedCleavages'),
+        pl.col(PEAKS_SOURCE_KEY).apply(remove_source_suffixes).alias(SOURCE_KEY),
+        pl.col(PEAKS_SCAN_KEY).apply(
+            lambda x : x if isinstance(x, int) else int(x.split(':')[-1])
+        ).alias(SCAN_KEY),
+        pl.col(ACCESSION_KEY).apply(
+            lambda x : -1 if isinstance(x, str) and ('DECOY' in x or 'rev' in x) else 1
+        ).alias(LABEL_KEY),
+    )
 
-    adjusted_masses = peaks_df[PEAKS_MASS_KEY] + peaks_df[CHARGE_KEY]*PROTON
-    peaks_df[MASS_DIFF_KEY] = (
-        (peaks_df[PEAKS_MZ_KEY]*peaks_df[CHARGE_KEY]) - adjusted_masses
-    )
-    peaks_df['avgResidueMass'] = peaks_df[PEAKS_MASS_KEY]/peaks_df[SEQ_LEN_KEY]
-    peaks_df[DELTA_SCORE_KEY] = 0
-    peaks_df['missedCleavages'] = 0
-
-    # Clean source and scan columns if required, add label.
-    peaks_df[SOURCE_KEY] = peaks_df[PEAKS_SOURCE_KEY].apply(
-        remove_source_suffixes
-    )
-    peaks_df[SCAN_KEY] = peaks_df[PEAKS_SCAN_KEY].apply(
-        lambda x : x if isinstance(x, int) else int(x.split(':')[-1])
-    )
-    peaks_df[LABEL_KEY] = peaks_df[ACCESSION_KEY].apply(
-        lambda x : -1 if isinstance(x, str) and '#DECOY#' in x else 1
-    )
+    for col, dtype in peaks_df.schema.items():
+        if dtype == pl.Null:
+            peaks_df = peaks_df.with_columns(
+                pl.lit('').alias(col)
+            )
 
     peaks_df = peaks_df.drop(
         [
@@ -297,14 +325,13 @@ def read_single_peaks_data(df_loc):
             PEAKS_MASS_KEY,
             PEAKS_MZ_KEY,
             PEAKS_PTM_KEY,
-            PEAKS_PEPTIDE_KEY,
             PEAKS_SCAN_KEY,
             PEAKS_SOURCE_KEY,
-        ],
-        axis=1,
+        ]
     )
 
     return peaks_df, var_mods
+
 
 def read_peaks_data(peaks_data):
     """ Function to read in PEAKS DB search results from one or more files.
@@ -324,15 +351,15 @@ def read_peaks_data(peaks_data):
     if isinstance(peaks_data, list):
         peaks_dfs = []
         variable_mods_dfs = []
-        for mq_file in peaks_data:
-            hits_df, mods_df = read_single_peaks_data(mq_file)
+        for peaks_file in peaks_data:
+            hits_df, mods_df = read_single_peaks_data(peaks_file)
             peaks_dfs.append(hits_df)
             variable_mods_dfs.append(mods_df)
 
+        peaks_dfs = [x.select(peaks_dfs[0].columns) for x in peaks_dfs]
+
         # Combine DataFrames and validate that same PTMs are present.
-        hits_df = pd.concat(peaks_dfs)
-        for i in range(len(variable_mods_dfs)-1):
-            assert variable_mods_dfs[i].equals(variable_mods_dfs[i+1])
+        hits_df = pl.concat(peaks_dfs)
 
         return hits_df, variable_mods_dfs[0]
 
