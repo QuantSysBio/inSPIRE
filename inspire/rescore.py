@@ -36,6 +36,7 @@ def apply_rescoring(
         fdr,
         rescore_method,
         output_prefix,
+        rescore_command,
         proteome=None,
         decoy_prot_key='rev_',
     ):
@@ -64,7 +65,6 @@ def apply_rescoring(
     prot_out_key = f'{output_folder}/{output_prefix}.{rescore_method}.proteins.txt'
 
     if rescore_method == 'mokapot':
-        rescore_name = 'mokapot'
         clis = (
             f' --dest_dir {output_folder} --keep_decoys  ' +
             f' --train_fdr {fdr} ' +
@@ -72,7 +72,6 @@ def apply_rescoring(
         )
         trailing_args = ''
     elif rescore_method == 'percolatorSeparate':
-        rescore_name = 'percolator'
         percolator_decoy_key = f'{output_folder}/{output_prefix}.{rescore_method}.decoy.psms.txt'
         weights_path = f'{output_folder}/{output_prefix}.{rescore_method}.weights.csv'
         clis = (
@@ -82,7 +81,6 @@ def apply_rescoring(
         )
         trailing_args = ''
     else:
-        rescore_name = 'percolator'
         percolator_decoy_key = f'{output_folder}/{output_prefix}.{rescore_method}.decoy.psms.txt'
         weights_path = f'{output_folder}/{output_prefix}.{rescore_method}.weights.csv'
         clis = (
@@ -98,7 +96,7 @@ def apply_rescoring(
         )
 
     bash_command = (
-        f'{rescore_name} {clis} {output_folder}/{input_filename} {trailing_args}'
+        f'{rescore_command} {clis} {output_folder}/{input_filename} {trailing_args}'
     )
 
     with open(f'{output_folder}/rescore.log', 'w', encoding='UTF-8') as log_file:
@@ -280,6 +278,7 @@ def final_rescoring(config):
         config.fdr,
         config.rescore_method,
         output_prefix,
+        config.rescore_command,
         proteome,
         decoy_prot_key=config.decoy_protein_flag,
     )
@@ -352,25 +351,26 @@ def apply_post_processing(target_psms, config):
             contamns_path = config.map_contaminants
 
 
-        target_proteome = fetch_proteome(config.proteome, with_desc=False)
-        output_df = parallel_remap(
-            output_df,
-            config.n_cores,
-            target_proteome,
-            'mapsToTarget',
-            trace_accession=False,
-        )
+        if config.proteome is not None:
+            target_proteome = fetch_proteome(config.proteome, with_desc=False)
+            output_df = parallel_remap(
+                output_df,
+                config.n_cores,
+                target_proteome,
+                'mapsToTarget',
+                trace_accession=False,
+            )
 
-        contams_proteome = fetch_proteome(contamns_path, with_desc=False)
-        output_df = parallel_remap(
-            output_df,
-            config.n_cores,
-            contams_proteome,
-            'mapsToContaminant',
-            trace_accession=False,
-        )
-
-        final_columns.extend(['mapsToTarget', 'mapsToContaminant'])
+            contams_proteome = fetch_proteome(contamns_path, with_desc=False)
+            output_df = parallel_remap(
+                output_df,
+                config.n_cores,
+                contams_proteome,
+                'mapsToContaminant',
+                trace_accession=False,
+            )
+        if config.proteome is not None:
+            final_columns.extend(['mapsToTarget', 'mapsToContaminant'])
 
 
     final_columns.append(ACCESSION_KEY)

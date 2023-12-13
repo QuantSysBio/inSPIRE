@@ -660,7 +660,7 @@ def process_unknown_modifications(target_df, mods_df, config):
         ].shape[0] and config.filter_c:
         count_before_drop = target_df.shape[0]
         target_df = target_df.filter(
-            pl.col(PEPTIDE_KEY).apply(lambda x : 'C' not in x)
+            ~pl.col(PEPTIDE_KEY).str.contains('C')
         )
         count_after_drop = target_df.shape[0]
         filtered_psms = count_before_drop - count_after_drop

@@ -54,6 +54,7 @@ ALL_CONFIG_KEYS = [
     'reduce',
     'remapToProteome',
     'replaceIL',
+    'rescoreCommand',
     'rescoreMethod',
     'resultsExport',
     'reuseInput',
@@ -207,6 +208,13 @@ class Config:
         self.include_features = config_dict.get('includeFeatures', None)
         self.reduce = config_dict.get('reduce', False)
         self.rescore_method = config_dict.get('rescoreMethod', 'percolator')
+        self.rescore_command = config_dict.get('rescoreCommand')
+        if self.rescore_command is None:
+            if self.rescore_method.startswith('percolator'):
+                self.rescore_command = 'percolator'
+            else:
+                self.rescore_command = 'mokapot'
+
         self.sa_query_dfs = config_dict.get('spectralAngleDfs', None)
         self.silent_execution = config_dict.get('silentExecution', False)
         self.plot_spectra_source_split = config_dict.get('plotSpectraSourceSplit')

@@ -97,6 +97,7 @@ def apply_non_spectral_percolator(
         output_folder,
         fdr,
         rescore_method,
+        rescore_command,
         proteome,
         use_score_only=False
     ):
@@ -158,6 +159,7 @@ def apply_non_spectral_percolator(
         fdr,
         rescore_method,
         'non_spectral',
+        rescore_command,
         proteome,
     )
     non_spectral_psm_df = non_spectral_psm_df.rename(
@@ -359,6 +361,7 @@ def generate_report(config):
         config.output_folder,
         non_spectral_fdr,
         config.rescore_method,
+        config.rescore_command,
         proteome,
     )
 
