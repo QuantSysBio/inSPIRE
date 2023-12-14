@@ -96,7 +96,7 @@ def apply_rescoring(
         )
 
     bash_command = (
-        f'{rescore_command} {clis} {output_folder}/{input_filename} {trailing_args}'
+        f'"{rescore_command}" {clis} {output_folder}/{input_filename} {trailing_args}'
     )
 
     with open(f'{output_folder}/rescore.log', 'w', encoding='UTF-8') as log_file:
