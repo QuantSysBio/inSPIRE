@@ -296,6 +296,8 @@ def plot_spectra(config):
             f'{config.output_folder}/spectralPlots{group_idx}.pdf'
         )
     merger.write(f'{config.output_folder}/spectralPlots.pdf')
+    merger.close()
+
     for group_idx in range(n_groups):
         os.remove(
             f'{config.output_folder}/spectralPlots{group_idx}.pdf'
