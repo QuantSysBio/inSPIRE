@@ -176,6 +176,7 @@ def execute_skyline(config):
             ' --import-search-file=inspire_identifications.ssl ' +
             ' --import-fasta=inspire_identifications.fasta ' +
             ' --import-search-include-ambiguous ' +
+            ' --report-conflict-resolution=overwrite ' +
             ' --report-add=skyline_report_template.skyr --report-name=myreport --report-invariant' +
             f' --report-file=skyline_report.csv > {config.output_folder}/quant/skyline_log.txt',
             tty=True,
@@ -190,6 +191,7 @@ def execute_skyline(config):
             ' --full-scan-rt-filter=ms2_ids --full-scan-rt-filter-tolerance=0.25 '
             ' --import-search-file=inspire_identifications.ssl ' +
             ' --import-fasta=inspire_identifications.fasta ' +
+            ' --report-conflict-resolution=overwrite ' +
             ' --import-search-include-ambiguous ' +
             ' --report-add=skyline_report_template.skyr --report-name=myreport --report-invariant' +
             f' --report-file=skyline_report.csv > {config.output_folder}/quant/skyline_log.txt',
