@@ -188,7 +188,6 @@ def execute_skyline(config):
         os.system(
             f'"{config.skyline_runner}"' +
             f' --timestamp --dir={scans_folder_abs_path} --in=skyline_config.sky ' +
-            ' --full-scan-rt-filter=ms2_ids --full-scan-rt-filter-tolerance=0.25 '
             ' --import-search-file=inspire_identifications.ssl ' +
             ' --import-fasta=inspire_identifications.fasta ' +
             ' --report-conflict-resolution=overwrite ' +
