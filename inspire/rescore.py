@@ -249,7 +249,9 @@ def _add_key_features(target_psms, config):
                 output_df = output_df.with_columns(
                     pl.col(col).apply(
                         lambda x : 'Strong-Binder' if x == '<=SB' else (
-                            'Weak-Binder' if x == '<=WB' else 'Non-Binder'
+                            'Weak-Binder' if x == '<=WB' else (
+                                'Not predicted' if x is None else
+                            'Non-Binder')
                         ),
                         skip_nulls=False,
                     )

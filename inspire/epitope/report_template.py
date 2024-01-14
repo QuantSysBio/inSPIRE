@@ -97,6 +97,10 @@ def create_epitope_report(config):
                 Epitope Candidates Found
             </h3>
             <p>
+                Below is a full table of the pathogen peptides identified and their associated
+                proteins.
+            </p>
+            <p>
                 ''' + base_table + '''
             </p>
             <h3>
@@ -104,7 +108,7 @@ def create_epitope_report(config):
             </h3>
             <p>
                 This figure compares the number of peptides identified by both the
-                search engine and inSPIRE against peptides identified by inSPIRE alone. 
+                search engine and inSPIRE against peptides identified by inSPIRE alone.
             </p>
             <br>
              ''' + bar_plot +
@@ -114,7 +118,10 @@ def create_epitope_report(config):
             </h3>
             <p>
                 This figure shows distribution of spectral angle, engine score, and
-                retention time prediction error on the pathogen peptide identifications. 
+                retention time prediction error on the pathogen peptide identifications.
+                For spectral angle and retention time prediction error we should see a
+                similar distribution. On engine score, the inSPIRE only peptides likely
+                score lower.
             </p>
             <br>
     ''' + swarm_plot
@@ -129,7 +136,10 @@ def create_epitope_report(config):
                     </h3>
                     <p>
                         Dimensionality reduction applied to quantiative data from the pathogen
-                        peptide and a random seleciton of host peptides below.
+                        peptide and a random seleciton of host peptides below. Ideally we should
+                        see some clustering effects with pathogen peptides mostly close together.
+                        This is likely not a perfect clustering as there is noise in the
+                        label free quantification, however it can be a useful indicator.
                     </p>
             ''' + ep_pca
         )
@@ -143,12 +153,14 @@ def create_epitope_report(config):
             aff_clust = in_f.read().strip('\n')
         html_string += (
             '''
-                    <h3>
-                        Binding Affinity Predictions:
-                    </h3>
-                    <p>
-                        The predicted binding affinities for the identified peptides.
-                    </p>
+                <h3>
+                    Binding Affinity Predictions:
+                </h3>
+                <p>
+                    The predicted binding affinities for the identified peptides. This can
+                    help see you the distribution of predicted binders for each allele in
+                    your host cell.
+                </p>
             ''' + aff_clust
         )
 
@@ -158,10 +170,12 @@ def create_epitope_report(config):
             MS2 Spectral Plots:
         </h3>
         <p>
-                These are the MS2 spectra based on which the peptides were assigned.
+            These are the MS2 spectra based on which the peptides were assigned. Inspection
+            of the spectra can be informative and increase your confidence in peptides
+            identified.
         </p>
         <embed src="
-    ''' + f'{config.output_folder}/epitope/spectralPlots.pdf" width=1600 height=2000>'
+    ''' + f'{config.output_folder}/epitope/spectralPlots.pdf" width=1000 height=2000>'
     )
 
 

@@ -67,6 +67,10 @@ def combine_results(output_folder, mhc_pan_df, input_file):
     """
     if 'non_spectral' in input_file:
         final_assignments_df = pd.read_csv(f'{output_folder}/{input_file}', sep='\t')
+        final_assignments_df[PEPTIDE_KEY] = final_assignments_df[PEPTIDE_KEY].apply(
+            lambda x : x.split('.')[1] if '.' in x else x
+        )
+
         if 'mokapot' in input_file:
             score_key = OUT_SCORE_KEY['mokapot']
         else:
@@ -134,7 +138,7 @@ def apply_non_spectral_percolator(
 
     if proteome is not None:
         all_features_df = all_features_df.with_columns(
-            (pl.lit('-.') + pl.col(PEPTIDE_KEY) + pl.lit('-.')).alias(PEPTIDE_KEY)
+            (pl.lit('-.') + pl.col(PEPTIDE_KEY) + pl.lit('.-')).alias(PEPTIDE_KEY)
         )
 
     if use_score_only:

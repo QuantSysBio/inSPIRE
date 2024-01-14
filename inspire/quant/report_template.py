@@ -117,13 +117,17 @@ def create_quant_report(config):
                 Correlation between Files:
             </h3>
             <p>
-                The figure shows the correlation between raw intensities
+                The figure shows the correlation between raw intensities. You should see particularly
+                high correlation if you have technical replicates.
             </p>
         ''' + raw_corr +
         '''
                 <br><br>
                 <p>
-                        The figure shows the correlation between normalised intensities
+                    The figure shows the correlation between normalised intensities. As with the
+                    non-normalised intensities you should see highest correlation between
+                    technical replicates. You may also see some increase in correlation across
+                    files after normalisation.
                 </p>
         ''' + norm_corr +
         '''
@@ -132,7 +136,9 @@ def create_quant_report(config):
                 </h3>
                 <p>
                     This figure shows the distributions of abundances as quantified
-                    by Skyline before and after normalisation
+                    by Skyline before and after normalisation. While the raw intensities
+                    may be higher or lower for individual files, the normalised
+                    intensities should all be centered around the same point.
                 </p>
         ''' + quant_distro +
         '''
@@ -141,11 +147,14 @@ def create_quant_report(config):
                 </h3>
                 <p>
                     The figure the raw files after principal component analysis of normalised
-                    peptide intensities.
+                    peptide intensities. We should see technical replicates clustering
+                    together. Furthermore, we hope to see separation between infected and
+                    control files in the case of inSPIRE-Pathogen.
                 </p>
         ''' + quant_pca + '''
+                <br><br>
                 <p>
-                    The figure shows a clustering heatmap over normalised intensities
+                    The figure shows a clustering heatmap over normalised intensities.
                 </p>
         ''' + quant_clustermap
     )
@@ -159,7 +168,8 @@ def create_quant_report(config):
                         Volcano Plots of Up and Downregulated Peptides
                     </h3>
                     <p>
-                        This plot shows up and downregulation on the peptide level.
+                        This plot shows up and downregulation on the peptide level. These results are
+                        also available in csv format in the inSPIRE quantitative outputs.
                     </p>
             ''' + pep_volcano
         )

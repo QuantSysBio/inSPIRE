@@ -114,6 +114,10 @@ def create_psms_fig(fdrs_df, output_folder):
     fig.write_image(
         f'{output_folder}/img/psm_fdr_curve.svg', engine='kaleido'
     )
+    fig.update_layout(
+        width=1000,
+        height=500,
+    )
 
     return fig.to_html()
 
