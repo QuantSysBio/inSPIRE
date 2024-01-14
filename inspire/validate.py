@@ -184,7 +184,7 @@ def find_competitors(final_df, config):
         on='mw'
     )
     if merged_df.shape[0] == 0:
-        return 0
+        return merged_df
     merged_df['matched_pcps'] = merged_df.apply(
         lambda x : get_mod_matched_seqs(x['modifiedSequence'], x['pcpPeptide']),
         axis=1,

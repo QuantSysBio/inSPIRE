@@ -61,6 +61,11 @@ def parallel_remap(combined_df, n_cores, proteome, out_column, trace_accession=T
     trace_accession : bool (default=True)
         Flag indicating if full accession should be trace or just a boolean flag if
         peptide is found in proteome.
+
+    Returns
+    -------
+    combined_df : pl.DataFrame
+        DataFrame including peptides identified with remapped accessions.
     """
     pep_df = combined_df.select(PEPTIDE_KEY).unique()
     batch_size = pep_df.shape[0]//n_cores
