@@ -140,10 +140,16 @@ def read_mhcpan_output(mhc_pan_dir, per_allele=False):
             mhc_pan_df = mhc_pan_df.rename(
                 columns={
                     'Aff(nM)': f'{allele}_BindingAffinity',
+                    '%Rank_BA': f'{allele}_%Rank_BA',
                     'BindLevel': f'{allele}_BindLevel',
                 }
             )
-            mhc_pan_df = mhc_pan_df[['Peptide', f'{allele}_BindingAffinity', f'{allele}_BindLevel']]
+            mhc_pan_df = mhc_pan_df[[
+                'Peptide',
+                f'{allele}_BindingAffinity',
+                f'{allele}_%Rank_BA',
+                f'{allele}_BindLevel',
+            ]]
         mhc_dfs[input_code].append(mhc_pan_df)
 
     if per_allele:

@@ -50,10 +50,11 @@ MSF_IGNORE_COLS = [
 ]
 
 ID_NUMBERS = {
-    'Deamidation (N)': 8,
-    'Deamidation (Q)': 7,
-    'Phospho (S)': 6,
-    'Phospho (T)': 5,
+    'unknown': 6,
+    'Deamidation (N)': 5,
+    'Deamidation (Q)': 5,
+    'Phospho (S)': 4,
+    'Phospho (T)': 4,
     'Phospho (Y)': 4,
     'Acetyl (N-term)': 3,
     'Oxidation (M)': 2,
@@ -140,8 +141,8 @@ def _get_msf_mods_pepxml(msf_df, fixed_modifications):
     )
     msf_mods = [str(int(x)) for x in msf_mods if int(x) != -1]
 
-    mod_names = [MSF_MAPPING_PEP_XML[msf_mod] for msf_mod in msf_mods]
-    mod_weights = [KNOWN_PTM_WEIGHTS[mod] for mod in mod_names]
+    mod_names = [MSF_MAPPING_PEP_XML.get(msf_mod, 'unknown') for msf_mod in msf_mods]
+    mod_weights = [KNOWN_PTM_WEIGHTS.get(mod, 100) for mod in mod_names]
 
     mod_df = pd.DataFrame({
         PTM_NAME_KEY: mod_names,

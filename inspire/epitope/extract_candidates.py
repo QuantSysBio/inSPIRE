@@ -118,7 +118,11 @@ def extract_epitope_candidates(config):
             PEPTIDE_KEY, EPITOPE_N_FILES, 'foundBySearchEngine'
         ] + BASE_REPORTING_COLUMNS + sorted(
             [
-                x for x in final_df.columns if x.endswith('Affinity') or x.endswith('BindLevel')
+                x for x in final_df.columns if (
+                    x.endswith('Affinity') or
+                    x.endswith('BindLevel') or
+                    x.endswith('%Rank_BA')
+                )
             ]
         )
     ].drop_duplicates(subset='peptide')
@@ -406,6 +410,8 @@ def add_binding_affinity_data(total_df, final_peptide_df, xl_writer):
                 'Level'
             )  or x.endswith(
                 'Affinity'
+            ) or x.endswith(
+                '%Rank_BA'
             )
         ]
     ]

@@ -59,7 +59,7 @@ PEAKS_RELEVANT_COLUMNS = [
 ]
 
 ID_NUMBERS = {
-    'Deamidation (NQ)': 9,
+    'Deamidation (NQ)': 7,
     'Deamidation (N)': 8,
     'Deamidation (Q)': 7,
     'Phospho (S)': 6,
@@ -235,7 +235,7 @@ def collect_peaks_var_mods(peaks_df):
     ptms_df = ptms_df.drop_duplicates(PTM_NAME_KEY)
 
     ptms_df[PTM_ID_KEY] = ptms_df[PTM_NAME_KEY].apply(
-        lambda x : ID_NUMBERS[x]
+        lambda x : ID_NUMBERS.get(x, 9)
     )
     ptms_df = ptms_df.sort_values(by=PTM_ID_KEY).reset_index(drop=True)
     ptms_df[PTM_IS_VAR_KEY] = True

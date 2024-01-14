@@ -217,7 +217,9 @@ def _add_key_features(target_psms, config):
             'Peptide': PEPTIDE_KEY,
         })
         mhc_pan_cols = (
-            [x for x in mhc_pan_df.columns if x.endswith('Affinity') or x.endswith('Level')]
+            [x for x in mhc_pan_df.columns if (
+                x.endswith('Affinity') or x.endswith('Level') or x.endswith('%Rank_BA')
+            )]
         )
 
         target_psms = target_psms.join(
@@ -237,7 +239,7 @@ def _add_key_features(target_psms, config):
 
     if config.use_binding_affinity is not None:
         for col in mhc_pan_cols:
-            if col.endswith('Affinity'):
+            if col.endswith('Affinity') or col.endswith('%Rank_BA'):
                 output_df = output_df.with_columns(
                     pl.col(col).fill_null(
                         pl.lit(-1),

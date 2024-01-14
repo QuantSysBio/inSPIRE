@@ -243,7 +243,6 @@ def write_with_spectral_features(
     else:
         scan_files = sorted(search_df[SOURCE_KEY].unique().to_list())
 
-    search_df = search_df.with_row_count(name='tempIndex')
 
     max_scan = search_df[SCAN_KEY].max()
     for file_idx, scan_file in enumerate(scan_files):
@@ -498,7 +497,7 @@ def process_single_file(
     if isinstance(config.collision_energy, list):
         combined_df = combined_df.unique(subset=['source', 'scan', 'peptide'])
 
-
+    combined_df = combined_df.sort(by='tempIndex')
     combined_df = add_delta_irt(combined_df, config, scan_file)
 
     print(
@@ -507,7 +506,6 @@ def process_single_file(
     combined_df = add_perc_scan_id(combined_df, config, file_idx, max_scan)
 
     combined_df = filter_input_columns(combined_df, config, file_idx)
-    combined_df = combined_df.sort(by=PERC_SCAN_ID)
 
     file_loc = _write_to_tab_file(combined_df, file_idx, config.output_folder)
 
@@ -681,6 +679,7 @@ def create_features(config):
         The Config object used throughout the pipeline.
     """
     target_df, mods_df = generic_read_df(config)
+    target_df = target_df.with_row_count(name='tempIndex')
 
     target_df = process_unknown_modifications(target_df, mods_df, config)
 

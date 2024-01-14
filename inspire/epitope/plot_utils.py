@@ -110,19 +110,22 @@ def plot_binding_clustermap(config):
     ep_df = pd.read_csv(f'{config.output_folder}/epitope/potentialEpitopeCandidates.csv')
 
     ep_df.index = ep_df['peptide']
-    binding_aff_cols = [col for col in ep_df.columns if col.endswith('BindingAffinity')]
+    binding_aff_cols = [col for col in ep_df.columns if col.endswith('%Rank_BA')]
     if len(binding_aff_cols) < 2:
         return
     ep_df = ep_df[binding_aff_cols]
     ep_df = ep_df.rename(
-        columns={col:col.strip('_BindingAffinity') for col in ep_df.columns}
+        columns={col:col.strip('_%Rank_BA') for col in ep_df.columns}
     )
     ep_df = ep_df.map(lambda x : round(x, 2))
     ep_df = ep_df.sort_values(by=list(ep_df.columns))
 
     fig_length = 1+(ep_df.shape[0]//6)
 
-    cluster_map = sns.clustermap(ep_df, cmap="vlag_r", yticklabels=True, figsize=(7,fig_length))
+    cluster_map = sns.clustermap(
+        ep_df, cmap=sns.color_palette("blend:#FA3F37,#FAF4D3", as_cmap=True),
+        yticklabels=True, figsize=(7,fig_length), vmin=0, vmax=20,
+        linewidths=0.5, linecolor='black')
     cluster_map.figure.savefig(f'{config.output_folder}/img/epitope_affinity_cluster.svg')
 
 def plot_quant_pca(config):
@@ -157,6 +160,7 @@ def plot_quant_pca(config):
     quant_df['group'] = 'Host'
 
     total_df = pd.concat([merged_df, quant_df])
+    total_df = total_df.dropna(axis=0)
 
     pca = PCA(n_components=2).fit(total_df[quant_raw_cols+quant_idp_cols])
 

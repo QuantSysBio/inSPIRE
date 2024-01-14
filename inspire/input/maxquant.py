@@ -101,12 +101,12 @@ def _create_mq_mods_df(mq_df):
     unique_mods.remove('Unmodified')
     mods_df = pd.DataFrame({
         PTM_NAME_KEY: pd.Series(unique_mods),
-        PTM_WEIGHT_KEY: pd.Series([KNOWN_PTM_WEIGHTS[mod] for mod in unique_mods]),
+        PTM_WEIGHT_KEY: pd.Series([KNOWN_PTM_WEIGHTS.get(mod, 0.0) for mod in unique_mods]),
     })
     mods_df = mods_df.sort_values(by=PTM_NAME_KEY)
     mods_df.reset_index(drop=True, inplace=True)
     mods_df[PTM_ID_KEY] = mods_df[PTM_NAME_KEY].apply(
-        lambda x : ID_NUMBERS[x]
+        lambda x : ID_NUMBERS.get(x, 9)
     )
     mods_df = mods_df.sort_values(by=PTM_ID_KEY).reset_index(drop=True)
     mods_df[PTM_IS_VAR_KEY] = True
