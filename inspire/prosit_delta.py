@@ -413,7 +413,7 @@ def get_deltas(
 
     if len(flip_inds):
         input_feats = np.zeros(
-            shape=(len(flip_inds), len(DELTA_PRO_FEATURE_SET))
+            shape=(len(flip_inds), len(DELTA_PRO_FEATURE_SET)), dtype=np.float64
         )
         input_feats[:, SPECTRAL_ANGLE_INDEX] = results[SPECTRAL_ANGLE_KEY]
         input_feats[:, BLOSUM_N_INDEX] = np.array([

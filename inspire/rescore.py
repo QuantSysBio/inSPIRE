@@ -379,6 +379,6 @@ def apply_post_processing(target_psms, config):
 
     final_columns.append(ACCESSION_KEY)
     output_df = output_df.select(final_columns)
-    output_df = output_df.sort(by=FINAL_SCORE_KEY, descending=True)
+    output_df = output_df.sort(by=[FINAL_SCORE_KEY, SOURCE_KEY, SCAN_KEY], descending=True)
 
     return output_df

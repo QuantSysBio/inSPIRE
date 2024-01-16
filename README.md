@@ -16,7 +16,7 @@ If you are working on Mac with an M1 chip you will require Miniforge. For all ot
 ### Setting up your environment:
 
 
-1) To start with create a new conda environment with python version 3.9:
+1) To start with create a new conda environment with python version 3.11:
 
 ```
 conda create --name inspire python=3.11
@@ -40,7 +40,7 @@ pip install inspirems
 inspire -h
 ```
 
-5) (Optional) If you wish to use Percolator for rescoring rather than Mokapot you will need to install it separately. On Linux, Percolator can be installed via conda with the command below. Otherwise see https://github.com/percolator/percolator.
+5) If you wish to use Percolator for rescoring rather than Mokapot you will need to install it separately. On Linux, Percolator can be installed via conda with the command below. Otherwise see https://github.com/percolator/percolator.
 
 ```
 conda install -c bioconda percolator

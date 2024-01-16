@@ -730,24 +730,6 @@ def create_spectral_features(mods_df, config, task_id, model):
     if config.delta_method != 'ignore' and not config.minimal_features:
         spectral_features += DELTA_FEATURES
 
-    replace_feats = [
-        FRAG_MZ_ERR_VAR_KEY,
-        FRAG_MZ_ERR_MED_KEY,
-        PEARSON_KEY,
-    ]
-    if config.delta_method != 'ignore' and not config.minimal_features:
-        replace_feats += DELTA_FEATURES
-
-    for feat in set(replace_feats):
-        if feat in spectral_features and feat in spectral_df.columns:
-            spectral_df_var_median = pl.median(spectral_df.filter(
-                pl.col(feat).gt(-1)
-            )[feat])
-
-            spectral_df = spectral_df.with_columns(
-                pl.when(pl.col(feat).eq(-1)).then(spectral_df_var_median)
-                    .otherwise(pl.col(feat)).alias(feat)
-            )
 
     spectral_df.write_parquet(
         f'{config.output_folder}/temp_{task_id}_out.parquet'

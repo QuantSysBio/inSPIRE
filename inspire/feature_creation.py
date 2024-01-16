@@ -17,12 +17,15 @@ from inspire.constants import(
     BASIC_FEATURES,
     CHARGE_KEY,
     ENDC_TEXT,
+    FRAG_MZ_ERR_VAR_KEY,
+    FRAG_MZ_ERR_MED_KEY,
     LABEL_KEY,
     MINIMAL_FEATURE_SET,
     OKCYAN_TEXT,
     IN_ACCESSION_KEY,
     PEPTIDE_KEY,
     PSM_ID_KEY,
+    PEARSON_KEY,
     PERC_SCAN_ID,
     PTM_ID_KEY,
     PTM_NAME_KEY,
@@ -426,6 +429,7 @@ class ChildRegressor(XGBRegressor):
         home = str(Path.home())
         self.load_model(f'{home}/inSPIRE_models/models/prosit_delta_v1.json')
         self.set_params(n_jobs=1)
+        self.set_params(random_state=42)
 
     def best_score(self):
         return 1.0
@@ -488,6 +492,24 @@ def process_single_file(
     select_columns = results_dfs[0].columns
 
     combined_df = pl.concat([x.select(select_columns) for x in results_dfs])
+    replace_feats = [
+        FRAG_MZ_ERR_VAR_KEY,
+        FRAG_MZ_ERR_MED_KEY,
+        PEARSON_KEY,
+    ]
+    if config.delta_method != 'ignore' and not config.minimal_features:
+        replace_feats += DELTA_FEATURES
+
+    for feat in set(replace_feats):
+        if feat in select_columns:
+            feat_median = pl.median(combined_df.filter(
+                pl.col(feat).gt(-1)
+            )[feat])
+
+            combined_df = combined_df.with_columns(
+                pl.when(pl.col(feat).eq(-1)).then(feat_median)
+                    .otherwise(pl.col(feat)).alias(feat)
+            )
 
     for idx in range(len(func_args)):
         os.remove(f'{config.output_folder}/temp_{idx}_in.parquet')
