@@ -16,6 +16,7 @@ from inspire.constants import (
     PTM_NAME_KEY,
     PTM_SEQ_KEY,
     SCAN_KEY,
+    SEQ_LEN_KEY,
     SOURCE_KEY,
     SPECTRAL_ANGLE_KEY,
     UNDERLINE_TEXT,
@@ -89,7 +90,11 @@ def _get_top_hits(config):
     )
 
     if target_df.shape[0] > 600:
-        target_df = target_df.top_k(600, by=ENGINE_SCORE_KEY, descending=True)
+        target_df = target_df.top_k(
+            600,
+            by=[ENGINE_SCORE_KEY, SEQ_LEN_KEY, SCAN_KEY, PEPTIDE_KEY],
+            descending=True,
+        )
 
     return target_df, mods_df
 
@@ -135,10 +140,7 @@ def calibrate(config):
         f'{config.output_folder}/calibrationPredictions.msp', 'prosit', None
     )
 
-    if config.combined_scans_file is not None:
-        scan_files = [remove_source_suffixes(config.combined_scans_file)]
-    else:
-        scan_files = target_df[SOURCE_KEY].unique().to_list()
+    scan_files = sorted(target_df[SOURCE_KEY].unique().to_list())
 
     ox_flag = get_ox_flag(mods_df)
     cam_flag = get_cam_flag(mods_df)
@@ -151,12 +153,9 @@ def calibrate(config):
 
     scan_dfs = []
     for scan_file in scan_files:
-        if config.combined_scans_file is not None:
-            filtered_search_df = target_df
-        else:
-            filtered_search_df = target_df.filter(
-                target_df[SOURCE_KEY].eq(scan_file)
-            )
+        filtered_search_df = target_df.filter(
+            target_df[SOURCE_KEY].eq(scan_file)
+        )
 
         scans = filtered_search_df[SCAN_KEY].unique()
         if config.scans_format == 'mzML':
@@ -180,7 +179,7 @@ def calibrate(config):
         ENDC_TEXT
     )
     combined_df = combine_spectral_data(
-        filtered_search_df,
+        target_df,
         combined_scan_df,
         prosit_df,
         ox_flag,
@@ -217,7 +216,7 @@ def calibrate(config):
         ).alias('spectralResults')
     ).unnest('spectralResults')
 
-    results_df = combined_df.groupby('collisionEnergy').agg(
+    results_df = combined_df.groupby('collisionEnergy', maintain_order=True).agg(
         pl.mean(SPECTRAL_ANGLE_KEY)
     )
 

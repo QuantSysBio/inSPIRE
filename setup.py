@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='inspirems',
-    version='2.0rc3',
+    version='2.0rc5',
     description='Helping to integrate Spectral Predictors and Rescoring.',
     author='John Cormican, Juliane Liepe, Martin Pasen',
     author_email='juliane.liepe@mpinat.mpg.de',
@@ -28,7 +28,7 @@ setup(
             'inspire=inspire.run:run_inspire'
         ]
     },
-    python_requires='==3.11',
+    python_requires='>=3.11',
     install_requires=[
         'absl-py==2.0.0',
 		'astunparse==1.6.3',

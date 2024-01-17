@@ -56,7 +56,7 @@ def predict_spectra(config, pipeline='core'):
         input_file = f'{config.output_folder}/plotInput.csv'
         out_file = f'{config.output_folder}/plotPredictions.msp'
 
-    for idx, input_df in enumerate(pd.read_csv(input_file, chunksize=200_000)):
+    for chunk_idx, input_df in enumerate(pd.read_csv(input_file, chunksize=200_000)):
         input_df = input_df.reset_index(drop=True)
         prosit_input = {
             'collision_energy_aligned_normed': (
@@ -73,6 +73,6 @@ def predict_spectra(config, pipeline='core'):
         prosit_data = prosit_predict(prosit_input, d_irt)
         final_result = prosit_predict(prosit_data, d_spectra)
 
-        write_msp_file(input_df, final_result, out_file, idx)
+        write_msp_file(input_df, final_result, out_file, chunk_idx)
         del prosit_input
         del prosit_data

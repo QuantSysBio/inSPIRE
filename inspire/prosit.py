@@ -433,7 +433,7 @@ def format_msp_spectrum(
     return print_string
 
 
-def write_msp_spectrum(df_row, out_file):
+def write_msp_spectrum(df_row, out_file, chunk_idx):
     """ Function to write a single spectrum in MSP format.
 
     Parameters
@@ -442,8 +442,10 @@ def write_msp_spectrum(df_row, out_file):
         A single row of the DataFrame containing prediction data.
     out_file : file
         The File where the spectrum will be written.
+    chunk_idx : str
+        The index of the chunk being predicted for.
     """
-    first_spec = df_row.name == 0
+    first_spec = df_row.name == 0 and chunk_idx == 0
     pred_intes = df_row['intensities_pred']
     sel = np.where(pred_intes > 0)
     pred_intes = pred_intes[sel]
@@ -466,7 +468,7 @@ def write_msp_spectrum(df_row, out_file):
     out_file.write(str(spec))
 
 
-def write_msp_file(peptide_df, prediction_data, out_path, idx):
+def write_msp_file(peptide_df, prediction_data, out_path, chunk_idx):
     """ Function to write MSP output from Prosit predictions.
 
     Parameters
@@ -481,9 +483,9 @@ def write_msp_file(peptide_df, prediction_data, out_path, idx):
     peptide_df['iRT'] = prediction_data['iRT']
     peptide_df['intensities_pred'] = pd.Series(list(prediction_data['intensities_pred']))
     peptide_df['sequence_integer'] = pd.Series(list(prediction_data['sequence_integer']))
-    if idx > 0:
+    if chunk_idx > 0:
         write_mode = 'a'
     else:
         write_mode = 'w'
     with open(out_path, mode=write_mode, encoding='UTF-8') as out_file:
-        peptide_df.apply(lambda df_row : write_msp_spectrum(df_row, out_file), axis=1)
+        peptide_df.apply(lambda df_row : write_msp_spectrum(df_row, out_file, chunk_idx), axis=1)
