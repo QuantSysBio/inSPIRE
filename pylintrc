@@ -1,7 +1,7 @@
 [SIMILARITIES]
 
 # Minimum lines number of a similarity.
-min-similarity-lines=4
+min-similarity-lines=8
 
 # Maximum number of function arguments
 max-args=9

@@ -6,5 +6,6 @@ outputFolder: example/output
 scansFolder: example/data
 scansFormat: mgf
 collisionEnergy: 33
-rescoreMethod: mokapot
+rescoreMethod: percolator
 mzAccuracy: 0.02
+nCores: 30

@@ -3,7 +3,7 @@
 import re
 
 import numpy as np
-import pandas as pd
+import polars as pl
 from pyteomics import mgf
 
 from inspire.constants import (
@@ -23,6 +23,7 @@ def process_mgf_file(
         combined_source_file=False,
         with_charge=False,
         with_retention_time=False,
+        with_ms1=False,
     ):
     """ Function to process an mgf file to find matches with scan IDs.
 
@@ -51,6 +52,8 @@ def process_mgf_file(
         charge_list = []
     if with_retention_time:
         rt_list = []
+    if with_ms1:
+        ms1_intes = []
 
     with mgf.read(mgf_filename) as reader:
         for spectrum in reader:
@@ -82,20 +85,27 @@ def process_mgf_file(
                     charge_list.append(int(spectrum['params']['charge'][0]))
                 if with_retention_time:
                     rt_list.append(float(spectrum['params']['rtinseconds']))
+                if with_ms1:
+                    try:
+                        ms1_intes.append(float(spectrum['params']['pepmass'][1]))
+                    except Exception: # pylint: disable=bare-except
+                        ms1_intes.append(-1.0)
 
-    mgf_df = pd.DataFrame(
-        {
-            SOURCE_KEY: pd.Series(sources),
-            SCAN_KEY: pd.Series(matched_scan_ids),
-            INTENSITIES_KEY: pd.Series(matched_intensities),
-            MZS_KEY: pd.Series(matched_mzs)
-        }
-    )
+    mgf_data = {
+        SOURCE_KEY: pl.Series(sources),
+        SCAN_KEY: pl.Series(matched_scan_ids),
+        INTENSITIES_KEY: pl.Series(matched_intensities),
+        MZS_KEY: pl.Series(matched_mzs)
+    }
+
     if with_charge:
-        mgf_df[CHARGE_KEY] = pd.Series(charge_list)
+        mgf_data[CHARGE_KEY] = pl.Series(charge_list)
     if with_retention_time:
-        mgf_df[RT_KEY] = pd.Series(rt_list)
+        mgf_data[RT_KEY] = pl.Series(rt_list)
+    if with_ms1:
+        mgf_data['ms1Intensity'] = pl.Series(ms1_intes)
 
-    mgf_df = mgf_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY])
+    mgf_df = pl.DataFrame(mgf_data)
+    mgf_df = mgf_df.unique(subset=[SOURCE_KEY, SCAN_KEY])
 
     return mgf_df

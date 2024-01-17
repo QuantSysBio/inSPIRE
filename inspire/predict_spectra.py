@@ -1,29 +1,18 @@
 """ Function for generating Prosit or MS2PIP spectral predictions.
 """
 from pathlib import Path
-try:
-    from ms2pip.ms2pipC import MS2PIP
-except ModuleNotFoundError:
-    print('Warning MS2PIP is not installed.')
+
+import numpy as np
+import pandas as pd
 
 from inspire.prosit import (
-    load_model, process_csv_file, prosit_predict, write_msp_file
+    load_model,
+    get_sequence_integer,
+    get_precursor_charge_onehot,
+    prosit_predict,
+    write_msp_file,
 )
 
-PARAMS = {
-    "ms2pip": {
-        "ptm": [
-            'Oxidation,15.994915,opt,M',
-            'Carbamidomethyl,57.021464,opt,C',
-            'Acetyl,42.010565,opt,N-term',
-            'Deamidation,0.984016,opt,N',
-            'Phospho,79.966331,opt,S',
-        ],
-        "frag_error": 0.02,
-        "out": "msp",
-        "sptm": [], "gptm": [],
-    }
-}
 
 def predict_spectra(config, pipeline='core'):
     """ Function to generate spectral predictions for a set of peptide sequences
@@ -37,66 +26,53 @@ def predict_spectra(config, pipeline='core'):
         The pipeline which is being run.
     """
     if config.spectral_predictor == 'ms2pip':
-        specific_params = PARAMS
-        specific_params['ms2pip']['frag_method'] = config.ms2pip_model
+        raise ValueError('inSPIRE 2.0 does not support running MS2PIP natively.')
 
-        ms2pip = MS2PIP(
-            f'{config.output_folder}/ms2pipInput.preprec',
-            params=PARAMS
-        )
-        ms2pip.run()
-        if config.delta_method == 'bruteForce':
-            ms2pip = MS2PIP(
-                f'{config.output_folder}/deltaInput.preprec',
-                params=PARAMS
-            )
-            ms2pip.run()
+    home = str(Path.home())
+    d_irt = load_model(
+        f'{home}/inSPIRE_models/models/irt_config.yml',
+        f'{home}/inSPIRE_models/models/irt_model.json',
+        f'{home}/inSPIRE_models/models/weight_66_0.00796.hdf5',
+    )
+    d_spectra = load_model(
+        f'{home}/inSPIRE_models/models/spectra_config.yml',
+        f'{home}/inSPIRE_models/models/spectra_model.json',
+        f'{home}/inSPIRE_models/models/weight_163_0.11385.hdf5',
+    )
+
+    if pipeline =='core':
+        input_file = f'{config.output_folder}/prositInput.csv'
+        out_file = f'{config.output_folder}/prositPredictions.msp'
+    elif pipeline == 'calibrate':
+        input_file = f'{config.output_folder}/calibrationInput.csv'
+        out_file = f'{config.output_folder}/calibrationPredictions.msp'
+    elif pipeline == 'spectralAngle':
+        input_file = f'{config.output_folder}/saInput.csv'
+        out_file = f'{config.output_folder}/saPredictions.msp'
+    elif pipeline == 'validation':
+        input_file = f'{config.output_folder}/validationInput.csv'
+        out_file = f'{config.output_folder}/validationPredictions.msp'
     else:
-        home = str(Path.home())
-        d_irt = load_model(
-            f'{home}/inSPIRE_models/models/irt_config.yml',
-            f'{home}/inSPIRE_models/models/irt_model.yml',
-            f'{home}/inSPIRE_models/models/weight_66_0.00796.hdf5',
-        )
-        d_spectra = load_model(
-            f'{home}/inSPIRE_models/models/spectra_config.yml',
-            f'{home}/inSPIRE_models/models/spectra_model.yml',
-            f'{home}/inSPIRE_models/models/weight_163_0.11385.hdf5',
-        )
+        input_file = f'{config.output_folder}/plotInput.csv'
+        out_file = f'{config.output_folder}/plotPredictions.msp'
 
-        if pipeline =='core':
-            input_file = f'{config.output_folder}/prositInput.csv'
-            out_file = f'{config.output_folder}/prositPredictions.msp'
-        elif pipeline == 'calibrate':
-            input_file = f'{config.output_folder}/calibrationInput.csv'
-            out_file = f'{config.output_folder}/calibrationPredictions.msp'
-        elif pipeline == 'spectralAngle':
-            input_file = f'{config.output_folder}/saInput.csv'
-            out_file = f'{config.output_folder}/saPredictions.msp'
-        elif pipeline == 'validation':
-            input_file = f'{config.output_folder}/validationInput.csv'
-            out_file = f'{config.output_folder}/validationPredictions.msp'
-        elif pipeline == 'plotSpectra':
-            input_file = f'{config.output_folder}/plotInput.csv'
-            out_file = f'{config.output_folder}/plotPredictions.msp'
-        else:
-            input_file = f'{config.output_folder}/plotisobarInput.csv'
-            out_file = f'{config.output_folder}/plotisobarPredictions.msp'
-        input_df, prosit_input = process_csv_file(input_file)
+    for chunk_idx, input_df in enumerate(pd.read_csv(input_file, chunksize=200_000)):
+        input_df = input_df.reset_index(drop=True)
+        prosit_input = {
+            'collision_energy_aligned_normed': (
+                np.expand_dims(
+                    np.array(input_df['collision_energy']).astype(float), axis=1
+                ) / 100.0
+            ),
+            'sequence_integer': get_sequence_integer(input_df['modified_sequence']),
+            'precursor_charge_onehot': get_precursor_charge_onehot(
+                input_df['precursor_charge']
+            ),
+        }
 
         prosit_data = prosit_predict(prosit_input, d_irt)
         final_result = prosit_predict(prosit_data, d_spectra)
 
-        write_msp_file(input_df, final_result, out_file)
-
-        if config.delta_method == 'bruteForce' and pipeline == 'core':
-            input_df, prosit_input = process_csv_file(f'{config.output_folder}/deltaInput.csv')
-
-            prosit_data = prosit_predict(prosit_input, d_irt)
-            final_result = prosit_predict(prosit_data, d_spectra)
-
-            write_msp_file(
-                input_df,
-                final_result,
-                f'{config.output_folder}/deltaPredictions.msp',
-            )
+        write_msp_file(input_df, final_result, out_file, chunk_idx)
+        del prosit_input
+        del prosit_data

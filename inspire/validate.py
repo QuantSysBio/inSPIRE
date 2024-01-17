@@ -23,7 +23,6 @@ from inspire.input.msp import msp_to_df
 from inspire.predict_spectra import predict_spectra
 from inspire.spectral_features import (
     calculate_spectral_angle,
-    get_coverage,
     get_ion_masses,
     get_matches,
 )
@@ -39,7 +38,6 @@ def get_sa(
     """ Function to extract the ion intensities from the true spectra which match
     """
     sequence = df_row['pcpPeptide']
-    seq_len = len(sequence)
     prosit_preds = df_row[PROSIT_IONS_KEY]
     mod_seq = df_row['modified_sequence']
 
@@ -88,7 +86,6 @@ def get_sa(
 
     matched_intensities = match_info['matched_intensities']
     ordered_prosit_intes = match_info['ordered_prosit_intes']
-    ordered_prosit_ions = match_info['ordered_prosit_ions']
 
     matched_l2_norm = np.linalg.norm(matched_intensities, ord=2)
 
@@ -115,8 +112,7 @@ def get_sa(
 def get_cleavage_peptides(proteome_loc):
     """ Function to find all nonspliced peptides.
     """
-    with open(proteome_loc, 'r', encoding='UTF-8') as fasta_file:
-        prot_sequences = list(SeqIO.parse(fasta_file, 'fasta'))
+    prot_sequences = list(SeqIO.parse(proteome_loc, 'fasta'))
 
     weights = []
     pcp_seqs = []
@@ -215,6 +211,7 @@ def calculate_competitor_spectral_data(competitors_df, config):
     """ Function to calculate spectral angles for isobaric nonspliced competitors.
     """
     scan_df = fetch_scan_data(competitors_df, config, with_charge=False)
+    scan_df = scan_df.to_pandas()
     competitors_df = pd.merge(
         competitors_df,
         scan_df,
@@ -337,11 +334,15 @@ def validate_spliced(config):
 
     final_df = pd.merge(
         final_df,
-        competitors_df[[SOURCE_KEY, SCAN_KEY, 'pcpPeptide', 'modified_sequence', 'compScore', 'group', 'index']],
+        competitors_df[[
+            SOURCE_KEY, SCAN_KEY, 'pcpPeptide', 'modified_sequence', 'compScore', 'group', 'index'
+        ]],
         how='left',
         on=[SOURCE_KEY, SCAN_KEY]
     )
-    final_df[final_df['pcpPeptide'].apply(lambda x : isinstance(x, str))].to_csv(f'{config.output_folder}/competitorPsp.csv')
+    final_df[final_df['pcpPeptide'].apply(lambda x : isinstance(x, str))].to_csv(
+        f'{config.output_folder}/competitorPsp.csv'
+    )
     for raw_file in final_df[SOURCE_KEY].unique().tolist():
         rt_df = pd.read_csv(
             f'{config.output_folder}/rt_fit_{raw_file}.csv'
@@ -351,7 +352,9 @@ def validate_spliced(config):
 
     final_df['deltaRT'] = final_df.apply(
         lambda x : abs(
-            x['deltaRT']/rt_coefs.get(x['source'], 1.0) if rt_coefs.get(x['source'], 1.0) > 0 else x['deltaRT']
+            x['deltaRT']/rt_coefs.get(
+                x['source'], 1.0
+            ) if rt_coefs.get(x['source'], 1.0) > 0 else x['deltaRT']
         ),
         axis=1,
     )

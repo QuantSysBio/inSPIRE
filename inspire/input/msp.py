@@ -3,7 +3,7 @@
 import re
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 from inspire.constants import (
     CHARGE_KEY,
@@ -11,6 +11,7 @@ from inspire.constants import (
     OXIDATION_PREFIX,
     OXIDATION_PREFIX_LEN,
     PROSIT_IONS_KEY,
+    PROSIT_INTES_KEY,
     PROSIT_SEQ_KEY,
     PTM_ID_KEY,
     PTM_NAME_KEY,
@@ -38,27 +39,22 @@ def msp_process_sequence_and_charge(line):
     charge = int(regex_match.group(2))
     return sequence, charge
 
-def process_intensities(ions, intensities):
-    """ Function to to combine ion identities and intensities into a single dict.
+def process_intensities(intensities):
+    """ Function to L2 normalise intensity array.
 
     Parameters
     ----------
-    ions : list of float
-        A list of the ion mzs found in the spectrum.
-    ions : list of str
-        A list of the ion names found in the spectrum.
+    intensities : list of float
+        A list of the intensities of peaks found in the spectrum.
 
     Returns
     -------
-    matched_ion_intensities : dict
-        A dictionary of ion names mapped to their normed intensity.
+    normed_intensities : list of float
+        A list of normalised intensities.
     """
     l2_norm = np.linalg.norm(np.array(intensities), ord=2)
     normed_intensities = [z/l2_norm for z in intensities]
-    matched_ion_intensities = {}
-    for ion_info, normed_intensity, in zip (ions, normed_intensities):
-        matched_ion_intensities[ion_info] = normed_intensity
-    return matched_ion_intensities
+    return normed_intensities
 
 def msp_process_peaks(line, msp_file):
     """ Function to extract the ms2 spectrum of a sample from
@@ -73,8 +69,10 @@ def msp_process_peaks(line, msp_file):
 
     Returns
     -------
-    normed_intensities : dict
-        A dictionary of ion names mapped to their normed intensity.
+    ions : list of str
+        A list of the ions predicted
+    normed_intensities : list of float
+        A list of ions normed intensities.
     """
     regex_match = re.match(r'Num peaks: (\d+)\n', line)
     n_peaks = int(regex_match.group(1))
@@ -91,8 +89,9 @@ def msp_process_peaks(line, msp_file):
             ions.append(ion)
             intensities.append(intensity)
 
-    normed_intensities = process_intensities(ions, intensities)
-    return normed_intensities
+    normed_intensities = process_intensities(intensities)
+
+    return ions, normed_intensities
 
 def ms2pip_process_peaks(line, msp_file):
     """ Function to extract the ms2 spectrum of a sample from
@@ -128,9 +127,9 @@ def ms2pip_process_peaks(line, msp_file):
             ions.append(ion)
             intensities.append(intensity)
 
-    normed_intensities = process_intensities(ions, intensities)
+    normed_intensities = process_intensities(intensities)
 
-    return normed_intensities
+    return ions, normed_intensities
 
 def get_ms2pip_mods(line, sequence, mod_id_mappings):
     """ Function to fetch the modifications from an MS2PIP modification file.
@@ -242,8 +241,6 @@ def msp_to_df(msp_filename, msp_format, mods_df):
         mod_id_mappings = dict(zip(mods_df['ms2pipName'].tolist(), mods_df[PTM_ID_KEY].tolist(), ))
 
     with open(msp_filename, 'r', encoding='UTF-8') as msp_file:
-        line = msp_file.readline()
-
         peptides = []
         charges = []
         ion_intensities = []
@@ -251,8 +248,9 @@ def msp_to_df(msp_filename, msp_format, mods_df):
         irts = []
         collision_energies = []
         ptm_seqs = []
+        ion_names = []
 
-        while line:
+        while (line := msp_file.readline()):
             if line.startswith('Name: '):
                 sequence, charge = msp_process_sequence_and_charge(line)
 
@@ -271,11 +269,12 @@ def msp_to_df(msp_filename, msp_format, mods_df):
                 assert line.startswith('Num peaks: ')
 
                 if msp_format == 'prosit':
-                    normed_intensities = msp_process_peaks(line, msp_file)
+                    named_ions, normed_intensities = msp_process_peaks(line, msp_file)
                 else:
-                    normed_intensities = ms2pip_process_peaks(line, msp_file)
+                    named_ions, normed_intensities = ms2pip_process_peaks(line, msp_file)
 
                 ion_intensities.append(normed_intensities)
+                ion_names.append(named_ions)
                 peptides.append(sequence)
                 charges.append(charge)
                 modified_sequences.append(modified_sequence)
@@ -285,11 +284,10 @@ def msp_to_df(msp_filename, msp_format, mods_df):
                 else:
                     ptm_seqs.append(ptm_seq)
 
-            line = msp_file.readline()
-
     df_data = {
         CHARGE_KEY: charges,
-        PROSIT_IONS_KEY: ion_intensities,
+        PROSIT_IONS_KEY: ion_names,
+        PROSIT_INTES_KEY: ion_intensities,
     }
     if msp_format == 'prosit':
         df_data[PROSIT_SEQ_KEY] = modified_sequences
@@ -299,4 +297,6 @@ def msp_to_df(msp_filename, msp_format, mods_df):
         df_data['peptide'] = modified_sequences
         df_data[PTM_SEQ_KEY] = ptm_seqs
 
-    return pd.DataFrame(df_data)
+    msp_df = pl.DataFrame(df_data)
+
+    return msp_df

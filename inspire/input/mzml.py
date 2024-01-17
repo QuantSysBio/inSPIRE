@@ -1,9 +1,7 @@
 """ Functions for loading experimental spectra from mzml files.
 """
-import os
-
 import numpy as np
-import pandas as pd
+import polars as pl
 from pyteomics import mzml
 
 from inspire.constants import (
@@ -37,24 +35,17 @@ def process_mzml_file(mzml_filename, scan_ids, with_charge=False, with_retention
     mzml_filenames = []
     filename = mzml_filename.split('/')[-1]
 
-    if os.path.exists(mzml_filename.replace('.mzML', '_calibrated.mzML')):
-        input_name = mzml_filename.replace('.mzML', '_calibrated.mzML')
-    elif os.path.exists(mzml_filename):
-        input_name = mzml_filename
-    else:
-        input_name = mzml_filename.replace('.mzML', '_uncalibrated.mzML')
-
     if with_charge:
         charge_list = []
 
     if with_retention_time:
         rt_list = []
 
-    with mzml.read(input_name) as reader:
+    with mzml.read(mzml_filename) as reader:
         for spectrum in reader:
             scan_id = int(spectrum['id'].split('scan=')[1])
             if scan_ids is None or scan_id in scan_ids:
-                mzml_filenames.append(filename)
+                mzml_filenames.append(filename[:-5])
                 scan_id_list.append(scan_id)
                 intensities_list.append(np.array(list(spectrum['intensity array'])))
                 ion_list.append(np.array(list(spectrum['m/z array'])))
@@ -69,19 +60,19 @@ def process_mzml_file(mzml_filename, scan_ids, with_charge=False, with_retention
                 if with_retention_time:
                     rt_list.append(float(spectrum['scanList']['scan'][0]['scan start time']))
 
-    scans_df =  pd.DataFrame(
+    scans_df =  pl.DataFrame(
         {
-            SOURCE_KEY: pd.Series(mzml_filenames),
-            SCAN_KEY: pd.Series(scan_id_list),
-            INTENSITIES_KEY: pd.Series(intensities_list),
-            MZS_KEY: pd.Series(ion_list)
+            SOURCE_KEY: pl.Series(mzml_filenames),
+            SCAN_KEY: pl.Series(scan_id_list),
+            INTENSITIES_KEY: pl.Series(intensities_list),
+            MZS_KEY: pl.Series(ion_list)
         }
     )
     if with_charge:
-        scans_df[CHARGE_KEY] = pd.Series(charge_list)
+        scans_df[CHARGE_KEY] = pl.Series(charge_list)
     if with_retention_time:
-        scans_df[RT_KEY] = pd.Series(rt_list)
+        scans_df[RT_KEY] = pl.Series(rt_list)
 
-    scans_df = scans_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY])
+    scans_df = scans_df.unique(subset=[SOURCE_KEY, SCAN_KEY])
 
     return scans_df

@@ -3,6 +3,7 @@
 
 # Constants for msp read in.
 PROSIT_IONS_KEY = 'prositIons'
+PROSIT_INTES_KEY = 'prositIntes'
 OXIDATION_PREFIX = 'Oxidation@M'
 OXIDATION_PREFIX_LEN = len(OXIDATION_PREFIX)
 
@@ -11,8 +12,13 @@ PROSIT_SEQ_KEY = 'modified_sequence'
 PROSIT_CHARGE_KEY = 'precursor_charge'
 PROSIT_COLLISION_ENERGY_KEY = 'collision_energy'
 
-FIGSHARE_PATH = 'https://figshare.com/ndownloader/articles/20368035/versions/1'
+FIGSHARE_PATH = 'https://figshare.com/ndownloader/articles/20368035/versions/2'
 FIGSHARE_EXAMPLE_PATH = 'https://figshare.com/ndownloader/files/37963665'
+THERMO_PARSER_PATH = (
+    'https://github.com/compomics/ThermoRawFileParser/releases/download/' +
+    'v1.4.2/ThermoRawFileParser1.4.2.zip'
+)
+FIGSHARE_EXTERNAL_UTILS_PATH = 'https://figshare.com/ndownloader/articles/22189198/versions/7'
 
 HEADER_TEXT = '\033[95m'
 OKBLUE_TEXT = '\033[94m'
@@ -26,6 +32,7 @@ UNDERLINE_TEXT = '\033[4m'
 
 CHARGE_KEY = 'charge'
 PEPTIDE_KEY = 'peptide'
+MOD_SEQ_KEY = 'modifiedSequence'
 ACCESSION_KEY = 'proteins'
 INTENSITIES_KEY = 'intensities'
 MZS_KEY = 'mzs'
@@ -70,6 +77,11 @@ PRECURSOR_INTE_KEY = 'precursorIntensity'
 
 # Percolator column names.
 PERC_SCAN_ID = 'scannr'
+IN_ACCESSION_KEY = {
+    'mokapot': 'proteins',
+    'percolator': 'Proteins',
+    'percolatorSeparate': 'Proteins',
+}
 PSM_ID_KEY = {
     'mokapot': 'specID',
     'percolator': 'specID',
@@ -79,11 +91,6 @@ OUT_PSM_ID_KEY = {
     'mokapot': 'specID',
     'percolator': 'PSMId',
     'percolatorSeparate': 'PSMId',
-}
-IN_ACCESSION_KEY = {
-    'mokapot': 'proteins',
-    'percolator': 'Proteins',
-    'percolatorSeparate': 'Proteins',
 }
 OUT_ACCESSION_KEY = {
     'mokapot': 'proteins',
@@ -131,6 +138,7 @@ BASIC_FEATURES = [
     ENGINE_SCORE_KEY,
     DELTA_SCORE_KEY,
     CHARGE_KEY,
+    'ms1Intensity',
     'nVarMods',
     'missedCleavages',
     'avgResidueMass',
@@ -213,13 +221,14 @@ NEUTRAL_LOSSES = [
     NH3,
     H2O,
 ]
+LOSS_NAMES = ['',  '*', '&#xb0;']
 
 RESIDUE_WEIGHTS = {
     'A': 71.037114,
     'R': 156.101111,
     'N': 114.042927,
     'D': 115.026943,
-    'C': 103.009185,# + 57.021464,
+    'C': 103.009185,
     'E': 129.042593,
     'Q': 128.058578,
     'G': 57.021464,
@@ -239,10 +248,10 @@ RESIDUE_WEIGHTS = {
 
 KNOWN_PTM_WEIGHTS = {
     'Deamidated (N)': 0.984016,
-    'Deamidated (Q)': 0.984016,
     'Deamidated (NQ)': 0.984016,
     'Deamidation (NQ)': 0.984016,
     'Deamidation (N)': 0.984016,
+    'Deamidation (Q)': 0.984016,
     'Oxidation (M)': 15.994915,
     'Acetyl (N-term)': 42.010565,
     'Acetylation (N-term)': 42.010565,
@@ -257,10 +266,10 @@ KNOWN_PTM_WEIGHTS = {
 
 KNOWN_PTM_LOC = {
     'Deamidated (N)': 'N',
-    'Deamidated (Q)': 'Q',
     'Deamidated (NQ)': 'NQ',
     'Deamidation (NQ)': 'NQ',
     'Deamidation (N)': 'N',
+    'Deamidation (Q)': 'Q',
     'Oxidation (M)': 'M',
     'Acetyl (N-term)': 'N-term',
     'Phospho (Y)': 'Y',
@@ -273,10 +282,10 @@ KNOWN_PTM_LOC = {
 
 MS2PIP_NAME_MAPPINGS = {
     'Deamidated (N)': 'Deamidation',
-    'Deamidated (Q)': 'Deamidation',
     'Deamidated (NQ)': 'Deamidation',
     'Deamidation (NQ)': 'Deamidation',
     'Deamidation (N)': 'Deamidation',
+    'Deamidation (Q)': 'Deamidation',
     'Oxidation (M)': 'Oxidation',
     'Acetyl (N-term)': 'Acetyl',
     'Phospho (Y)': 'Phospho',
@@ -442,4 +451,12 @@ BLOSUM6_1_VALUES = {
     'V': 0.16,
     'W': 0.24,
     'Y': -0.48
+}
+
+PLOT_AXIS_REQUIREMENTS = {
+    'showline':True,
+    'linewidth':0.5,
+    'linecolor':'black',
+    'showgrid':False,
+    'ticks':'outside',
 }

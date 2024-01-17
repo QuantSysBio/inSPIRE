@@ -1,8 +1,6 @@
 """ Code for running Prosit models on CPU.
     Large sections based on https://github.com/kusterlab/prosit.
 """
-
-import keras
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -175,9 +173,10 @@ def load_model(config_loc, model_loc, weights_loc):
         config_dict = yaml.safe_load(stream)
 
     with open(model_loc, 'r', encoding='UTF-8') as model_file:
-        model = tf.keras.models.model_from_yaml(
-            model_file.read(), custom_objects={"Attention": PrositAttention}
+        model = tf.keras.models.model_from_json(
+            model_file.read(), custom_objects={"PrositAttention": PrositAttention}
         )
+
     model.load_weights(weights_loc)
 
     model_dict = {}
@@ -254,32 +253,6 @@ def get_sequence_integer(sequences):
     return sequence_integers
 
 
-def process_csv_file(input_loc):
-    """ Function to process csv file for Prosit input.
-
-    Parameters
-    ----------
-    input_loc : str
-        The location of the Prosit input csv file.
-
-    Returns
-    -------
-    input_df : pd.DataFrame
-        The DataFrame read in from the csv file.
-    data : dict
-        Dictionary of the Prosit input arrays.
-    """
-    input_df = pd.read_csv(input_loc)
-    data = {
-        'collision_energy_aligned_normed': (
-            np.expand_dims(np.array(input_df['collision_energy']).astype(float), axis=1) / 100.0
-        ),
-        'sequence_integer': get_sequence_integer(input_df['modified_sequence']),
-        'precursor_charge_onehot': get_precursor_charge_onehot(input_df['precursor_charge']),
-    }
-
-    return input_df, data
-
 def sanitize(data):
     """ Function to sanitize Prosit predicted MS2 spectra.
 
@@ -339,8 +312,6 @@ def prosit_predict(data, d_model):
     """
     # check for mandatory keys
     input_data = [data[key] for key in d_model["config"]["x"]]
-
-    keras.backend.set_session(d_model["session"])
 
     prediction = d_model["model"].predict(
         input_data, verbose=True, batch_size=PROSIT_PRED_BATCH_SIZE
@@ -462,7 +433,7 @@ def format_msp_spectrum(
     return print_string
 
 
-def write_msp_spectrum(df_row, out_file):
+def write_msp_spectrum(df_row, out_file, chunk_idx):
     """ Function to write a single spectrum in MSP format.
 
     Parameters
@@ -471,8 +442,10 @@ def write_msp_spectrum(df_row, out_file):
         A single row of the DataFrame containing prediction data.
     out_file : file
         The File where the spectrum will be written.
+    chunk_idx : str
+        The index of the chunk being predicted for.
     """
-    first_spec = df_row.name == 0
+    first_spec = df_row.name == 0 and chunk_idx == 0
     pred_intes = df_row['intensities_pred']
     sel = np.where(pred_intes > 0)
     pred_intes = pred_intes[sel]
@@ -495,7 +468,7 @@ def write_msp_spectrum(df_row, out_file):
     out_file.write(str(spec))
 
 
-def write_msp_file(peptide_df, prediction_data, out_path):
+def write_msp_file(peptide_df, prediction_data, out_path, chunk_idx):
     """ Function to write MSP output from Prosit predictions.
 
     Parameters
@@ -510,5 +483,9 @@ def write_msp_file(peptide_df, prediction_data, out_path):
     peptide_df['iRT'] = prediction_data['iRT']
     peptide_df['intensities_pred'] = pd.Series(list(prediction_data['intensities_pred']))
     peptide_df['sequence_integer'] = pd.Series(list(prediction_data['sequence_integer']))
-    with open(out_path, mode='w', encoding='UTF-8') as out_file:
-        peptide_df.apply(lambda df_row : write_msp_spectrum(df_row, out_file), axis=1)
+    if chunk_idx > 0:
+        write_mode = 'a'
+    else:
+        write_mode = 'w'
+    with open(out_path, mode=write_mode, encoding='UTF-8') as out_file:
+        peptide_df.apply(lambda df_row : write_msp_spectrum(df_row, out_file, chunk_idx), axis=1)

@@ -1,8 +1,10 @@
 """ Functions for rescoring PSMs with an optimised feature set.
 """
+from pathlib import Path
 import subprocess
 
 import pandas as pd
+import polars as pl
 
 from inspire.constants import (
     ACCESSION_STRATUM_KEY,
@@ -25,6 +27,8 @@ from inspire.constants import (
     SOURCE_KEY,
     SPECTRAL_ANGLE_KEY,
 )
+from inspire.input.mhcpan import read_mhcpan_output
+from inspire.utils import fetch_proteome, parallel_remap
 
 def apply_rescoring(
         output_folder,
@@ -32,7 +36,9 @@ def apply_rescoring(
         fdr,
         rescore_method,
         output_prefix,
-        results_out='psm',
+        rescore_command,
+        proteome=None,
+        decoy_prot_key='rev_',
     ):
     """ Function to apply percolator and return the PSMs matched.
 
@@ -56,14 +62,9 @@ def apply_rescoring(
     """
     psm_output_key = f'{output_folder}/{output_prefix}.{rescore_method}.psms.txt'
     pep_output_key = f'{output_folder}/{output_prefix}.{rescore_method}.peptides.txt'
-
-    if results_out == 'psm':
-        export_loc = psm_output_key
-    else:
-        export_loc = pep_output_key
+    prot_out_key = f'{output_folder}/{output_prefix}.{rescore_method}.proteins.txt'
 
     if rescore_method == 'mokapot':
-        rescore_name = 'mokapot'
         clis = (
             f' --dest_dir {output_folder} --keep_decoys  ' +
             f' --train_fdr {fdr} ' +
@@ -71,28 +72,31 @@ def apply_rescoring(
         )
         trailing_args = ''
     elif rescore_method == 'percolatorSeparate':
-        rescore_name = 'percolator'
         percolator_decoy_key = f'{output_folder}/{output_prefix}.{rescore_method}.decoy.psms.txt'
         weights_path = f'{output_folder}/{output_prefix}.{rescore_method}.weights.csv'
         clis = (
             f' -F {fdr} -t {fdr} -i 10 -M {percolator_decoy_key} --post-processing-tdc  ' +
-            f' -w {weights_path} --override ' +
+            f' -w {weights_path} ' +
             f' --results-psms {psm_output_key} --results-peptides {pep_output_key} '
         )
         trailing_args = ''
     else:
-        rescore_name = 'percolator'
         percolator_decoy_key = f'{output_folder}/{output_prefix}.{rescore_method}.decoy.psms.txt'
         weights_path = f'{output_folder}/{output_prefix}.{rescore_method}.weights.csv'
         clis = (
             f' -F {fdr} -t {fdr} -i 10 -M {percolator_decoy_key} --post-processing-tdc ' +
-            f' -I concatenated -w {weights_path} -v 0 ' +
-            f' --results-psms {psm_output_key} --results-peptides {pep_output_key} --override '
+            f' -I concatenated -w {weights_path} ' +
+            f' --results-psms {psm_output_key} --results-peptides {pep_output_key} '
         )
         trailing_args = ''
 
+    if proteome is not None:
+        trailing_args += (
+            f' -f {proteome} -z no_enzyme --results-proteins {prot_out_key} -P {decoy_prot_key}'
+        )
+
     bash_command = (
-        f'{rescore_name} {clis} {output_folder}/{input_filename} {trailing_args}'
+        f'"{rescore_command}" {clis} {output_folder}/{input_filename} {trailing_args}'
     )
 
     with open(f'{output_folder}/rescore.log', 'w', encoding='UTF-8') as log_file:
@@ -103,12 +107,19 @@ def apply_rescoring(
             stdout=log_file,
         )
 
-    results = pd.read_csv(export_loc, sep='\t')
-    results[PEPTIDE_KEY] = results[PEPTIDE_KEY].apply(lambda x : x[2:-2])
+    psm_results_df = pl.read_csv(psm_output_key, separator='\t')
+    psm_results_df = psm_results_df.with_columns(
+        pl.col(PEPTIDE_KEY).apply(lambda x : x[2:-2])
+    )
 
-    return results
+    peptide_results_df = pl.read_csv(pep_output_key, separator='\t')
+    peptide_results_df = peptide_results_df.with_columns(
+        pl.col(PEPTIDE_KEY).apply(lambda x : x[2:-2])
+    )
 
-def _split_psm_ids(df_row, psm_id_key):
+    return psm_results_df, peptide_results_df
+
+def _split_psm_ids(psm_id):
     """ Function for splitting a PSM Id back into its source name, scan number
         and peptide sequence.
 
@@ -122,11 +133,12 @@ def _split_psm_ids(df_row, psm_id_key):
     df_row : pd.Series
         The same row with source and scan added.
     """
-    source_scan_list = df_row[psm_id_key].split('_')
-    df_row['modifiedSequence'] = source_scan_list[-1]
-    df_row[SCAN_KEY] = int(source_scan_list[-2])
-    df_row[SOURCE_KEY] = '_'.join(source_scan_list[:-2])
-    return df_row
+    results = {}
+    source_scan_list = psm_id.split('_')
+    results['modifiedSequence'] = source_scan_list[-1]
+    results[SCAN_KEY] = int(source_scan_list[-2])
+    results[SOURCE_KEY] = '_'.join(source_scan_list[:-2])
+    return results
 
 def _regroup_accession(df_row, acc_cols):
     """ Helper function to remove one hot encoding from Accession Stratum.
@@ -168,37 +180,83 @@ def _add_key_features(target_psms, config):
     psm_id_key = PSM_ID_KEY[config.rescore_method]
 
     input_key = f'{config.output_folder}/input_all_features.tab'
-    input_df = pd.read_csv(
+    input_df = pl.from_pandas(pd.read_csv(
         input_key,
         sep='\t',
-    )
-    input_df = input_df.drop_duplicates(subset=[psm_id_key, PEPTIDE_KEY])
+    ))
+    input_df = input_df.unique(subset=[psm_id_key, PEPTIDE_KEY])
 
     key_features = [
         SPECTRAL_ANGLE_KEY,
-        RT_KEY,
         'spearmanR',
+        'predCoverage',
         'matchedCoverage',
+        RT_KEY,
         'deltaRT',
         ENGINE_SCORE_KEY,
         CHARGE_KEY,
     ]
     if config.use_accession_stratum:
-        acc_cols = [x for x in input_df.columns if x.startswith('accession')]
-        input_df[ACCESSION_STRATUM_KEY] = input_df.apply(
-            lambda x : _regroup_accession(x, acc_cols), axis=1
+        acc_cols = [
+            x for x in input_df.columns if x.startswith('accession') and x != 'accessionGroup'
+        ]
+        input_df = input_df.with_columns(
+            pl.struct(acc_cols).apply(
+                lambda x : _regroup_accession(x, acc_cols)
+            ).alias(ACCESSION_STRATUM_KEY)
         )
+
         key_features.append(ACCESSION_STRATUM_KEY)
+
+    if config.use_binding_affinity is not None:
+        mhc_pan_df = read_mhcpan_output(
+            f'{config.output_folder}/mhcpan',
+            per_allele=True,
+        )
+        mhc_pan_df = mhc_pan_df.rename({
+            'Peptide': PEPTIDE_KEY,
+        })
+        mhc_pan_cols = (
+            [x for x in mhc_pan_df.columns if (
+                x.endswith('Affinity') or x.endswith('Level') or x.endswith('%Rank_BA')
+            )]
+        )
+
+        target_psms = target_psms.join(
+            mhc_pan_df.select([PEPTIDE_KEY] + mhc_pan_cols),
+            on=PEPTIDE_KEY,
+            how='left',
+        )
 
     if isinstance(config.collision_energy, list):
         key_features.append('collisionEnergy')
 
-    output_df = pd.merge(
-        target_psms,
+    output_df = target_psms.join(
         input_df[[psm_id_key, PEPTIDE_KEY] + key_features],
         how='inner',
         on=[psm_id_key, PEPTIDE_KEY]
     )
+
+    if config.use_binding_affinity is not None:
+        for col in mhc_pan_cols:
+            if col.endswith('Affinity') or col.endswith('%Rank_BA'):
+                output_df = output_df.with_columns(
+                    pl.col(col).fill_null(
+                        pl.lit(-1),
+                    ).alias(col),
+                )
+            else:
+                output_df = output_df.with_columns(
+                    pl.col(col).apply(
+                        lambda x : 'Strong-Binder' if x == '<=SB' else (
+                            'Weak-Binder' if x == '<=WB' else (
+                                'Not predicted' if x is None else
+                            'Non-Binder')
+                        ),
+                        skip_nulls=False,
+                    )
+                )
+        key_features.extend(mhc_pan_cols)
 
     return output_df, key_features
 
@@ -210,33 +268,72 @@ def final_rescoring(config):
     config : inspire.config.Config
         The config object used throughout the pipeline.
     """
+    in_path = 'final_input.tab'
+    output_prefix = 'final'
+
+    if config.infer_proteins:
+        proteome = config.proteome
+    else:
+        proteome = None
+
+    target_psms, target_peptides = apply_rescoring(
+        config.output_folder,
+        in_path,
+        config.fdr,
+        config.rescore_method,
+        output_prefix,
+        config.rescore_command,
+        proteome,
+        decoy_prot_key=config.decoy_protein_flag,
+    )
+
+    print(
+        OKCYAN_TEXT + '\tRescoring complete.' + ENDC_TEXT
+    )
+
+    output_peptides_df = apply_post_processing(target_peptides, config)
+    output_psm_df = apply_post_processing(target_psms, config)
+
+    if config.accession_format == 'invitroSPI':
+        output_peptides_df.write_csv(f'{config.output_folder}/pre_finalAssignments.csv')
+    else:
+        output_peptides_df.write_csv(f'{config.output_folder}/finalPeptideAssignments.csv')
+
+    output_psm_df.write_csv(f'{config.output_folder}/finalPsmAssignments.csv')
+
+    print(
+        OKCYAN_TEXT + '\tFinal assignments written to csv.' + ENDC_TEXT
+    )
+
+
+def apply_post_processing(target_psms, config):
+    """ Function to separate columns and re-add relevant information.
+    """
     out_score_key = OUT_SCORE_KEY[config.rescore_method]
     out_q_key = OUT_Q_KEY[config.rescore_method]
     out_postep_key = OUT_POSTEP_KEY[config.rescore_method]
     psm_id_key = PSM_ID_KEY[config.rescore_method]
     out_accession_key = OUT_ACCESSION_KEY[config.rescore_method]
 
-    in_path = 'final_input.tab'
-    output_prefix = 'final'
-
-    target_psms = apply_rescoring(
-        config.output_folder,
-        in_path,
-        config.fdr,
-        config.rescore_method,
-        output_prefix,
-        config.results_export,
-    )
-
     if 'PSMId' in target_psms.columns:
-        target_psms = target_psms.rename( # pylint: disable=no-member
-            columns={'PSMId': psm_id_key}
-        )
+        target_psms = target_psms.rename({'PSMId': psm_id_key})
 
-    print(
-        OKCYAN_TEXT + '\tRescoring complete.' + ENDC_TEXT
-    )
+
     output_df, key_features = _add_key_features(target_psms, config)
+
+    output_df = output_df.with_columns(
+        pl.col(psm_id_key)
+        .apply(_split_psm_ids, skip_nulls=False)
+        .alias("results")
+    ).unnest("results")
+
+    output_df = output_df.rename({
+        out_score_key: FINAL_SCORE_KEY,
+        out_q_key: FINAL_Q_VALUE_KEY,
+        out_postep_key: FINAL_POSTEP_KEY,
+        out_accession_key: ACCESSION_KEY,
+        out_postep_key: FINAL_POSTEP_KEY,
+    })
 
     final_columns = (
         [
@@ -247,61 +344,41 @@ def final_rescoring(config):
             FINAL_SCORE_KEY,
             FINAL_Q_VALUE_KEY,
             FINAL_POSTEP_KEY,
-        ] + key_features +
-        [
-            ACCESSION_KEY
-        ]
+        ] + key_features
     )
 
-    output_df = output_df.apply(
-       lambda x: _split_psm_ids(x, psm_id_key),
-       axis=1
-    ).drop(psm_id_key, axis=1)
+    if config.map_contaminants is not None:
+        if config.map_contaminants == 'standard':
+            home = str(Path.home())
+            contamns_path =f'{home}/inSPIRE_models/utilities/contaminants_20120713.fasta'
+        else:
+            contamns_path = config.map_contaminants
 
-    if config.results_export == 'peptide':
-        psms_df = pd.read_csv(
-            f'{config.output_folder}/final.{config.rescore_method}.psms.txt',
-            sep='\t',
-        )
-        psms_df[PEPTIDE_KEY] = psms_df[PEPTIDE_KEY].apply(lambda x : x[2:-2])
-        if 'PSMId' in psms_df.columns:
-            psms_df = psms_df.rename( # pylint: disable=no-member
-                columns={'PSMId': psm_id_key}
+
+        if config.proteome is not None:
+            target_proteome = fetch_proteome(config.proteome, with_desc=False)
+            output_df = parallel_remap(
+                output_df,
+                config.n_cores,
+                target_proteome,
+                'mapsToTarget',
+                trace_accession=False,
             )
-        psms_df, key_features = _add_key_features(psms_df, config)
-        psms_df = psms_df.apply(
-            lambda x: _split_psm_ids(x, psm_id_key),
-            axis=1
-        ).drop(psm_id_key, axis=1)
-        psms_df = psms_df.rename(
-            columns={
-                out_score_key: FINAL_SCORE_KEY,
-                out_q_key: FINAL_Q_VALUE_KEY,
-                out_accession_key: ACCESSION_KEY,
-                out_postep_key: FINAL_POSTEP_KEY,
-                }
-        )
 
-        psms_df = psms_df[final_columns]
-        psms_df.to_csv(
-            f'{config.output_folder}/finalPsmAssignments.csv',
-            index=False
-        )
+            contams_proteome = fetch_proteome(contamns_path, with_desc=False)
+            output_df = parallel_remap(
+                output_df,
+                config.n_cores,
+                contams_proteome,
+                'mapsToContaminant',
+                trace_accession=False,
+            )
+        if config.proteome is not None:
+            final_columns.extend(['mapsToTarget', 'mapsToContaminant'])
 
-    output_df = output_df.rename(
-        columns={
-            out_score_key: FINAL_SCORE_KEY,
-            out_q_key: FINAL_Q_VALUE_KEY,
-            out_accession_key: ACCESSION_KEY,
-            out_postep_key: FINAL_POSTEP_KEY,
-        }
-    )
 
-    output_df = output_df[final_columns]
+    final_columns.append(ACCESSION_KEY)
+    output_df = output_df.select(final_columns)
+    output_df = output_df.sort(by=[FINAL_SCORE_KEY, SOURCE_KEY, SCAN_KEY], descending=True)
 
-    output_df = output_df.sort_values(by=FINAL_SCORE_KEY, ascending=False)
-
-    output_df.to_csv(f'{config.output_folder}/finalAssignments.csv', index=False)
-    print(
-        OKCYAN_TEXT + '\tFinal assignments written to csv.' + ENDC_TEXT
-    )
+    return output_df
