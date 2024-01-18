@@ -286,18 +286,26 @@ def read_single_ms_fragger_data(df_loc, fixed_modifications, file_idx):
     all_psms = []
     with pepxml.read(read_loc) as psms:
         for psm in psms:
-            if len(psm['search_hit']) > 1:
-                rank_2_score = psm['search_hit'][1]['search_score']['hyperscore']
+            psms_to_add = []
+            peps_added = []
+
+            for pep_psm in psm['search_hit']:
+                if pep_psm['peptide'] not in peps_added:
+                    pep_psm[CHARGE_KEY] = int(psm['assumed_charge'])
+                    pep_psm['SpecId'] = psm['spectrum']
+                    pep_psm[MSF_RT_KEY] = psm['retention_time_sec']
+                    pep_psm['hyperscore'] = pep_psm['search_score']['hyperscore']
+                    del pep_psm['search_score']
+                    peps_added.append(pep_psm['peptide'])
+                    psms_to_add.append(pep_psm)
+
+            if len(psms_to_add) > 1:
+                rank_2_score = psms_to_add[1]['hyperscore']
             else:
                 rank_2_score = 0
 
-            for pep_psm in psm['search_hit']:
-                pep_psm[CHARGE_KEY] = int(psm['assumed_charge'])
-                pep_psm['SpecId'] = psm['spectrum']
-                pep_psm[MSF_RT_KEY] = psm['retention_time_sec']
-                pep_psm['hyperscore'] = pep_psm['search_score']['hyperscore']
+            for pep_psm in psms_to_add:
                 pep_psm[MSF_DELTA_KEY] = pep_psm['hyperscore'] - rank_2_score
-                del pep_psm['search_score']
                 all_psms.append(pep_psm)
 
     msf_df = pl.DataFrame(all_psms)
