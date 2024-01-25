@@ -75,7 +75,6 @@ setup(
 		'PyPDF2==3.0.1',
 		'pyteomics==4.6.3',
 		'python-dateutil==2.8.2',
-		'pytz==2023.3.post1',
 		'PyYAML==6.0.1',
 		'requests==2.31.0',
 		'requests-oauthlib==1.3.1',
