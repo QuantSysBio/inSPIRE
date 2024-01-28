@@ -3,13 +3,13 @@
 from multiprocessing import Pool
 import os
 from pathlib import Path
-import platform
+
 
 def predict_binding(config):
     """ Function to run binding affinity prediction using NetMHCpan.
     """
     home = str(Path.home())
-    singularity_image = f'{home}/inSPIRE_models/utils/singularity_image.sif'
+    singularity_image = f'{home}/inSPIRE_models/utilities/netmhcpan.sif'
 
     input_files = [
         in_file for in_file in os.listdir(
@@ -28,11 +28,14 @@ def predict_binding(config):
                 f'inputLen{pep_len}', f'output_{pep_len}_{allele}'
             )
             if config.run_singularity:
+                pan_command = config.pan_command
+                if pan_command.endswith('/netMHCpan'):
+                    pan_command = pan_command[:-10]
                 function_args.append(
                     'singularity run --bind ' +
-                    f'{config.pan_command},{config.output_folder}:/root/netMHCpan-4.1' +
-                    f'{singularity_image} -BA -inptype 1 -a {allele} -l {pep_len} -p -f ' +
-                    f'/root/netMHCpan-4.1/mhcpan/{input_file} > ' +
+                    f'{pan_command}:/root/netMHCpan-4.1,{config.output_folder}:/root/output ' +
+                    f'{singularity_image} "-BA -inptype 1 -a {allele} -l {pep_len} -p -f ' +
+                    f'/root/output/mhcpan/{input_file}" > ' +
                     f'{config.output_folder}/mhcpan/{output_file}'
                 )
             else:
@@ -41,8 +44,6 @@ def predict_binding(config):
                     f'{config.output_folder}/mhcpan/{input_file} > ' +
                     f'{config.output_folder}/mhcpan/{output_file}'
                 )
-                
-
 
     with Pool(processes=config.n_cores) as pool:
         pool.map(os.system, function_args)

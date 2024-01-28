@@ -59,6 +59,7 @@ ALL_CONFIG_KEYS = [
     'rescoreMethod',
     'resultsExport',
     'reuseInput',
+    'runSingularity',
     'scansFolder',
     'scansFormat',
     'scanTitleFormat',
