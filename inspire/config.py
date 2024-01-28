@@ -3,6 +3,7 @@
 import glob
 import os
 from pathlib import Path
+import platform
 
 import yaml
 
@@ -238,6 +239,10 @@ class Config:
         self.source_filename = config_dict.get('sourceFileName', None)
 
         # NetMhcPan
+        self.run_singularity = config_dict.get(
+            'runSingularity',
+            platform.system() != 'Windows',
+        )
         self.use_binding_affinity = config_dict.get('useBindingAffinity', None)
         self.pan_command = config_dict.get('netMHCpan')
         default_ba_pred_limit = 15
