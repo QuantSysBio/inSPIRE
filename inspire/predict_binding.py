@@ -3,9 +3,6 @@
 from multiprocessing import Pool
 import os
 
-import docker
-
-
 def predict_binding(config):
     """ Function to run binding affinity prediction using NetMHCpan.
     """
