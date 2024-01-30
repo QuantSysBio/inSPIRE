@@ -30,7 +30,7 @@ def predict_binding(config):
                     f'docker run -v {os.path.abspath(pan_command)}:/root/netMHCpan-4.1 ' +
                     f'-v {os.path.abspath(config.output_folder)}:/root/output -e PAN_ARGS=' +
                     f'"-BA -inptype 1 -a {allele} -l {pep_len} -p ' +
-                    f'-f /root/output/mhcpan/{input_file}" johncormican/basic-netmhcpan ' +
+                    f'-f /root/output/mhcpan/{input_file}" johncormican/basic-pan-execution ' +
                     f'> {os.path.abspath(config.output_folder)}/mhcpan/{output_file}\n'
                 )
             else:
