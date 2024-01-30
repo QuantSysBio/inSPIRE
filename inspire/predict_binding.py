@@ -27,7 +27,7 @@ def predict_binding(config):
                 if pan_command.endswith('/netMHCpan'):
                     pan_command = pan_command[:-10]
                 function_args.append(
-                    f'docker run -v {os.path.abspath(pan_command)}:/root/netMHCpan-4.1 ' +
+                    f'docker run --rm -v {os.path.abspath(pan_command)}:/root/netMHCpan-4.1 ' +
                     f'-v {os.path.abspath(config.output_folder)}:/root/output -e PAN_ARGS=' +
                     f'"-BA -inptype 1 -a {allele} -l {pep_len} -p ' +
                     f'-f /root/output/mhcpan/{input_file}" johncormican/basic-pan-execution ' +
@@ -40,6 +40,9 @@ def predict_binding(config):
                     f'{config.output_folder}/mhcpan/{output_file}'
                 )
 
-    # print(function_args)
+    # Run first command so docker image only pulled once.
+    if config.pan_docker:
+        os.system('docker image pull johncormican/basic-pan-execution')
+
     with Pool(processes=config.n_cores) as pool:
         pool.map(os.system, function_args)

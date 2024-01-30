@@ -242,7 +242,7 @@ class Config:
         # NetMhcPan
         self.pan_docker = config_dict.get(
             'panDocker',
-            platform.system() != 'Windows',
+            platform.system() == 'Windows',
         )
         self.use_binding_affinity = config_dict.get('useBindingAffinity', None)
         self.pan_command = config_dict.get('netMHCpan')
