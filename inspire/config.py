@@ -59,7 +59,7 @@ ALL_CONFIG_KEYS = [
     'rescoreMethod',
     'resultsExport',
     'reuseInput',
-    'runSingularity',
+    'panDocker',
     'scansFolder',
     'scansFormat',
     'scanTitleFormat',
@@ -240,8 +240,8 @@ class Config:
         self.source_filename = config_dict.get('sourceFileName', None)
 
         # NetMhcPan
-        self.run_singularity = config_dict.get(
-            'runSingularity',
+        self.pan_docker = config_dict.get(
+            'panDocker',
             platform.system() != 'Windows',
         )
         self.use_binding_affinity = config_dict.get('useBindingAffinity', None)
