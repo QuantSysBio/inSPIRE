@@ -27,7 +27,7 @@ def predict_binding(config):
                 if pan_command.endswith('/netMHCpan'):
                     pan_command = pan_command[:-10]
                 function_args.append(
-                    f'docker run  -v {os.path.abspath(pan_command)}:/net/sund-nas.win.dtu.dk' +
+                    f'docker run --rm -v {os.path.abspath(pan_command)}:/net/sund-nas.win.dtu.dk' +
                     '/storage/services/www/packages/netMHCpan/4.1/netMHCpan-4.1 ' +
                     f'-v {os.path.abspath(config.output_folder)}:/root/output -e PAN_ARGS=' +
                     f'"-BA -inptype 1 -a {allele} -l {pep_len} -p ' +
