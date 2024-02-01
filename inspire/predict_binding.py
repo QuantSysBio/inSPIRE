@@ -9,7 +9,7 @@ def predict_binding(config):
 
     # Run first command so docker image only pulled once.
     if config.pan_docker:
-        # os.system('docker image pull johncormican/basic-pan-execution')
+        os.system('docker image pull johncormican/basic-pan-execution')
         alleles_string = ','.join(config.alleles)
         pan_command = config.pan_command
         if pan_command.endswith('/netMHCpan'):
