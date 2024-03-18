@@ -54,6 +54,7 @@ def extract_epitope_candidates(config):
         The Config object which controls the experiment.
     """
     final_df = pd.read_csv(f'{config.output_folder}/finalPsmAssignments.csv')
+    final_df = final_df[final_df['qValue'] < 0.01]
 
     # Add columns of interest
     final_df['peptideLength'] = final_df['peptide'].apply(len)
