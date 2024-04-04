@@ -33,12 +33,15 @@ MQ_ABBREVIATIONS = {
 }
 
 ID_NUMBERS = {
-    'Deamidation (N)': 8,
-    'Deamidation (Q)': 7,
-    'Phospho (S)': 6,
-    'Phospho (T)': 5,
+    'unknown': 9,
+    'Deamidation (N)': 5,
+    'Deamidation (Q)': 5,
+    'Phospho (S)': 4,
+    'Phospho (T)': 4,
     'Phospho (Y)': 4,
+    'Phospho(R)': 4,
     'Acetyl (N-term)': 3,
+    'Acetyl (Protein N-term)': 3,
     'Oxidation (M)': 2,
     'Carbamidomethyl (C)': 1,
     'Carbamidomethylation': 1,
@@ -142,14 +145,14 @@ def _create_ptm_seq_col(modified_seq, unqiue_mods):
             end_mod = main_seq.index(')') + 1
             mod = main_seq[:end_mod]
             main_seq = main_seq[end_mod + 1:]
-            ptm_seq += f'{str(unqiue_mods[mod])}.'
+            ptm_seq += f'{str(unqiue_mods.get(mod, 9))}.'
         else:
             main_seq = split_seq[1]
             main_seq = main_seq[1:]
             end_mod = main_seq.index(')')
             mod = main_seq[:end_mod]
             main_seq = main_seq[end_mod + 1:]
-            ptm_seq += f'{str(unqiue_mods[MQ_ABBREVIATIONS[mod]])}.'
+            ptm_seq += f'{str(unqiue_mods.get(MQ_ABBREVIATIONS.get(mod, "unknown"), 9))}.'
     else:
         ptm_seq += '0.'
         main_seq = split_seq[1]
@@ -168,16 +171,16 @@ def _create_ptm_seq_col(modified_seq, unqiue_mods):
                 end_mod = main_seq.index(')') + 1
                 mod = main_seq[:end_mod]
                 main_seq = main_seq[end_mod + 1:]
-                ptm_seq += str(unqiue_mods[mod])
+                ptm_seq += str(unqiue_mods.get(mod, 9))
             else:
                 main_seq = main_seq[2:]
                 end_mod = main_seq.index(')')
                 mod = main_seq[:end_mod]
                 main_seq = main_seq[end_mod + 1:]
-                ptm_seq += str(unqiue_mods[MQ_ABBREVIATIONS[mod]])
+                ptm_seq += str(unqiue_mods.get(MQ_ABBREVIATIONS.get(mod, 'unknown'), 9))
 
     if split_seq[2]:
-        ptm_seq += f'.{unqiue_mods[split_seq[2]]}'
+        ptm_seq += f'.{unqiue_mods.get(split_seq[2], 9)}'
     else:
         ptm_seq += '.0'
 

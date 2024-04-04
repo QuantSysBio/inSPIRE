@@ -262,6 +262,7 @@ KNOWN_PTM_WEIGHTS = {
     'Phosphorylation (STY)': 79.966331,
     'Carbamidomethyl (C)': 57.021464,
     'Carbamidomethylation': 57.021464,
+    'unknown': 0.0
 }
 
 KNOWN_PTM_LOC = {
