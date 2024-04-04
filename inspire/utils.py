@@ -443,6 +443,9 @@ def _modify_ptm_seq(pep_seq, ptm_seq, ptm_locs, ptm_id):
     ptm_seq : str
         The modified ptm sequence.
     """
+    if ptm_locs is None:
+        return ptm_seq
+
     if ptm_locs == 'N-term':
         if not isinstance(ptm_seq, str):
             return ptm_id + '.' + ''.join(['0']*len(pep_seq)) + '.0'
@@ -496,7 +499,7 @@ def add_fixed_modifications(search_df, mods_df, fixed_modifications):
                 lambda x, mod=modification, ptm_id=str_ptm_idx : _modify_ptm_seq(
                     x[PEPTIDE_KEY],
                     x[PTM_SEQ_KEY],
-                    KNOWN_PTM_LOC[mod],
+                    KNOWN_PTM_LOC.get(mod),
                     ptm_id
                 )
             ).alias(PTM_SEQ_KEY)
