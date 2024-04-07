@@ -8,7 +8,7 @@ inSPIRE allows easy rescoring of MaxQuant, Mascot or PEAKS DB search results usi
 
 ## inSPIRE Versions from previous publications
 
-We continue to update and improve inSPIRE with new releases. However, all previous versions used for passed publications are available online. The following versions are relevant
+We continue to update and improve inSPIRE with new releases. However, all previous versions used for passed publications are available online. The following versions are relevant for reproducing the exact results of previous publications:
 
 * Use version 1.0 (with minor bug fixes in versions 1.1, 1.2, and 1.3) and python version 3.9 for exact version used in [inSPIRE: An open-source tool for increased mass spectrometry identification rates using Prosit spectral prediction](https://doi.org/10.1016/j.mcpro.2022.100432)
 
