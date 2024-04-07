@@ -6,6 +6,16 @@
 
 inSPIRE allows easy rescoring of MaxQuant, Mascot or PEAKS DB search results using spectral prediction. inSPIRE is primarily developed to use Prosit predicted spectra but can also use MS<sup>2</sup>PIP predictions. inSPIRE enables the prediction of MS2 spectra with Prosit without the need of a GPU and it can be run on a standard workstation or laptop.
 
+## inSPIRE Versions from previous publications
+
+We continue to update and improve inSPIRE with new releases. However, all previous versions used for passed publications are available online. The following versions are relevant
+
+* Use version 1.0 (with minor bug fixes in versions 1.1, 1.2, and 1.3) and python version 3.9 for exact version used in [inSPIRE: An open-source tool for increased mass spectrometry identification rates using Prosit spectral prediction](https://doi.org/10.1016/j.mcpro.2022.100432)
+
+* Use version 1.5 and python version 3.9 for the exact version used in [Protein degradation by human 20S proteasomes elucidates the interplay between peptide hydrolysis and splicing](https://www.nature.com/articles/s41467-024-45339-3)
+
+* Use version 2.0rc6 and python version 3.11 for the latest inSPIRE functionality (manuscript in preparation).
+
 ## Set Up
 
 ### Before Downloading
@@ -62,6 +72,11 @@ Please cite the following article if you are using inSPIRE in your research:
 
 > Cormican, J. A., Horokhovskyi, Y., Soh, W. T., Mishto, M., and Liepe, J. (2022) inSPIRE: An open-source tool for increased mass spectrometry identification rates using Prosit spectral prediction. Mol Cell Proteomics. \
  [doi.org/10.1016/j.mcpro.2022.100432](https://doi.org/10.1016/j.mcpro.2022.100432)
+
+If you are using inSPIRE for analysis of in vitro protein digestions please cite the following article:
+
+> Soh, W. T., Roetschke, H. P., Cormican, J. A., Teo, B. F., Chiam, N. C., Raabe, M., Pflanz, R., Henneberg, F., Becker, S., Chari, A., Liu, H., Urlaub, H., Liepe, J., and Mishto, M. (2024) Protein degradation by human 20S proteasomes elucidates the interplay between peptide hydrolysis and splicing. Nature Communications. \
+ [doi.org/10.1038/s41467-024-45339-3](https://doi.org/10.1038/s41467-024-45339-3)
 
 ### Dependencies
 
