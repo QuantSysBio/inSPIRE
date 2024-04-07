@@ -32,7 +32,7 @@ setup(
     install_requires=[
         'absl-py==2.0.0',
 		'astunparse==1.6.3',
-		'biopython==1.81',
+		'biopython==1.83',
 		'cachetools==5.3.2',
 		'certifi==2023.11.17',
 		'charset-normalizer==3.3.2',
