@@ -48,8 +48,6 @@ def create_quant_report(config):
     with open(f'{out_path}/img/raw_correlation.svg', mode='r', encoding='UTF-8') as in_f:
         raw_corr = in_f.read()
 
-    with open(f'{out_path}/img/quant_clustermap.svg', mode='r', encoding='UTF-8') as in_f:
-        quant_clustermap = in_f.read()
 
     with open(f'{out_path}/img/quant_pca.svg', mode='r', encoding='UTF-8') as in_f:
         quant_pca = in_f.read()
@@ -151,13 +149,21 @@ def create_quant_report(config):
                     together. Furthermore, we hope to see separation between infected and
                     control files in the case of inSPIRE-Pathogen.
                 </p>
-        ''' + quant_pca + '''
+        ''' + quant_pca
+    )
+    if os.path.exists(f'{out_path}/img/quant_clustermap.svg'):
+        with open(f'{out_path}/img/quant_clustermap.svg', mode='r', encoding='UTF-8') as in_f:
+            quant_clustermap = in_f.read()
+
+        html_string += (
+            '''
                 <br><br>
                 <p>
                     The figure shows a clustering heatmap over normalised intensities.
                 </p>
-        ''' + quant_clustermap
-    )
+            ''' + quant_clustermap
+        )
+
     if os.path.exists(f'{out_path}/img/peptide_volcano.svg'):
         with open(f'{out_path}/img/peptide_volcano.svg', mode='r', encoding='UTF-8') as in_f:
             pep_volcano = in_f.read()

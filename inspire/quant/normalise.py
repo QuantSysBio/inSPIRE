@@ -73,8 +73,15 @@ def normalise_intensities(config):
     ].to_csv(f'{config.output_folder}/quant/normalised_quantification.csv', index=False)
 
     # Plot correlations between normalised intensities.
-    plot_correlations('normalised_quantification', 'norm', config)
-    plot_quant_clustermap(config)
+    try:
+        plot_correlations('normalised_quantification', 'norm', config)
+    except Exception as e:
+        print(f'Plotting noremd correlations failed with error code {e}')
+
+    try:
+        plot_quant_clustermap(config)
+    except Exception as e:
+        print(f'Plotting cluster map failed with error code {e}')
 
 
 def count_valid_and_identified_quantifications(quant_df, sources, config):

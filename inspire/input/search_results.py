@@ -53,7 +53,6 @@ def generic_read_df(config, save_dfs=True, for_calibration=False):
                 config.source_filename,
                 with_accession=config.use_accession_stratum,
             )
-            search_df = pl.from_pandas(search_df)
         elif config.search_engine == 'maxquant':
             search_df, mods_df = read_mq_data(config.search_results)
         elif config.search_engine == 'peaks':
