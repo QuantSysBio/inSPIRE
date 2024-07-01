@@ -26,3 +26,7 @@ One should also ensure that decoy peptides are exported by select the Preference
 and clicking Show Decoy Hits under the Display Options menu:
 
 <img src="https://raw.githubusercontent.com/QuantSysBio/inSPIRE/master/img/peaks_show_decoy.png" alt="drawing" width="600"/>
+
+When exporting search results, the required table for inSPIRE is DB search psm.csv which can be exported under the Text Formats section:
+
+<img src="https://raw.githubusercontent.com/QuantSysBio/inSPIRE/master/img/peaks_export_tables.png" alt="drawing" width="600"/>
