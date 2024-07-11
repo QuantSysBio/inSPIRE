@@ -261,7 +261,7 @@ def write_with_spectral_features(
     )
 
 
-def add_perc_scan_id(combined_df, config, file_idx, max_scan):
+def add_perc_scan_id(combined_df, file_idx, max_scan):
     """ Function add a Percolator scan ID to the DataFrame that will be unique
         to scans across RAW files.
 
@@ -281,36 +281,12 @@ def add_perc_scan_id(combined_df, config, file_idx, max_scan):
     combined_df : pl.DataFrame
         Input DataFrame with scannr column added.
     """
-    if config.search_engine != 'mascot':
-        combined_df = combined_df.with_columns(
-            pl.col(SCAN_KEY).apply(
-                lambda x, f_id=file_idx : f_id * max_scan  + x
-            ).alias(PERC_SCAN_ID)
-        )
-    else:
-        if config.combined_scans_file is None:
-            combined_df = combined_df.with_columns(
-                pl.col(MASCOT_PEP_QUERY_KEY).apply(
-                    lambda x, f_id=file_idx : f_id * max_scan  + int(x.split('.mgf')[-1])
-                ).alias(PERC_SCAN_ID)
-            )
-        else:
-            if config.source_files is not None:
-                combined_df = combined_df.with_columns(
-                    pl.struct([SOURCE_KEY, MASCOT_PEP_QUERY_KEY]).apply(
-                        lambda x : (
-                            config.source_files.index(x[SOURCE_KEY]) * max_scan
-                        ) + int(x[MASCOT_PEP_QUERY_KEY].split('.mgf')[-1]),
-                    ).alias(PERC_SCAN_ID)
-                )
-            else:
-                source_files = combined_df[SOURCE_KEY].unique().tolist()
-                combined_df = combined_df.with_columns(
-                    pl.struct([SOURCE_KEY, SCAN_KEY]).apply(
-                        lambda x : (source_files.index(x[SOURCE_KEY]) * max_scan) + x[SCAN_KEY],
-                    ).alias(PERC_SCAN_ID)
-                )
-
+    combined_df = combined_df.with_columns(
+        pl.col(SCAN_KEY).apply(
+            lambda x, f_id=file_idx : f_id * max_scan  + x
+        ).alias(PERC_SCAN_ID)
+    )
+        
     return combined_df
 
 def generate_function_arguments(
@@ -525,7 +501,7 @@ def process_single_file(
     print(
         OKCYAN_TEXT + '\t\t\tCreated Spectral and Delta RT Features.' + ENDC_TEXT
     )
-    combined_df = add_perc_scan_id(combined_df, config, file_idx, max_scan)
+    combined_df = add_perc_scan_id(combined_df, file_idx, max_scan)
 
     combined_df = filter_input_columns(combined_df, config, file_idx)
 
@@ -674,21 +650,21 @@ def process_unknown_modifications(target_df, mods_df, config):
             ENDC_TEXT
         )
 
-    if not mods_df[
-            (mods_df[PTM_NAME_KEY] == 'Carbamidomethylation') |
-            (mods_df[PTM_NAME_KEY] == 'Carbamidomethyl (C)')
-        ].shape[0] and config.filter_c:
-        count_before_drop = target_df.shape[0]
-        target_df = target_df.filter(
-            ~pl.col(PEPTIDE_KEY).str.contains('C')
-        )
-        count_after_drop = target_df.shape[0]
-        filtered_psms = count_before_drop - count_after_drop
-        print(
-            OKCYAN_TEXT +
-            f'\tFiltered {filtered_psms} PSMs due to unmodified cysteines.' +
-            ENDC_TEXT
-        )
+        if not mods_df[
+                (mods_df[PTM_NAME_KEY] == 'Carbamidomethylation') |
+                (mods_df[PTM_NAME_KEY] == 'Carbamidomethyl (C)')
+            ].shape[0] and config.filter_c:
+            count_before_drop = target_df.shape[0]
+            target_df = target_df.filter(
+                ~pl.col(PEPTIDE_KEY).str.contains('C')
+            )
+            count_after_drop = target_df.shape[0]
+            filtered_psms = count_before_drop - count_after_drop
+            print(
+                OKCYAN_TEXT +
+                f'\tFiltered {filtered_psms} PSMs due to unmodified cysteines.' +
+                ENDC_TEXT
+            )
 
     return target_df
 

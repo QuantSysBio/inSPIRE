@@ -148,7 +148,7 @@ def _skip_logic(idx, start_idx=0, end_idx=None):
             return False
     return True
 
-def separate_scan_and_source(df_row, scan_title_format, source_list=None, source_filename=None):
+def separate_scan_and_source(scan_title, scan_title_format, source_list=None, source_filename=None):
     """ Function to separate source file and scan number (as well as retention time if
         Distiller format used) from mascots scan_title_format column.
 
@@ -169,9 +169,8 @@ def separate_scan_and_source(df_row, scan_title_format, source_list=None, source
         The input row updated with new columns.
     """
     results = {}
-    scan_title = df_row[MASCOT_SCAN_TITLE_KEY]
     if scan_title_format is None:
-        df_row[SCAN_KEY] = int(scan_title.split('=')[-1].strip('~'))
+        results[SCAN_KEY] = int(scan_title.split('=')[-1].strip('~'))
         if source_filename is None:
             source = scan_title.split('File:')[-1]
             if source.startswith('~'):
@@ -236,6 +235,8 @@ def _read_mascot_dfs(
     hits_df = hits_df.with_columns(
         (pl.col(MASCOT_MASS_KEY) - pl.col(MASCOT_PRED_MASS_KEY)).alias(MASS_DIFF_KEY),
         pl.col(PEPTIDE_KEY).str.lengths().alias(SEQ_LEN_KEY),
+    )
+    hits_df = hits_df.with_columns(
         (pl.col(MASCOT_MASS_KEY)/pl.col(SEQ_LEN_KEY)).alias('avgResidueMass'),
     )
 
@@ -473,7 +474,7 @@ def read_mascot_data(
     hits_df = mascot_reduce_to_max(hits_df, reduce, with_accession)
 
     hits_df = hits_df.with_columns(
-        pl.struct([MASCOT_SCAN_TITLE_KEY, SCAN_KEY]).apply(
+        pl.col(MASCOT_SCAN_TITLE_KEY).apply(
             lambda x : separate_scan_and_source(x, scan_title_format, source_list, source_filename),
             skip_nulls=False,
         ).alias('results')
@@ -515,8 +516,8 @@ def mascot_reduce_to_max(main_df, reduce, with_accession):
     if reduce:
         main_df = main_df.with_columns(
             pl.col(PEPTIDE_KEY).apply(
-                lambda x : x.replace('I', 'L').alias('ilSub')
-            )
+                lambda x : x.replace('I', 'L')
+            ).alias('ilSub')
         )
         main_df = main_df.unique(subset=[MASCOT_PEP_QUERY_KEY, 'ilSub'])
         main_df = main_df.drop('ilSub')

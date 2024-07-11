@@ -1,7 +1,11 @@
 """ Script containing functions for writing plotting utils of inSPIRE epitope candidates results.
 """
+from math import ceil
 import os
 
+from logomaker import Logo
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -10,7 +14,7 @@ import seaborn as sns
 from sklearn.decomposition import PCA
 
 from inspire.constants import PLOT_AXIS_REQUIREMENTS
-
+from inspire.logo_plot_utils import create_comparison_logo_plot
 
 def bar_plot(config):
     """ Function generate bar plots of shared and inSPIRE only identification counts.
@@ -201,4 +205,19 @@ def plot_quant_pca(config):
     )
     fig.write_image(
         f'{config.output_folder}/img/epitope_pca.svg', engine='kaleido'
+    )
+
+
+def js_divergence(config, host_df):
+    """ Function plot JS divergence between pathogen and host 9-mer peptides.
+    """
+    ep_df = pd.read_csv(f'{config.output_folder}/epitope/potentialEpitopeCandidates.csv')
+    ep_df = ep_df[['peptide']]
+    ep_df = ep_df[ep_df['peptide'].apply(lambda x : len(x) == 9)]
+    host_df = host_df[['peptide']].drop_duplicates()
+    host_df = host_df[host_df['peptide'].apply(lambda x : len(x) == 9)]
+    
+    create_comparison_logo_plot(
+        [ep_df, host_df], ['Pathogen', 'Host'], 9,
+        f'{config.output_folder}/img', 'logo_comp_plots'
     )

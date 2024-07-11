@@ -7,10 +7,12 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 from scipy.stats import ttest_ind
+from sklearn.cluster import KMeans
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from inspire.constants import ACCESSION_KEY, PEPTIDE_KEY
 from inspire.utils import is_control
+from inspire.quant.utils import create_quant_logoplots
 
 FC_CUT = 0.5
 P_VAL_CUT = 0.05
@@ -35,25 +37,42 @@ def de_analysis(config):
 
     quant_df, ctrl_samp_names, inf_samp_names = combine_samples(quant_df, config)
 
-    quant_df = filter_by_n_valid_measurement(quant_df, ctrl_samp_names, inf_samp_names)
+    quant_df['nValidControl'] = quant_df[ctrl_samp_names].count(axis=1)
+    quant_df['nValidInf'] = quant_df[inf_samp_names].count(axis=1)
 
     quant_df = calculate_fold_change_and_p_val(quant_df, ctrl_samp_names, inf_samp_names)
 
+
+    # Write outputs.
+    quant_df['absFoldChange'] = quant_df['foldChange'].abs()
+    quant_df = quant_df.sort_values(by='absFoldChange', ascending=False)
+
+
+    quant_df[[
+        PEPTIDE_KEY, ACCESSION_KEY,
+    ] + ctrl_samp_names + inf_samp_names + [
+        'foldChange',
+        'pValue',
+        'adjusted_pValue',
+        'diffExprResult',
+    ]].to_csv(f'{config.output_folder}/quant/de_peptide_results.csv', index=False)
+
+    quant_df = quant_df[quant_df['foldChange'].notna()]
+    kmeans = KMeans(n_clusters=7, random_state=42)
+    quant_df['cluster'] = kmeans.fit_predict(quant_df[['foldChange']])
+
+    
+    try:
+        create_quant_logoplots(quant_df, config.output_folder, kmeans.cluster_centers_)
+    except Exception as e:
+        print(f'Quantitative logo plotting failed with exception {e}')
+
+    quant_df = quant_df[
+        (quant_df['nValidControl'] >= 3) &
+        (quant_df['nValidInf'] >= 3)
+    ]
     if quant_df.shape[0]:
         create_volcano_plot(quant_df, config)
-
-        # Write outputs.
-        quant_df['absFoldChange'] = quant_df['foldChange'].abs()
-        quant_df = quant_df.sort_values(by='absFoldChange', ascending=False)
-        quant_df[[
-            PEPTIDE_KEY, ACCESSION_KEY,
-        ] + ctrl_samp_names + inf_samp_names + [
-            'foldChange',
-            'pValue',
-            'adjusted_pValue',
-            'diffExprResult',
-        ]].to_csv(f'{config.output_folder}/quant/de_peptide_results.csv', index=False)
-
 
 def combine_samples(quant_df, config):
     """ Function to combine technical replicate values into an averaged sample value.
@@ -102,34 +121,6 @@ def combine_samples(quant_df, config):
     quant_df = quant_df[[PEPTIDE_KEY, ACCESSION_KEY] + sample_names]
 
     return quant_df, ctrl_samp_names, inf_samp_names
-
-
-def filter_by_n_valid_measurement(quant_df, ctrl_samp_names, inf_samp_names):
-    """ Function to filter the quantification DataFrame for differential expression
-        analysis so that it contains at least 3 samples for both control and infected.
-
-    Parameters
-    ----------
-    quant_df : pd.DataFrame
-        DataFrame of normalised quantified peptides.
-    ctrl_samp_names : list of str
-        A list of the sample names for control measurements.
-    inf_samp_names : list of str
-        A list of the sample names for infected measurements.
-
-    Returns
-    -------
-    quant_df : pd.DataFrame
-        The input DataFrame filtered by number of valid quantifications.
-    """
-    quant_df['nValidControl'] = quant_df[ctrl_samp_names].count(axis=1)
-    quant_df['nValidInf'] = quant_df[inf_samp_names].count(axis=1)
-    quant_df = quant_df[
-        (quant_df['nValidControl'] >= 3) &
-        (quant_df['nValidInf'] >= 3)
-    ]
-
-    return quant_df
 
 
 def calculate_fold_change_and_p_val(quant_df, ctrl_samp_names, inf_samp_names):
