@@ -20,6 +20,7 @@ from inspire.constants import (
 from inspire.epitope.proteome_mapping import filter_pathogen_only_peptides
 from inspire.epitope.plot_utils import (
     bar_plot,
+    js_divergence,
     plot_binding_clustermap,
     plot_quant_pca,
     swarm_plots,
@@ -71,7 +72,7 @@ def extract_epitope_candidates(config):
     ]
 
     # Add accession data:
-    final_df, multi_mapped_df = filter_pathogen_only_peptides(final_df, config)
+    final_df, multi_mapped_df, host_df = filter_pathogen_only_peptides(final_df, config)
 
     # Write peptides which map to both pathogen and host proteomes (not as epitope
     # candidates but potentially interesting)
@@ -140,6 +141,11 @@ def extract_epitope_candidates(config):
         index=False,
     )
     write_excel_report(final_peptide_df, final_df, config)
+
+    try:
+        js_divergence(config, host_df)
+    except Exception as e:
+        print(f'JS Divergence plotting failed with exception {e}')
 
     bar_plot(config)
     plot_binding_clustermap(config)

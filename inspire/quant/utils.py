@@ -6,12 +6,14 @@ import pandas as pd
 from plotly.colors import n_colors
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
 import scipy
 from scipy.stats import zscore
 import seaborn as sns
 from sklearn.decomposition import PCA
 
 from inspire.constants import PLOT_AXIS_REQUIREMENTS
+from inspire.logo_plot_utils import create_comparison_logo_plot
 
 
 def plot_correlations(quant_file_name, code, config):
@@ -244,4 +246,95 @@ def plot_distros(quant_df, config, sources):
     )
     fig.write_image(
         f'{config.output_folder}/img/quant_distro.svg', engine='kaleido'
+    )
+
+
+def join_peptide(df_row, clusters):
+    peptide = ''
+    for cluster in clusters:
+        if isinstance(df_row[cluster], str):
+            peptide += df_row[cluster]
+        else:
+            peptide += 'X'
+    return peptide
+
+def create_quant_logoplots(de_df, output_folder, centers):
+    """ Function to create quantitative logoplots based on normalised inspire dataframe
+    """
+    sorted_clusters = [x[1] for x in sorted(list(zip(
+        centers, list(range(7))
+    )))]
+    create_violin_cluster_plot(de_df, sorted_clusters, output_folder)
+    center_cluster = sorted_clusters.pop(3)
+    center_cluster_c_term = de_df[
+        de_df['cluster'] == center_cluster
+    ]['peptide'].apply(lambda x : x[-1]*6)
+
+    center_df = pd.DataFrame({
+        'peptide' : center_cluster_c_term
+    })
+    cluster_df = pd.DataFrame({
+        idx: de_df[
+            de_df['cluster'] == idx
+        ]['peptide'].apply(lambda x : x[-1]) for idx in sorted_clusters
+    })
+    cluster_df['peptide'] = cluster_df.apply(
+        lambda x : join_peptide(x, sorted_clusters), axis=1
+    )
+
+    create_comparison_logo_plot(
+        [cluster_df, center_df],
+        ['C-terminus: Different Clusters', 'Center Cluster'],
+        6,
+        f'{output_folder}/img',
+        'quant_logo_plots',
+        data_index=[1,2,3,5,6,7]
+    )
+
+def create_violin_cluster_plot(de_df, sorted_clusters, output_folder):
+    """ Create figure showing distribution of fold changes across the cluste
+    """
+    violin_fig = go.Figure()
+    for idx, cluster in enumerate(sorted_clusters):
+        cluster_df = de_df[de_df['cluster'] == cluster]
+        violin_fig.add_trace(
+            go.Violin(
+                x=[idx+1]*cluster_df.shape[0], y=cluster_df['foldChange'],
+                fillcolor='pink', line_color='black', line_width=0.5,
+                points=False
+            )
+        )
+     # Clean axes and layout
+    violin_fig.update_xaxes(
+        showline=False,
+        showticklabels=True,
+        title_text='Cluster',
+        linecolor='black',
+        linewidth=0.5,
+        showgrid=False,
+        ticks="outside",
+        dtick=1,
+    )
+    violin_fig.add_hline(y=0, line_color='black', line_width=0.5, line_dash='dash')
+    violin_fig.update_yaxes(
+        showline=True,
+        showticklabels=True,
+        linewidth=0,
+        linecolor='black',
+        title_text='Log Fold Change',
+        showgrid=False,
+        ticks="outside",
+    )
+    violin_fig.update_layout(
+        width=500,
+        height=300,
+        paper_bgcolor='rgba(256,256,256,256)',
+        plot_bgcolor='rgba(256,256,256,256)',
+        showlegend=False,
+        font_color='black',
+        font_family='Helvetica',
+    )
+
+    pio.write_image(
+        violin_fig, f'{output_folder}/img/quant_cluster_violin.svg',
     )

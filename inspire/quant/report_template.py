@@ -138,10 +138,46 @@ def create_quant_report(config):
                     may be higher or lower for individual files, the normalised
                     intensities should all be centered around the same point.
                 </p>
-        ''' + quant_distro +
+        ''' + quant_distro
+    )
+
+        
+    if (
+        os.path.exists(f'{out_path}/img/quant_logo_plots.svg') and
+        os.path.exists(f'{out_path}/img/quant_cluster_violin.svg')
+    ):
+        with open(f'{out_path}/img/quant_logo_plots.svg', mode='r', encoding='UTF-8') as in_f:
+            quant_logo = in_f.read()
+        with open(f'{out_path}/img/quant_cluster_violin.svg', mode='r', encoding='UTF-8') as in_f:
+            quant_clust_violin = in_f.read()
+
+        html_string += (
+            '''
+                <br><br>
+                <h3>Clustering based on Fold Change</h3>
+                <p>
+                    For this analysis we cluster quantified peptides based on the log2 fold change
+                    in their abundance in order to understand the quantitative differences in the
+                    immunopeptidome brought about by pathogen infection. Clusters 1, 2, and 3 are
+                    peptides under represented after infection, while clusters 5, 6, and 7 are
+                    peptides over represented.
+                </p>
+            ''' + quant_clust_violin +
+            '''
+                <br><br>
+                <p>
+                    The figure shows amino acids over and under represented at C-terminus among clusters
+                    compared to the central cluster (cluster 4). Considering changes at the C-terminus could
+                    be relevant for identification of alternate cleavage mechanisms or changes in HLA-I molecule
+                    preference given that C-terminus is an anchor site.
+                </p>
+            ''' + quant_logo
+        )
+
+    html_string += (
         '''
                 <h3>
-                    Clustering over files:
+                    Clustering Over Files
                 </h3>
                 <p>
                     The figure the raw files after principal component analysis of normalised
@@ -151,6 +187,7 @@ def create_quant_report(config):
                 </p>
         ''' + quant_pca
     )
+
     if os.path.exists(f'{out_path}/img/quant_clustermap.svg'):
         with open(f'{out_path}/img/quant_clustermap.svg', mode='r', encoding='UTF-8') as in_f:
             quant_clustermap = in_f.read()

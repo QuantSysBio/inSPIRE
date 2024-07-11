@@ -44,6 +44,9 @@ def create_epitope_report(config):
     with open(f'{out_path}/img/epitope_metrics.svg', mode='r', encoding='UTF-8') as in_f:
         swarm_plot = in_f.read()
 
+    with open(f'{out_path}/img/logo_comp_plots.svg', mode='r', encoding='UTF-8') as in_f:
+        logo_comp = in_f.read()
+
     base_table += '</table>'
 
     html_string = ('''
@@ -126,6 +129,25 @@ def create_epitope_report(config):
             <br>
     ''' + swarm_plot
     )
+    if os.path.exists(f'{out_path}/img/logo_comp_plots.svg'):
+        with open(f'{out_path}/img/logo_comp_plots.svg', mode='r', encoding='UTF-8') as in_f:
+            logo_plot = in_f.read().strip('\n')
+        html_string += (
+            '''
+                    <h3>
+                        Pathogen vs. Host Amino Acid Frequency:
+                    </h3>
+                    <p>
+                        This chart shows the JS divergence between amino acid frequencies in host
+                        and pathogen peptides. Amino acids on the positive y-axis are
+                        overrepresented in the pathogen peptides compared to the host,
+                        while amino acids on the negative y-axis
+                        are overrepresented in the host peptides compared to the pathogen.
+                        This plot can provide insight into the differing characteristics
+                        of pathogen and host peptides.
+                    </p>
+            ''' + logo_plot
+        )
     if os.path.exists(f'{out_path}/img/epitope_pca.svg'):
         with open(f'{out_path}/img/epitope_pca.svg', mode='r', encoding='UTF-8') as in_f:
             ep_pca = in_f.read().strip('\n')

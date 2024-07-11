@@ -26,11 +26,13 @@ def filter_pathogen_only_peptides(final_df, config):
         DataFrame of pathogen mapped peptides only.
     multi_mapped_df : pd.DataFrame
         DataFrame of pathogen mapped peptides that multimapped.
+    host_df : pd.DataFrame
+        DataFrame of host peptides identified.
     """
     final_df = add_accession_data(final_df, config)
 
     total_count = final_df.shape[0]
-    final_df, multi_mapped_df = filter_multi_mapped(final_df, config.host_proteome)
+    final_df, multi_mapped_df, host_df = filter_multi_mapped(final_df, config.host_proteome)
     no_host_accession_count = final_df.shape[0]
 
     print(
@@ -55,7 +57,7 @@ def filter_pathogen_only_peptides(final_df, config):
     if not known_accession_count:
         exit_with_no_peptides_identified(config)
 
-    return final_df, multi_mapped_df
+    return final_df, multi_mapped_df, host_df
 
 
 def _sub_add_accession(unique_df, host_proteome, pathogen_proteome):
@@ -172,11 +174,15 @@ def filter_multi_mapped(final_df, host_proteome_filename):
             x, host_proteome, trace_accession=False,
         )
     )
+    host_df = final_df[
+        (final_df['hostAccessions'] != 'unknown') &
+        (final_df['pathogenProteins'] == 'unknown')
+    ]
     final_df = final_df[
         final_df['hostAccessions'].apply(lambda x : x == 'unknown')
     ]
 
-    return final_df, multi_mapped_df
+    return final_df, multi_mapped_df, host_df
 
 
 def extract_protein_ids(pathogen_accessions):

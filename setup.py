@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='inspirems',
-    version='2.0rc6',
+    version='2.0rc7',
     description='Helping to integrate Spectral Predictors and Rescoring.',
     author='John Cormican, Juliane Liepe, Martin Pasen',
     author_email='juliane.liepe@mpinat.mpg.de',
@@ -54,6 +54,7 @@ setup(
 		'kiwisolver==1.4.5',
 		'libclang==16.0.6',
 		'lxml==4.9.3',
+        'logomaker==0.8',
 		'Markdown==3.5.1',
 		'MarkupSafe==2.1.3',
 		'matplotlib==3.8.2',
