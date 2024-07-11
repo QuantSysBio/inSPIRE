@@ -44,9 +44,6 @@ def create_epitope_report(config):
     with open(f'{out_path}/img/epitope_metrics.svg', mode='r', encoding='UTF-8') as in_f:
         swarm_plot = in_f.read()
 
-    with open(f'{out_path}/img/logo_comp_plots.svg', mode='r', encoding='UTF-8') as in_f:
-        logo_comp = in_f.read()
-
     base_table += '</table>'
 
     html_string = ('''
