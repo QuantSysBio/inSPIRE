@@ -1,10 +1,18 @@
-# inSPIRE
+# inSPIRE & PEPSeek & interact-ms
 
 <img src="https://raw.githubusercontent.com/QuantSysBio/inSPIRE/master/img/inSPIRE-logo.png" alt="drawing" width="200"/>
 
 <i>in silico</i> Spectral Predictor Informed REscoring
 
 inSPIRE allows easy rescoring of MaxQuant, Mascot or PEAKS DB search results using spectral prediction. inSPIRE is primarily developed to use Prosit predicted spectra but can also use MS<sup>2</sup>PIP predictions. inSPIRE enables the prediction of MS2 spectra with Prosit without the need of a GPU and it can be run on a standard workstation or laptop.
+
+PEPSeek
+
+PEPSeek is a technology building on previous work on inSPIRE. It is a purpouse built tool for the identification of pathogen peptides in immunopeptidomics. For PEPSeek we recommend installation via the interact-ms webserver.
+
+[interact-ms](https://github.com/QuantSysBio/interact-ms)
+
+interact-ms is a web-server built to allow easy access to the tools available here. To view the interact-ms GitHub page [click here](https://github.com/QuantSysBio/interact-ms), or view our demo site [here](https://quantsysbio.github.io/interact-ms.html).
 
 ## inSPIRE Versions from previous publications
 
