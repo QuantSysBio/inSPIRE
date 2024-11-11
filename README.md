@@ -8,7 +8,7 @@ inSPIRE allows easy rescoring of MaxQuant, Mascot or PEAKS DB search results usi
 
 PEPSeek
 
-PEPSeek is a technology building on previous work on inSPIRE. It is a purpouse built tool for the identification of pathogen peptides in immunopeptidomics. For PEPSeek we recommend installation via the interact-ms webserver.
+PEPSeek is a technology building on previous work on inSPIRE. It is a purpouse built tool for the identification of pathogen peptides in immunopeptidomics. For PEPSeek we recommend installation via the interact-ms webserver. We provide a demo of running PEPSeek [here](https://www.youtube.com/watch?v=Pf78932JWZo&t=39s).
 
 interact-ms
 
