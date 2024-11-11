@@ -10,7 +10,7 @@ PEPSeek
 
 PEPSeek is a technology building on previous work on inSPIRE. It is a purpouse built tool for the identification of pathogen peptides in immunopeptidomics. For PEPSeek we recommend installation via the interact-ms webserver.
 
-[interact-ms](https://github.com/QuantSysBio/interact-ms)
+interact-ms
 
 interact-ms is a web-server built to allow easy access to the tools available here. To view the interact-ms GitHub page [click here](https://github.com/QuantSysBio/interact-ms), or view our demo site [here](https://quantsysbio.github.io/interact-ms.html).
 
