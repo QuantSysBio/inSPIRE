@@ -57,14 +57,30 @@ PEAKS_RELEVANT_COLUMNS = [
     PEAKS_SCORE_KEY,
     PEAKS_SOURCE_KEY,
 ]
+PEAKS_11_RELEVANT_COLUMNS = [
+    'Accession',
+    'AScore',
+    'z',
+    # No chimera
+    'Length',
+    'Mass',
+    'm/z',
+    'Peptide',
+    'ppm',
+    'PTM',
+    'RT',
+    'Scan',
+    '-10LgP',
+    'Source File',
+]
 
 ID_NUMBERS = {
-    'Deamidation (NQ)': 7,
-    'Deamidation (N)': 8,
-    'Deamidation (Q)': 7,
-    'Phospho (S)': 6,
+    'Deamidation (NQ)': 4,
+    'Deamidation (N)': 4,
+    'Deamidation (Q)': 4,
+    'Phospho (S)': 5,
     'Phospho (T)': 5,
-    'Phospho (Y)': 4,
+    'Phospho (Y)': 5,
     'Acetylation (N-term)': 3,
     'Acetylation (Protein N-term)': 3,
     'Oxidation (M)': 2,
@@ -124,7 +140,7 @@ def separate_peaks_ptms(df_row, var_mods):
     ptm_prefix = '0'
     ptm_suffix = '0'
 
-    if isinstance(ptms, str):
+    if isinstance(ptms, str) and ptms:
         ptm_list = [a.strip(' ') for a in ptms.split(';')]
         ptm_list = [b.split(':')[1].strip(' ') for b in ptm_list]
     else:
@@ -221,8 +237,8 @@ def collect_peaks_var_mods(peaks_df):
             lambda x : ["~".join(y) for y in zip(x['ptm_names'], x['peaks_ptm_weights'])]
         ).alias('combined_ptm_data')
     )
-
     ptms = [x.split('~') for x in var_mod_df['combined_ptm_data'].explode().unique()]
+    ptms = [x for x in ptms if x[0]]
 
     ptm_names = [name for name, _ in ptms]
 
@@ -232,7 +248,7 @@ def collect_peaks_var_mods(peaks_df):
         PTM_NAME_KEY: pd.Series(ptm_names),
         PTM_WEIGHT_KEY: pd.Series(ptm_weights),
     })
-    ptms_df = ptms_df.drop_duplicates(PTM_NAME_KEY)
+    ptms_df = ptms_df.drop_duplicates(PTM_NAME_KEY).reset_index(drop=True)
 
     ptms_df[PTM_ID_KEY] = ptms_df[PTM_NAME_KEY].apply(
         lambda x : ID_NUMBERS.get(x, 9)
@@ -257,7 +273,13 @@ def read_single_peaks_data(df_loc):
     mods_dfs : pd.DataFrame
         A small DataFrame detailing the ptms found in the data.
     """
-    peaks_df = pl.read_csv(df_loc, columns=PEAKS_RELEVANT_COLUMNS)
+    try:
+        peaks_df = pl.read_csv(df_loc, columns=PEAKS_RELEVANT_COLUMNS)
+    except pl.exceptions.ColumnNotFoundError:
+        peaks_df = pl.read_csv(df_loc, columns=PEAKS_11_RELEVANT_COLUMNS)
+        peaks_df = peaks_df.with_columns(pl.lit('No').alias('from Chimera'))
+        peaks_df = peaks_df.rename({'z': 'Z', '-10LgP': '-10lgP'})
+
 
     # Separate PTMs.
     var_mods = collect_peaks_var_mods(peaks_df)
@@ -277,6 +299,8 @@ def read_single_peaks_data(df_loc):
         peaks_df = peaks_df.with_columns(
             pl.lit(None).alias(PTM_SEQ_KEY)
         )
+
+    print(peaks_df.columns)
 
     # Rename to match inSPIRE naming scheme.
     peaks_df = peaks_df.rename({

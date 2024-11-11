@@ -1,4 +1,4 @@
-""" Script containing functions for writing plotting utils of inSPIRE epitope candidates results.
+""" Script containing functions for writing plotting utils of PEPSeek Epitopes results.
 """
 from math import ceil
 import os
@@ -17,9 +17,9 @@ from inspire.constants import PLOT_AXIS_REQUIREMENTS
 from inspire.logo_plot_utils import create_comparison_logo_plot
 
 def bar_plot(config):
-    """ Function generate bar plots of shared and inSPIRE only identification counts.
+    """ Function generate bar plots of shared and PEPseek only identification counts.
     """
-    ep_df = pd.read_csv(f'{config.output_folder}/epitope/potentialEpitopeCandidates.csv')
+    ep_df = pd.read_csv(f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv')
     insp_df = ep_df[ep_df['foundBySearchEngine'] == 'No']
     shared_df = ep_df[ep_df['foundBySearchEngine'] == 'Yes']
 
@@ -30,11 +30,11 @@ def bar_plot(config):
     shared_prot_count = total_df[total_df['_merge'] != 'right_only'].shape[0]
 
     fig = px.bar(
-        color=['Shared', 'Shared', 'inSPIRE Only', 'inSPIRE Only'],
+        color=['Shared', 'Shared', 'PEPSeek Only', 'PEPSeek Only'],
         y=[shared_df.shape[0],shared_prot_count,insp_df.shape[0],insp_prot_count],
         x=['Epitope', 'Antigen', 'Epitope', 'Antigen',],
         color_discrete_map={
-            'inSPIRE Only': '#FFBE00',
+            'PEPSeek Only': '#FFBE00',
             'Shared': '#C0C0C0',
         },
     )
@@ -53,15 +53,15 @@ def bar_plot(config):
     )
 
     fig.write_image(
-        f'{config.output_folder}/img/epitope_bar_plot.svg', engine='kaleido'
+        f'{config.output_folder}/img/PEPSeek_bar_plot.svg', engine='kaleido'
     )
 
 
 def swarm_plots(config):
-    """ Function to provide bee swarm plots of various metrics for shared and inSPIRE
+    """ Function to provide bee swarm plots of various metrics for shared and PEPSeek
         only identifications. 
     """
-    ep_df = pd.read_csv(f'{config.output_folder}/epitope/potentialEpitopeCandidates.csv')
+    ep_df = pd.read_csv(f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv')
 
     fig = make_subplots(rows=1, cols=3)
     range_cuts = []
@@ -71,7 +71,7 @@ def swarm_plots(config):
             y=ep_df[metric],
             x=ep_df[
                 'foundBySearchEngine'
-            ].str.replace('Yes', 'Shared').replace('No', 'inSPIRE Only'),
+            ].str.replace('Yes', 'Shared').replace('No', 'PEPSeek Only'),
             color_discrete_map={
                 'No': '#FFBE00',
                 'Yes': 'darkgrey',
@@ -104,14 +104,14 @@ def swarm_plots(config):
     )
 
     fig.write_image(
-        f'{config.output_folder}/img/epitope_metrics.svg', engine='kaleido'
+        f'{config.output_folder}/img/PEPSeek_metrics.svg', engine='kaleido'
     )
 
 
 def plot_binding_clustermap(config):
     """ Function to plot clustermap of peptides and their binding affinities.
     """
-    ep_df = pd.read_csv(f'{config.output_folder}/epitope/potentialEpitopeCandidates.csv')
+    ep_df = pd.read_csv(f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv')
 
     ep_df.index = ep_df['peptide']
     binding_aff_cols = [col for col in ep_df.columns if col.endswith('%Rank_BA')]
@@ -130,7 +130,7 @@ def plot_binding_clustermap(config):
         ep_df, cmap=sns.color_palette("blend:#FA3F37,#FAF4D3", as_cmap=True),
         yticklabels=True, figsize=(7,fig_length), vmin=0, vmax=20,
         linewidths=0.5, linecolor='black')
-    cluster_map.figure.savefig(f'{config.output_folder}/img/epitope_affinity_cluster.svg')
+    cluster_map.figure.savefig(f'{config.output_folder}/img/PEPSeek_affinity_cluster.svg')
 
 def plot_quant_pca(config):
     """ Function to plot PCA first two components of quantification across files for pathogen
@@ -138,7 +138,7 @@ def plot_quant_pca(config):
     """
     if not os.path.exists(f'{config.output_folder}/quant/quantified_per_file.csv'):
         return
-    ep_df = pd.read_csv(f'{config.output_folder}/epitope/potentialEpitopeCandidates.csv')
+    ep_df = pd.read_csv(f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv')
     quant_df = pd.read_csv(f'{config.output_folder}/quant/quantified_per_file.csv')
     quant_idp_cols = [col for col in quant_df.columns if col.endswith('_idp')]
     quant_raw_cols = [col for col in quant_df.columns if col.endswith('_raw')]
@@ -204,14 +204,14 @@ def plot_quant_pca(config):
         plot_bgcolor='rgba(0,0,0,0)',
     )
     fig.write_image(
-        f'{config.output_folder}/img/epitope_pca.svg', engine='kaleido'
+        f'{config.output_folder}/img/PEPSeek_pca.svg', engine='kaleido'
     )
 
 
 def js_divergence(config, host_df):
     """ Function plot JS divergence between pathogen and host 9-mer peptides.
     """
-    ep_df = pd.read_csv(f'{config.output_folder}/epitope/potentialEpitopeCandidates.csv')
+    ep_df = pd.read_csv(f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv')
     ep_df = ep_df[['peptide']]
     ep_df = ep_df[ep_df['peptide'].apply(lambda x : len(x) == 9)]
     host_df = host_df[['peptide']].drop_duplicates()

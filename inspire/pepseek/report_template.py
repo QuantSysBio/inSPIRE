@@ -1,4 +1,4 @@
-""" Functions for generating the html report at the end of the inSPIRE
+""" Functions for generating the html report at the end of the PEPSeek
     pipeline.
 """
 import os
@@ -27,7 +27,7 @@ def create_epitope_report(config):
         </tr>
     """
     ep_df = pd.read_csv(
-        f'{config.output_folder}/epitope/potentialEpitopeCandidates.csv'
+        f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv'
     )
 
     for _, df_row in ep_df.iterrows():
@@ -38,10 +38,10 @@ def create_epitope_report(config):
             </tr>
         '''
 
-    with open(f'{out_path}/img/epitope_bar_plot.svg', mode='r', encoding='UTF-8') as in_f:
+    with open(f'{out_path}/img/PEPSeek_bar_plot.svg', mode='r', encoding='UTF-8') as in_f:
         bar_plot = in_f.read().strip('\n')
 
-    with open(f'{out_path}/img/epitope_metrics.svg', mode='r', encoding='UTF-8') as in_f:
+    with open(f'{out_path}/img/PEPSeek_metrics.svg', mode='r', encoding='UTF-8') as in_f:
         swarm_plot = in_f.read()
 
     base_table += '</table>'
@@ -91,7 +91,7 @@ def create_epitope_report(config):
         </head>
         <body>
             <center>
-            <h2>inSPIRE Epitope Candidate Report for ''' + config.experiment_title + '''</h2>
+            <h2>PEPSeek Report for ''' + config.experiment_title + '''</h2>
             </center>
             <h3>
                 Epitope Candidates Found
@@ -104,11 +104,11 @@ def create_epitope_report(config):
                 ''' + base_table + '''
             </p>
             <h3>
-                Shared and inSPIRE Only Peptides:
+                Shared and PEPSeek Only Peptides:
             </h3>
             <p>
                 This figure compares the number of peptides identified by both the
-                search engine and inSPIRE against peptides identified by inSPIRE alone.
+                search engine and PEPSeek against peptides identified by PEPSeek alone.
             </p>
             <br>
              ''' + bar_plot +
@@ -120,7 +120,7 @@ def create_epitope_report(config):
                 This figure shows distribution of spectral angle, engine score, and
                 retention time prediction error on the pathogen peptide identifications.
                 For spectral angle and retention time prediction error we should see a
-                similar distribution. On engine score, the inSPIRE only peptides likely
+                similar distribution. On engine score, the PEPSeek only peptides likely
                 score lower.
             </p>
             <br>
@@ -145,8 +145,8 @@ def create_epitope_report(config):
                     </p>
             ''' + logo_plot
         )
-    if os.path.exists(f'{out_path}/img/epitope_pca.svg'):
-        with open(f'{out_path}/img/epitope_pca.svg', mode='r', encoding='UTF-8') as in_f:
+    if os.path.exists(f'{out_path}/img/PEPSeek_pca.svg'):
+        with open(f'{out_path}/img/PEPSeek_pca.svg', mode='r', encoding='UTF-8') as in_f:
             ep_pca = in_f.read().strip('\n')
         html_string += (
             '''
@@ -163,9 +163,9 @@ def create_epitope_report(config):
             ''' + ep_pca
         )
 
-    if os.path.exists(f'{out_path}/img/epitope_affinity_cluster.svg'):
+    if os.path.exists(f'{out_path}/img/PEPSeek_affinity_cluster.svg'):
         with open(
-            f'{out_path}/img/epitope_affinity_cluster.svg',
+            f'{out_path}/img/PEPSeek_affinity_cluster.svg',
             mode='r',
             encoding='UTF-8',
         ) as in_f:
@@ -194,11 +194,11 @@ def create_epitope_report(config):
             identified.
         </p>
         <embed src="
-    ''' + f'{config.output_folder}/epitope/spectralPlots.pdf" width=1000 height=2000>'
+    ''' + f'{config.output_folder}/PEPSeek/spectralPlots.pdf" width=1000 height=2000>'
     )
 
 
-    output_path = f'{config.output_folder}/epitope/inspire-epitope-report.html'
+    output_path = f'{config.output_folder}/PEPSeek/pepseek-report.html'
     with open(output_path, 'w', encoding='UTF-8') as output_file:
         output_file.write(html_string)
 

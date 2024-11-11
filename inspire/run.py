@@ -14,7 +14,7 @@ from inspire.config import Config
 from inspire.convert import convert_raw_to_mgf
 from inspire.constants import ENDC_TEXT, OKGREEN_TEXT
 from inspire.download import download_data, download_models, download_utils
-from inspire.epitope.extract_candidates import extract_epitope_candidates
+from inspire.pepseek.extract_candidates import extract_epitope_candidates
 from inspire.execute_msfragger import execute_msfragger
 from inspire.get_spectral_angle import get_spectral_angle
 from inspire.input.search_results import generic_read_df
