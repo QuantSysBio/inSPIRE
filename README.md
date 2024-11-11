@@ -1,4 +1,4 @@
-# inSPIRE & PEPSeek & interact-ms
+# inSPIRE, PEPSeek, & interact-ms
 
 <img src="https://raw.githubusercontent.com/QuantSysBio/inSPIRE/master/img/inSPIRE-logo.png" alt="drawing" width="200"/>
 
