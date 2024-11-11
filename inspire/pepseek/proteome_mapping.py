@@ -213,6 +213,6 @@ def exit_with_no_peptides_identified(config):
     )
 
     _ = pd.ExcelWriter( # pylint: disable=abstract-class-instantiated
-        f'{config.output_folder}/epitope/potentialEpitopeCandidates.xlsx',
+        f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.xlsx',
         engine='xlsxwriter',
     )

@@ -78,7 +78,7 @@ def quantify_identifications(config):
     plot_correlations('quantified_per_file', 'raw', config)
 
 def create_skyline_input(config):
-    """ Function to format the inSPIRE identifications for Skyline.
+    """ Function to format the identifications for Skyline.
 
     Parameters
     ----------

@@ -120,8 +120,8 @@ class Config:
         if not os.path.exists(f'{self.output_folder}/quant'):
             os.makedirs(f'{self.output_folder}/quant')
 
-        if not os.path.exists(f'{self.output_folder}/epitope'):
-            os.makedirs(f'{self.output_folder}/epitope')
+        if not os.path.exists(f'{self.output_folder}/PEPSeek'):
+            os.makedirs(f'{self.output_folder}/PEPSeek')
 
         if not os.path.exists(f'{self.output_folder}/img'):
             os.makedirs(f'{self.output_folder}/img')

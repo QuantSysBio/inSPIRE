@@ -1,4 +1,4 @@
-""" Functions for generating the html report at the end of the inSPIRE
+""" Functions for generating the html report at the end of the quantification
     pipeline.
 """
 import os
@@ -103,7 +103,7 @@ def create_quant_report(config):
         </head>
         <body>
             <center>
-            <h2>inSPIRE Quantification Report for ''' + config.experiment_title + '''</h2>
+            <h2>Quantification Report for ''' + config.experiment_title + '''</h2>
             </center>
             <h3>
                 Raw Files Analysed
@@ -183,7 +183,7 @@ def create_quant_report(config):
                     The figure the raw files after principal component analysis of normalised
                     peptide intensities. We should see technical replicates clustering
                     together. Furthermore, we hope to see separation between infected and
-                    control files in the case of inSPIRE-Pathogen.
+                    control files in the case of PEPSeek.
                 </p>
         ''' + quant_pca
     )
@@ -212,12 +212,12 @@ def create_quant_report(config):
                     </h3>
                     <p>
                         This plot shows up and downregulation on the peptide level. These results are
-                        also available in csv format in the inSPIRE quantitative outputs.
+                        also available in csv format in the quantitative outputs.
                     </p>
             ''' + pep_volcano
         )
 
-    output_path = f'{config.output_folder}/quant/inspire-quant-report.html'
+    output_path = f'{config.output_folder}/quant/quant-report.html'
     with open(output_path, 'w', encoding='UTF-8') as output_file:
         output_file.write(html_string)
 

@@ -17,15 +17,15 @@ from inspire.constants import (
     SOURCE_KEY,
     SPECTRAL_ANGLE_KEY,
 )
-from inspire.epitope.proteome_mapping import filter_pathogen_only_peptides
-from inspire.epitope.plot_utils import (
+from inspire.pepseek.proteome_mapping import filter_pathogen_only_peptides
+from inspire.pepseek.plot_utils import (
     bar_plot,
     js_divergence,
     plot_binding_clustermap,
     plot_quant_pca,
     swarm_plots,
 )
-from inspire.epitope.report_template import create_epitope_report
+from inspire.pepseek.report_template import create_epitope_report
 from inspire.plot_spectra.plot_spectra import plot_spectra
 from inspire.utils import is_control
 
@@ -137,7 +137,7 @@ def extract_epitope_candidates(config):
 
     # Add all data to single csv file and write separated data to csv.
     final_peptide_df.to_csv(
-        f'{config.output_folder}/epitope/potentialEpitopeCandidates.csv',
+        f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv',
         index=False,
     )
     write_excel_report(final_peptide_df, final_df, config)
@@ -156,7 +156,7 @@ def extract_epitope_candidates(config):
     if os.path.exists(f'{config.output_folder}/spectralPlots.pdf'):
         shutil.move(
             f'{config.output_folder}/spectralPlots.pdf',
-            f'{config.output_folder}/epitope/spectralPlots.pdf',
+            f'{config.output_folder}/PEPSeek/spectralPlots.pdf',
         )
 
     plot_quant_pca(config)
@@ -169,7 +169,7 @@ def write_excluded_peptides(excluded_df, config, file_name):
     """
     if not excluded_df.shape[0]:
         excluded_df.to_csv(
-            f'{config.output_folder}/epitope/{file_name}.csv', index=False
+            f'{config.output_folder}/PEPSeek/{file_name}.csv', index=False
         )
         return
 
@@ -197,7 +197,7 @@ def write_excluded_peptides(excluded_df, config, file_name):
         [PEPTIDE_KEY, 'proteins', 'nInfectedFiles', 'nControlFiles'] +
         [f'{source}_identified' for source in sources]
     ].to_csv(
-        f'{config.output_folder}/epitope/{file_name}.csv', index=False
+        f'{config.output_folder}/PEPSeek/{file_name}.csv', index=False
     )
 
 def found_in_control(sources, control_flags):
@@ -277,7 +277,7 @@ def write_excel_report(final_peptide_df, final_spectra_df, config):
     if final_peptide_df is None:
         # Empty Excel file to be written.
         xl_writer = pd.ExcelWriter( # pylint: disable=abstract-class-instantiated
-            f'{config.output_folder}/epitope/potentialEpitopeCandidates.xlsx',
+            f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.xlsx',
             engine='xlsxwriter',
         )
         return
@@ -299,7 +299,7 @@ def write_excel_report(final_peptide_df, final_spectra_df, config):
     total_df = deepcopy(final_id_df)
 
     with pd.ExcelWriter( # pylint: disable=abstract-class-instantiated
-        f'{config.output_folder}/epitope/potentialEpitopeCandidates.xlsx',
+        f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.xlsx',
         engine='xlsxwriter',
     ) as xl_writer:
         final_id_df.to_excel(

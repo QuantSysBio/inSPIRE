@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='inspirems',
-    version='2.0rc7',
+    version='2.0rc8',
     description='Helping to integrate Spectral Predictors and Rescoring.',
     author='John Cormican, Juliane Liepe, Martin Pasen',
     author_email='juliane.liepe@mpinat.mpg.de',
@@ -11,7 +11,7 @@ setup(
         'inspire',
         'inspire.input',
         'inspire.quant',
-        'inspire.epitope',
+        'inspire.pepseek',
         'inspire.plot_spectra',
     ],
     long_description=open('README.md').read(),
