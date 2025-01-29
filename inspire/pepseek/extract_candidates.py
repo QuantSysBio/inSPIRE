@@ -20,12 +20,14 @@ from inspire.constants import (
 from inspire.pepseek.proteome_mapping import filter_pathogen_only_peptides
 from inspire.pepseek.plot_utils import (
     bar_plot,
+    check_engine_results,
     js_divergence,
     plot_binding_clustermap,
     plot_quant_pca,
     swarm_plots,
 )
 from inspire.pepseek.report_template import create_epitope_report
+from inspire.pepseek.host_report_template import create_host_report
 from inspire.plot_spectra.plot_spectra import plot_spectra
 from inspire.utils import is_control
 
@@ -54,7 +56,12 @@ def extract_epitope_candidates(config):
     config : inspire.config.Config
         The Config object which controls the experiment.
     """
-    final_df = pd.read_csv(f'{config.output_folder}/finalPsmAssignments.csv')
+    print(config.epitope_cut_level)
+    if config.epitope_cut_level == 'psm':
+        final_df = pd.read_csv(f'{config.output_folder}/finalPsmAssignments.csv')
+    else:
+        final_df = pd.read_csv(f'{config.output_folder}/finalPeptideAssignments.csv')
+
     final_df = final_df[final_df['qValue'] < 0.01]
 
     # Add columns of interest
@@ -70,6 +77,20 @@ def extract_epitope_candidates(config):
         (final_df[FINAL_POSTEP_KEY] < config.epitope_candidate_cut_off) &
         (final_df['peptideLength'] <= config.epitope_length_cut_off)
     ]
+
+    if config.epitope_cut_level == 'peptide':
+        final_psm_df = pd.read_csv(f'{config.output_folder}/finalPsmAssignments.csv')
+        final_psm_df = final_df[final_df['qValue'] < 0.01]
+        final_psm_df = final_df[
+            (final_df[FINAL_POSTEP_KEY] < config.epitope_candidate_cut_off) &
+            (final_df['peptideLength'] <= config.epitope_length_cut_off)
+        ]
+        id_cols = ['source', 'scan', 'peptide']
+        pep_df_cols = ['postErrProb', 'qValue']
+        final_df = pd.merge(
+            final_df[id_cols + pep_df_cols], final_psm_df.drop(pep_df_cols, axis=1),
+            how='inner', on=id_cols
+        )
 
     # Add accession data:
     final_df, multi_mapped_df, host_df = filter_pathogen_only_peptides(final_df, config)
@@ -148,8 +169,15 @@ def extract_epitope_candidates(config):
         print(f'JS Divergence plotting failed with exception {e}')
 
     bar_plot(config)
-    plot_binding_clustermap(config)
+    bar_plot(config, host=True)
     swarm_plots(config)
+    swarm_plots(config, host=True)
+
+    try:
+        plot_binding_clustermap(config)
+        plot_binding_clustermap(config, host=True)
+    except Exception as e:
+        print(f'Binding cluster map plotting failed with exception {e}')        
 
     # Provide MS2 spectral plots for identified peptides.
     plot_spectra(config)
@@ -162,6 +190,7 @@ def extract_epitope_candidates(config):
     plot_quant_pca(config)
 
     create_epitope_report(config)
+    create_host_report(config)
 
 def write_excluded_peptides(excluded_df, config, file_name):
     """ Function to write peptides which are excluded either due to their presence in
@@ -216,54 +245,6 @@ def found_in_control(sources, control_flags):
         if is_control(source, control_flags):
             return True
     return False
-
-
-def check_engine_results(pathogen_df, config):
-    """ Function to check if identified PSMs were found using the original search engine.
-
-    Parameters
-    ----------
-    pathogen_df : pd.DataFrame
-        DataFrame of identified pathogen peptides.
-    config : inspire.config.Config
-        The Config object which controls the experiment.
-
-    Returns
-    -------
-    pathogen_df : pd.DataFrame
-        The input DataFrame with information added on the original search engine identifications.
-    """
-    pathogen_df['maxEngineScore'] = pathogen_df.groupby(
-        'peptide'
-    )[ENGINE_SCORE_KEY].transform('max')
-
-    if config.engine_score_cut is not None:
-        pathogen_df['foundBySearchEngine'] = pathogen_df['maxEngineScore'].apply(
-            lambda x : 'Yes' if x > config.engine_score_cut else 'No'
-        )
-    else:
-        non_spect_df = pd.read_csv(
-            f'{config.output_folder}/non_spectral.{config.rescore_method}.psms.txt',
-            sep='\t',
-        )
-        non_spect_df = non_spect_df[
-            (non_spect_df[OUT_POSTEP_KEY[config.rescore_method]] < config.epitope_candidate_cut_off)
-        ]
-        non_spect_df = non_spect_df.drop_duplicates(subset='peptide')
-        non_spect_df = non_spect_df[['peptide']]
-        non_spect_df['peptide'] = non_spect_df['peptide'].apply(
-            lambda peptide : peptide.split('.')[1] if '.' in peptide else peptide
-        )
-        non_spect_df['foundBySearchEngine'] = 'Yes'
-
-        pathogen_df = pd.merge(pathogen_df, non_spect_df, how='left', on='peptide')
-        pathogen_df['foundBySearchEngine'] = pathogen_df['foundBySearchEngine'].apply(
-            lambda x : x if x == 'Yes' else 'No'
-        )
-
-    pathogen_df = pathogen_df.drop('maxEngineScore', axis=1)
-
-    return pathogen_df
 
 
 def write_excel_report(final_peptide_df, final_spectra_df, config):

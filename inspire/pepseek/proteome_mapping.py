@@ -37,7 +37,7 @@ def filter_pathogen_only_peptides(final_df, config):
 
     print(
         OKCYAN_TEXT +
-        f'\t{total_count - no_host_accession_count} PSMs dropped due to host accessions.'
+        f'\t{total_count - no_host_accession_count} dropped due to host accessions.'
         + ENDC_TEXT
     )
 
