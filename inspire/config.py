@@ -15,13 +15,14 @@ ALL_CONFIG_KEYS = [
     'accessionKeys',
     'alleles',
     'collisionEnergy',
-    'contaminantData',
+    'fraggerUseContams',
     'combinedScansFile',
     'controlFlags',
     'deltaMethod',
     'distillerLog',
     'dropUnknownPTMs',
     'epitopeCandidateCutOff',
+    'epitopeCutLevel',
     'excludeFeatures',
     'engineScoreCut',
     'experimentTitle',
@@ -179,6 +180,7 @@ class Config:
         self.minimal_features = config_dict.get('useMinimalFeatures', False)
 
         # MSFragger
+        self.fragger_use_contams = config_dict.get('fraggerUseContams', True)
         self.fragger_memory = config_dict.get('fraggerMemory', 60)
         self.fragger_db_splits = config_dict.get('fraggerDbSplits', 4)
         self.fragger_path = config_dict.get('fraggerPath')
@@ -270,6 +272,7 @@ class Config:
         self.control_flags = config_dict.get('controlFlags')
         self.alleles = config_dict.get('alleles')
         self.epitope_candidate_cut_off = config_dict.get('epitopeCandidateCutOff', 0.1)
+        self.epitope_cut_level = config_dict.get('epitopeCutLevel', 'psm')
         self.host_only_results = config_dict.get('hostOnlyResults')
         self.engine_score_cut = config_dict.get('engineScoreCut')
         self.epitope_length_cut_off = config_dict.get('epitopeLengthCutOff', 15)
@@ -414,4 +417,10 @@ class Config:
         if self.spectral_predictor == 'ms2pip' and self.ms2pip_model is None:
             raise ValueError(
                 'You must specify an ms2pipModel when using the ms2pip spectral predictor.'
+            )
+
+        if self.epitope_cut_level not in ('psm', 'peptide'):
+            raise ValueError(
+                'Unsupported epitope filtering level {self.epitope_cut_level}, must be' +
+                'psm or peptide.'
             )

@@ -57,17 +57,19 @@ def write_search_proteome(proteome, output_folder, contams_db):
     all_proteins = []
 
     all_ids, all_proteins = get_proteins(proteome, all_ids, all_proteins)
-    all_ids, all_proteins = get_proteins(contams_db, all_ids, all_proteins)
+    if contams_db is not None:
+        all_ids, all_proteins = get_proteins(contams_db, all_ids, all_proteins)
 
     # Copy original proteome file.
     shutil.copyfile(proteome, f'{output_folder}/search_proteome.fasta')
-    with open(
-        f'{output_folder}/search_proteome.fasta',
-        mode='a+',
-        encoding='UTF-8',
-    ) as search_file:
-        with open(contams_db, mode='r', encoding='UTF-8') as cont_file:
-            search_file.write(cont_file.read())
+    if contams_db is not None:
+        with open(
+            f'{output_folder}/search_proteome.fasta',
+            mode='a+',
+            encoding='UTF-8',
+        ) as search_file:
+            with open(contams_db, mode='r', encoding='UTF-8') as cont_file:
+                search_file.write(cont_file.read())
 
     # Append decoys to copy of original proteome.
     with open(
@@ -154,9 +156,12 @@ def execute_msfragger(config):
     """
     home = str(Path.home())
     fragger_params_template = config.fragger_params
-    contams_db = (
-        f'{home}/inSPIRE_models/utilities/contaminants_20120713.fasta'
-    )
+    if config.fragger_use_contams:
+        contams_db = (
+            f'{home}/inSPIRE_models/utilities/contaminants_20120713.fasta'
+        )
+    else:
+        contams_db = None
     frag_pipe_script_path = (
         f'{home}/inSPIRE_models/utilities/fragpipe_ms_fragger_script.py'
     )

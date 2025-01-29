@@ -8,30 +8,107 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy.stats import zscore
 import seaborn as sns
 from sklearn.decomposition import PCA
 
-from inspire.constants import PLOT_AXIS_REQUIREMENTS
+from inspire.constants import ENGINE_SCORE_KEY, PLOT_AXIS_REQUIREMENTS, OUT_POSTEP_KEY
 from inspire.logo_plot_utils import create_comparison_logo_plot
+from inspire.utils import fetch_proteome
 
-def bar_plot(config):
+def _check_pep(peptide, proteome):
+    if '.' in peptide:
+        peptide = peptide.split('.')[1]
+    for prot in proteome:
+        if peptide.replace('I', 'L') in prot[1].replace('I', 'L'):
+            return True
+    return False
+
+def _check_prot(proteins, proteome):
+    proteins = proteins.split(' ')
+    for prot in proteome:
+        for found_prot in proteins:
+            if found_prot == prot[0]:
+                return True
+    return False
+
+def get_host_peps(config):
+    if config.epitope_cut_level == 'psm':
+        ep_df = pd.read_csv(f'{config.output_folder}/finalPsmAssignments.csv')
+    else:
+        ep_df = pd.read_csv(f'{config.output_folder}/finalPeptideAssignments.csv')
+
+    host_prot = fetch_proteome(config.host_proteome, with_desc=False)
+    ep_df = ep_df[(ep_df['qValue'] < 0.01) & (ep_df['postErrProb'] < 0.1)]
+    ep_df = ep_df[
+        (ep_df['peptide'].apply(len) <= 15) & 
+        (ep_df['peptide'].apply(len) >= 8)
+    ]
+    print(ep_df)
+    ep_df = ep_df.drop_duplicates(subset=['peptide'])
+    ep_df = ep_df[ep_df['peptide'].apply(lambda x : _check_pep(x, host_prot))]
+    print(ep_df)
+
+    if config.epitope_cut_level == 'psm':
+        host_basic_df = pd.read_csv(f'{config.output_folder}/non_spectral.percolator.psms.txt', sep='\t')
+    else:
+        host_basic_df = pd.read_csv(f'{config.output_folder}/non_spectral.percolator.peptides.txt', sep='\t')
+    
+    host_basic_df = host_basic_df[(host_basic_df['q-value'] < 0.01) & (host_basic_df['posterior_error_prob'] < 0.1)]
+    host_basic_df = host_basic_df.drop_duplicates(subset=['peptide'])
+    host_basic_df = host_basic_df[host_basic_df['peptide'].apply(lambda x : _check_pep(x, host_prot))]
+    host_basic_df['peptide'] = host_basic_df['peptide'].apply(lambda x : x.split('.')[1] if '.' in x else x)
+    ep_df = pd.merge(ep_df, host_basic_df[['peptide']], how='left', on='peptide', indicator=True)
+    ep_df['foundBySearchEngine'] = ep_df['_merge'].apply(lambda x : 'Yes' if x == 'both' else 'No')
+
+    return ep_df
+
+def bar_plot(config, host=False):
     """ Function generate bar plots of shared and PEPseek only identification counts.
     """
-    ep_df = pd.read_csv(f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv')
-    insp_df = ep_df[ep_df['foundBySearchEngine'] == 'No']
-    shared_df = ep_df[ep_df['foundBySearchEngine'] == 'Yes']
+    if host:
+        host_prot = fetch_proteome(config.host_proteome, with_desc=False)
+        host_insp_df = pd.read_csv(f'{config.output_folder}/final.percolator.peptides.txt', sep='\t')
+        host_insp_df = host_insp_df[(host_insp_df['q-value'] < 0.01) & (host_insp_df['posterior_error_prob'] < 0.1)]
+        host_basic_df = pd.read_csv(f'{config.output_folder}/non_spectral.percolator.peptides.txt', sep='\t')
+        host_basic_df = host_basic_df[(host_basic_df['q-value'] < 0.01) & (host_basic_df['posterior_error_prob'] < 0.1)]
+        for name in ['peptides', 'proteins']:
+            if name == 'peptides':
+                joined_df = pd.merge(
+                    host_insp_df[['peptide']].drop_duplicates(),
+                    host_basic_df[['peptide']].drop_duplicates(),
+                    how='outer', indicator=True,
+                )
+                joined_df = joined_df[joined_df['peptide'].apply(lambda x : _check_pep(x, host_prot))]
+                insp_pep_count = joined_df[joined_df['_merge'] == 'left_only'].shape[0]
+                shared_pep_count = joined_df[joined_df['_merge'] == 'both'].shape[0]
+            else:
+                joined_df = pd.merge(
+                    host_insp_df[['proteinIds']].drop_duplicates(),
+                    host_basic_df[['proteinIds']].drop_duplicates(),
+                    how='outer', indicator=True,
+                )
+                joined_df = joined_df[joined_df['proteinIds'].apply(lambda x : _check_prot(x, host_prot))]
+                insp_prot_count = joined_df[joined_df['_merge'] == 'left_only'].shape[0]
+                shared_prot_count = joined_df[joined_df['_merge'] == 'both'].shape[0]
+    else:
+        ep_df = pd.read_csv(f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv')
+        insp_df = ep_df[ep_df['foundBySearchEngine'] == 'No']
+        shared_df = ep_df[ep_df['foundBySearchEngine'] == 'Yes']
 
-    insp_prot_df = insp_df.drop_duplicates(subset='protein')[['protein']]
-    shared_prot_df = shared_df.drop_duplicates(subset='protein')[['protein']]
-    total_df = pd.merge(shared_prot_df, insp_prot_df, how='outer', on='protein', indicator=True)
-    insp_prot_count = total_df[total_df['_merge'] == 'right_only'].shape[0]
-    shared_prot_count = total_df[total_df['_merge'] != 'right_only'].shape[0]
+        insp_prot_df = insp_df.drop_duplicates(subset='protein')[['protein']]
+        shared_prot_df = shared_df.drop_duplicates(subset='protein')[['protein']]
+        shared_pep_count = shared_df.shape[0]
+        insp_pep_count = insp_df.shape[0]
+        total_df = pd.merge(shared_prot_df, insp_prot_df, how='outer', on='protein', indicator=True)
+        insp_prot_count = total_df[total_df['_merge'] == 'right_only'].shape[0]
+        shared_prot_count = total_df[total_df['_merge'] != 'right_only'].shape[0]
 
     fig = px.bar(
         color=['Shared', 'Shared', 'PEPSeek Only', 'PEPSeek Only'],
-        y=[shared_df.shape[0],shared_prot_count,insp_df.shape[0],insp_prot_count],
+        y=[shared_pep_count,shared_prot_count,insp_pep_count,insp_prot_count],
         x=['Epitope', 'Antigen', 'Epitope', 'Antigen',],
         color_discrete_map={
             'PEPSeek Only': '#FFBE00',
@@ -51,37 +128,114 @@ def bar_plot(config):
         plot_bgcolor='rgba(0,0,0,0)',
         yaxis_showticklabels=True,
     )
-
+    code = ''
+    if host:
+        code = '_host'
     fig.write_image(
-        f'{config.output_folder}/img/PEPSeek_bar_plot.svg', engine='kaleido'
+        f'{config.output_folder}/img/PEPSeek{code}_bar_plot.svg', engine='kaleido'
     )
 
 
-def swarm_plots(config):
+def check_engine_results(pathogen_df, config):
+    """ Function to check if identified PSMs were found using the original search engine.
+
+    Parameters
+    ----------
+    pathogen_df : pd.DataFrame
+        DataFrame of identified pathogen peptides.
+    config : inspire.config.Config
+        The Config object which controls the experiment.
+
+    Returns
+    -------
+    pathogen_df : pd.DataFrame
+        The input DataFrame with information added on the original search engine identifications.
+    """
+    pathogen_df['maxEngineScore'] = pathogen_df.groupby(
+        'peptide'
+    )[ENGINE_SCORE_KEY].transform('max')
+
+    if config.engine_score_cut is not None:
+        pathogen_df['foundBySearchEngine'] = pathogen_df['maxEngineScore'].apply(
+            lambda x : 'Yes' if x > config.engine_score_cut else 'No'
+        )
+    else:
+        if config.epitope_cut_level == 'psm':
+            non_spect_df = pd.read_csv(
+                f'{config.output_folder}/non_spectral.{config.rescore_method}.psms.txt',
+                sep='\t',
+            )
+        else:
+            non_spect_df = pd.read_csv(
+                f'{config.output_folder}/non_spectral.{config.rescore_method}.peptides.txt',
+                sep='\t',
+            )
+        non_spect_df = non_spect_df[
+            (non_spect_df[OUT_POSTEP_KEY[config.rescore_method]] < config.epitope_candidate_cut_off)
+        ]
+        non_spect_df = non_spect_df.drop_duplicates(subset='peptide')
+        non_spect_df = non_spect_df[['peptide']]
+        non_spect_df['peptide'] = non_spect_df['peptide'].apply(
+            lambda peptide : peptide.split('.')[1] if '.' in peptide else peptide
+        )
+        non_spect_df['foundBySearchEngine'] = 'Yes'
+
+        pathogen_df = pd.merge(pathogen_df, non_spect_df, how='left', on='peptide')
+        pathogen_df['foundBySearchEngine'] = pathogen_df['foundBySearchEngine'].apply(
+            lambda x : x if x == 'Yes' else 'No'
+        )
+
+    pathogen_df = pathogen_df.drop('maxEngineScore', axis=1)
+
+    return pathogen_df
+
+COLOUR_DICTS = {
+    'No': '#FFBE00',
+    'Yes': 'darkgrey',
+}
+
+def swarm_plots(config, host=False):
     """ Function to provide bee swarm plots of various metrics for shared and PEPSeek
         only identifications. 
     """
-    ep_df = pd.read_csv(f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv')
-
+    if host:
+        ep_df = get_host_peps(config)
+    else:
+        ep_df = pd.read_csv(f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv')
     fig = make_subplots(rows=1, cols=3)
     range_cuts = []
     for met_idx, metric in enumerate(['spectralAngle', 'engineScore', 'deltaRT']):
-        mini_fig = px.strip(
-            color=ep_df['foundBySearchEngine'],
-            y=ep_df[metric],
-            x=ep_df[
-                'foundBySearchEngine'
-            ].str.replace('Yes', 'Shared').replace('No', 'PEPSeek Only'),
-            color_discrete_map={
-                'No': '#FFBE00',
-                'Yes': 'darkgrey',
-            },
-        )
+        if host:
+            for found_val in ['No', 'Yes']:
+                sub_df = ep_df[ep_df['foundBySearchEngine'] == found_val]
+                fig.add_trace(go.Violin(
+                    fillcolor=COLOUR_DICTS[found_val],
+                    y=sub_df[metric],
+                    x=sub_df[
+                        'foundBySearchEngine'
+                    ].str.replace('Yes', 'Shared').replace('No', 'PEPSeek Only'),
+                    line_color='black', line_width=0.5,
+                    points=False,
+                    opacity=0.8,
+                    meanline_visible=True,
+                ), row=1, col=1+met_idx)
+        else:
+            mini_fig = px.strip(
+                color=ep_df['foundBySearchEngine'],
+                y=ep_df[metric],
+                x=ep_df[
+                    'foundBySearchEngine'
+                ].str.replace('Yes', 'Shared').replace('No', 'PEPSeek Only'),
+                color_discrete_map={
+                    'No': '#FFBE00',
+                    'Yes': 'darkgrey',
+                },
+            )
+            for trace in mini_fig['data']:
+                fig.add_trace(trace, row=1, col=1+met_idx)
         range_cuts.append(
             10 + 10*(ep_df[metric].max()//10)
         )
-        for trace in mini_fig['data']:
-            fig.add_trace(trace, row=1, col=1+met_idx)
 
     fig.update_traces(marker_line_color='black', marker_line_width=0.5)
     fig.update_xaxes(PLOT_AXIS_REQUIREMENTS, dtick=1)
@@ -102,16 +256,21 @@ def swarm_plots(config):
         yaxis_showticklabels=True,
         showlegend=False,
     )
-
+    code = ''
+    if host:
+        code = '_host'
     fig.write_image(
-        f'{config.output_folder}/img/PEPSeek_metrics.svg', engine='kaleido'
+        f'{config.output_folder}/img/PEPSeek{code}_metrics.svg', engine='kaleido'
     )
 
 
-def plot_binding_clustermap(config):
+def plot_binding_clustermap(config, host=False):
     """ Function to plot clustermap of peptides and their binding affinities.
     """
-    ep_df = pd.read_csv(f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv')
+    if host:
+        ep_df = get_host_peps(config)
+    else:
+        ep_df = pd.read_csv(f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv')
 
     ep_df.index = ep_df['peptide']
     binding_aff_cols = [col for col in ep_df.columns if col.endswith('%Rank_BA')]
@@ -124,13 +283,22 @@ def plot_binding_clustermap(config):
     ep_df = ep_df.map(lambda x : round(x, 2))
     ep_df = ep_df.sort_values(by=list(ep_df.columns))
 
-    fig_length = 1+(ep_df.shape[0]//6)
+    if host:
+        cluster_map = sns.clustermap(
+            ep_df, cmap=sns.color_palette("blend:#FA3F37,#FAF4D3", as_cmap=True),
+            yticklabels=False, figsize=(7,10), vmin=0, vmax=20,)
+    else:
+        fig_length = 1+(ep_df.shape[0]//6)
 
-    cluster_map = sns.clustermap(
-        ep_df, cmap=sns.color_palette("blend:#FA3F37,#FAF4D3", as_cmap=True),
-        yticklabels=True, figsize=(7,fig_length), vmin=0, vmax=20,
-        linewidths=0.5, linecolor='black')
-    cluster_map.figure.savefig(f'{config.output_folder}/img/PEPSeek_affinity_cluster.svg')
+        cluster_map = sns.clustermap(
+            ep_df, cmap=sns.color_palette("blend:#FA3F37,#FAF4D3", as_cmap=True),
+            yticklabels=True, figsize=(7,fig_length), vmin=0, vmax=20,
+            linewidths=0.5, linecolor='black')
+
+    code = ''
+    if host:
+        code = '_host'
+    cluster_map.figure.savefig(f'{config.output_folder}/img/PEPSeek{code}_affinity_cluster.svg')
 
 def plot_quant_pca(config):
     """ Function to plot PCA first two components of quantification across files for pathogen

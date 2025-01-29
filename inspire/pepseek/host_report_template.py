@@ -8,7 +8,7 @@ import pandas as pd
 
 from inspire.constants import ENDC_TEXT, OKCYAN_TEXT
 
-def create_epitope_report(config):
+def create_host_report(config):
     """ Function to create the final html report and open it in the brower.
 
     Parameters
@@ -26,22 +26,10 @@ def create_epitope_report(config):
             <th>Proteins</th>
         </tr>
     """
-    ep_df = pd.read_csv(
-        f'{config.output_folder}/PEPSeek/potentialEpitopeCandidates.csv'
-    )
-
-    for _, df_row in ep_df.iterrows():
-        base_table += f'''
-            <tr>
-                <td>{df_row['peptide']}</td>
-                <td>{df_row['protein']}</td>
-            </tr>
-        '''
-
-    with open(f'{out_path}/img/PEPSeek_bar_plot.svg', mode='r', encoding='UTF-8') as in_f:
+    with open(f'{out_path}/img/PEPSeek_host_bar_plot.svg', mode='r', encoding='UTF-8') as in_f:
         bar_plot = in_f.read().strip('\n')
 
-    with open(f'{out_path}/img/PEPSeek_metrics.svg', mode='r', encoding='UTF-8') as in_f:
+    with open(f'{out_path}/img/PEPSeek_host_metrics.svg', mode='r', encoding='UTF-8') as in_f:
         swarm_plot = in_f.read()
 
     base_table += '</table>'
@@ -91,20 +79,14 @@ def create_epitope_report(config):
         </head>
         <body>
             <center>
-            <h2>PEPSeek Report for ''' + config.experiment_title + '''</h2>
+            <h2>PEPSeek Host Peptide Report for ''' + config.experiment_title + '''</h2>
             </center>
-            <h3>
-                Epitope Candidates Found
-            </h3>
             <p>
-                Below is a full table of the pathogen peptides identified and their associated
-                proteins.
-            </p>
-            <p>
-                ''' + base_table + '''
+                Note quantitative information on host peptide changes upon infection can be
+                found in the quantitative report.
             </p>
             <h3>
-                Shared and PEPSeek Only Peptides:
+                Host Peptide Candidates Found
             </h3>
             <p>
                 This figure compares the number of peptides identified by both the
@@ -118,7 +100,7 @@ def create_epitope_report(config):
             </h3>
             <p>
                 This figure shows distribution of spectral angle, engine score, and
-                retention time prediction error on the pathogen peptide identifications.
+                retention time prediction error on the host peptide identifications.
                 For spectral angle and retention time prediction error we should see a
                 similar distribution. On engine score, the PEPSeek only peptides likely
                 score lower.
@@ -145,27 +127,10 @@ def create_epitope_report(config):
                     </p>
             ''' + logo_plot
         )
-    if os.path.exists(f'{out_path}/img/PEPSeek_pca.svg'):
-        with open(f'{out_path}/img/PEPSeek_pca.svg', mode='r', encoding='UTF-8') as in_f:
-            ep_pca = in_f.read().strip('\n')
-        html_string += (
-            '''
-                    <h3>
-                        Quantitative Data:
-                    </h3>
-                    <p>
-                        Dimensionality reduction applied to quantiative data from the pathogen
-                        peptide and a random seleciton of host peptides below. Ideally we should
-                        see some clustering effects with pathogen peptides mostly close together.
-                        This is likely not a perfect clustering as there is noise in the
-                        label free quantification, however it can be a useful indicator.
-                    </p>
-            ''' + ep_pca
-        )
 
     if os.path.exists(f'{out_path}/img/PEPSeek_affinity_cluster.svg'):
         with open(
-            f'{out_path}/img/PEPSeek_affinity_cluster.svg',
+            f'{out_path}/img/PEPSeek_host_affinity_cluster.svg',
             mode='r',
             encoding='UTF-8',
         ) as in_f:
@@ -176,35 +141,21 @@ def create_epitope_report(config):
                     Binding Affinity Predictions:
                 </h3>
                 <p>
-                    The predicted binding affinities for the identified peptides. This can
+                    The predicted binding affinities for the identified host peptides. This can
                     help see you the distribution of predicted binders for each allele in
-                    your host cell.
+                    your host cell. Colour is based on NetMHCpan predicted binding affinty
+                    (percentage rank).
                 </p>
             ''' + aff_clust
         )
 
-    html_string += (
-    '''
-        <h3>
-            MS2 Spectral Plots:
-        </h3>
-        <p>
-            These are the MS2 spectra based on which the peptides were assigned. Inspection
-            of the spectra can be informative and increase your confidence in peptides
-            identified.
-        </p>
-        <embed src="
-    ''' + f'{config.output_folder}/PEPSeek/spectralPlots.pdf" width=1000 height=2000>'
-    )
-
-
-    output_path = f'{config.output_folder}/PEPSeek/pepseek-report.html'
+    output_path = f'{config.output_folder}/PEPSeek/pepseek-host-report.html'
     with open(output_path, 'w', encoding='UTF-8') as output_file:
         output_file.write(html_string)
 
     print(
         OKCYAN_TEXT +
-        '\tPEPSeek report generated.' +
+        '\tPEPSeek host report generated.' +
         ENDC_TEXT
     )
 
