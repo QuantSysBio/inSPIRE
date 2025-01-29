@@ -22,7 +22,7 @@ We continue to update and improve inSPIRE with new releases. However, all previo
 
 * Use version 1.5 and python version 3.9 for the exact version used in [Protein degradation by human 20S proteasomes elucidates the interplay between peptide hydrolysis and splicing](https://www.nature.com/articles/s41467-024-45339-3)
 
-* Use version 2.0rc6 and python version 3.11 for the latest inSPIRE functionality (manuscript in preparation).
+* Use version 2.0rc9 and python version 3.11 for the latest inSPIRE and PEPseek functionality (manuscript in preparation).
 
 ## Set Up
 
