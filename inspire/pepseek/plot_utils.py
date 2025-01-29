@@ -70,9 +70,9 @@ def bar_plot(config, host=False):
     """
     if host:
         host_prot = fetch_proteome(config.host_proteome, with_desc=False)
-        host_insp_df = pd.read_csv(f'{config.output_folder}/final.percolator.peptides.txt', sep='\t')
+        host_insp_df = pd.read_csv(f'{config.output_folder}/final.{config.rescore_method}.peptides.txt', sep='\t')
         host_insp_df = host_insp_df[(host_insp_df['q-value'] < 0.01) & (host_insp_df['posterior_error_prob'] < 0.1)]
-        host_basic_df = pd.read_csv(f'{config.output_folder}/non_spectral.percolator.peptides.txt', sep='\t')
+        host_basic_df = pd.read_csv(f'{config.output_folder}/non_spectral.{config.rescore_method}.peptides.txt', sep='\t')
         host_basic_df = host_basic_df[(host_basic_df['q-value'] < 0.01) & (host_basic_df['posterior_error_prob'] < 0.1)]
         for name in ['peptides', 'proteins']:
             if name == 'peptides':
