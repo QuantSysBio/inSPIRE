@@ -25,6 +25,7 @@ ALL_CONFIG_KEYS = [
     'epitopeCutLevel',
     'excludeFeatures',
     'engineScoreCut',
+    'enzyme',
     'experimentTitle',
     'falseDiscoveryRate',
     'fixedModifications',
@@ -72,6 +73,7 @@ ALL_CONFIG_KEYS = [
     'skylineReportTemplate',
     'skylineRunner',
     'skylineIdpCutOff',
+    'skylinePrecursorCountFilter',
     'skylineRatioCutOff',
     'spectralAngleDfs',
     'spectralPredictor',
@@ -170,6 +172,8 @@ class Config:
         self.ms1_accuracy = config_dict.get('ms1Accuracy', 5)
         self.mz_accuracy = config_dict.get('mzAccuracy', 0.02)
         self.mz_units = config_dict.get('mzUnits', 'Da')
+        self.enzyme = config_dict.get('enzyme', None)
+        self.replace_il = config_dict.get('replaceIL', False)
         self.fixed_modifications = config_dict.get('fixedModifications', None)
         self.spectral_predictor = config_dict.get('spectralPredictor', 'prosit')
         if self.spectral_predictor == 'prosit':
@@ -196,6 +200,7 @@ class Config:
         self.skyline_config_file = config_dict.get(
             'skylineConfig', f'{home}/inSPIRE_models/utilities/skyline_config.sky'
         )
+        self.skyline_precursor_filter = config_dict.get('skylinePrecursorCountFilter', 3)
         self.skyline_report_template = config_dict.get(
             'skylineReportTemplate', f'{home}/inSPIRE_models/utilities/skyline_report_template.skyr'
         )

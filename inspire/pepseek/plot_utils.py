@@ -52,9 +52,9 @@ def get_host_peps(config):
     print(ep_df)
 
     if config.epitope_cut_level == 'psm':
-        host_basic_df = pd.read_csv(f'{config.output_folder}/non_spectral.percolator.psms.txt', sep='\t')
+        host_basic_df = pd.read_csv(f'{config.output_folder}/non_spectral.{config.rescore_method}.psms.txt', sep='\t')
     else:
-        host_basic_df = pd.read_csv(f'{config.output_folder}/non_spectral.percolator.peptides.txt', sep='\t')
+        host_basic_df = pd.read_csv(f'{config.output_folder}/non_spectral.{config.rescore_method}.peptides.txt', sep='\t')
     
     host_basic_df = host_basic_df[(host_basic_df['q-value'] < 0.01) & (host_basic_df['posterior_error_prob'] < 0.1)]
     host_basic_df = host_basic_df.drop_duplicates(subset=['peptide'])

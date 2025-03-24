@@ -5,7 +5,22 @@ from pathlib import Path
 import shutil
 import sys
 
-from inspire.download import download_utils
+
+UNSPECIFIC_CLEAVAGE = (
+    'search_enzyme_name_1 = nonspecific\n'+
+    'search_enzyme_cut_1 = -\n' +
+    'search_enzyme_nocut_1 = \n' +
+    'search_enzyme_sense_1 = C\n' +
+    'allowed_missed_cleavage_1 = 2\n'
+)
+
+TRYPTIC_CLEAVAGE = (
+    'search_enzyme_name_1 = trypsin\n'+
+    'search_enzyme_cut_1 = KR\n' +
+    'search_enzyme_nocut_1 = \n' +
+    'search_enzyme_sense_1 = C\n' +
+    'allowed_missed_cleavage_1 = 2\n'
+)
 
 def get_proteins(protein_file, all_ids, all_proteins):
     """ Function to retrieve protein IDs and names from a file.
@@ -99,6 +114,11 @@ def write_fragger_params(config, fragger_params_template):
     else:
         ms2_units = 1
 
+    if config.enzyme == 'trypsin':
+        cleavage = TRYPTIC_CLEAVAGE
+    else:
+        cleavage = UNSPECIFIC_CLEAVAGE
+
     with open(
         fragger_params_template,
         mode='r',
@@ -111,6 +131,7 @@ def write_fragger_params(config, fragger_params_template):
             fragament_tolerance=config.mz_accuracy,
             fragment_units=ms2_units,
             top_n_candidates=10,
+            cleavage_parameters=cleavage,
         )
 
     with open(
