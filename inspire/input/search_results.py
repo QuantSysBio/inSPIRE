@@ -66,6 +66,14 @@ def generic_read_df(config, save_dfs=True, for_calibration=False):
             )
         else:
             raise ValueError(f'Unknown Search Engine: {config.search_engine}')
+        
+        if config.replace_il:
+            search_df = search_df.with_columns(
+                pl.col('peptide').str.replace_all('I', 'L')
+            )
+            search_df = search_df.unique(
+                subset=['source', 'scan', 'peptide'], maintain_order=True
+            )
 
         if config.use_accession_stratum:
             search_df = process_accession_groups(search_df, config)

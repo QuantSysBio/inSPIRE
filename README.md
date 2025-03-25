@@ -22,7 +22,7 @@ We continue to update and improve inSPIRE with new releases. However, all previo
 
 * Use version 1.5 and python version 3.9 for the exact version used in [Protein degradation by human 20S proteasomes elucidates the interplay between peptide hydrolysis and splicing](https://www.nature.com/articles/s41467-024-45339-3)
 
-* Use version 2.0rc9 and python version 3.11 for the latest inSPIRE and PEPseek functionality (manuscript in preparation).
+* Use version 2.0 and python version 3.11 for the latest inSPIRE and PEPseek functionality used in [PEPSeek-mediated identification of novel epitopes from viral and bacterial pathogens and the impact on host cell immunopeptidomes](https://www.sciencedirect.com/science/article/pii/S1535947625000350).
 
 ## Set Up
 
@@ -49,7 +49,7 @@ conda activate inspire
 3) You will then need to install the inspire package:
 
 ```
-pip install inspirems==2.0rc9
+pip install inspirems==2.0
 ```
 
 4) To check your installation, run the following command (it is normal for this call to hang for a few seconds on first execution)

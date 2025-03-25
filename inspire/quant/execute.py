@@ -25,7 +25,6 @@ SKYLINE_INTERMEDIATE_FILES = [
     'inspire_identifications.ssl',
     'skyline_config.blib',
     'skyline_config.redundant.blib',
-    'skyline_config.sky',
     'skyline_config.skyd',
     'skyline_config.slc',
     'skyline_report.csv',
@@ -143,10 +142,22 @@ def copy_skyline_files_to_scans_dir(config):
         f'{config.output_folder}/quant/inspire_identifications.ssl',
         f'{config.scans_folder}/inspire_identifications.ssl',
     )
-    shutil.copyfile(
+
+    with open(
         config.skyline_config_file,
+        mode='r',
+        encoding='UTF-8',
+    ) as skyline_config_file:
+        skyline_config = skyline_config_file.read().format(
+            precursor_ion_filter=f'{config.skyline_precursor_filter}',
+        )
+    with open(
         f'{config.scans_folder}/skyline_config.sky',
-    )
+        mode='w',
+        encoding='UTF-8',
+    ) as params_file:
+        params_file.write(skyline_config)
+
     shutil.copyfile(
         config.skyline_report_template,
         f'{config.scans_folder}/skyline_report_template.skyr',
@@ -169,21 +180,27 @@ def execute_skyline(config):
     # Execute docker
     if platform.system() != 'Windows':
         client = docker.from_env()
-        client.containers.run(
+        container = client.containers.run(
             'proteowizard/pwiz-skyline-i-agree-to-the-vendor-licenses',
             ' wine SkylineCmd --timestamp --dir=/data --in=skyline_config.sky ' +
-            ' --full-scan-rt-filter=ms2_ids --full-scan-rt-filter-tolerance=0.25 '
+            # ' --full-scan-rt-filter=ms2_ids --full-scan-rt-filter-tolerance=0.25 '
             ' --import-search-file=inspire_identifications.ssl ' +
             ' --import-fasta=inspire_identifications.fasta ' +
             ' --import-search-include-ambiguous ' +
             ' --report-conflict-resolution=overwrite ' +
             ' --report-add=skyline_report_template.skyr --report-name=myreport --report-invariant' +
-            f' --report-file=skyline_report.csv > {config.output_folder}/quant/skyline_log.txt',
+            f' --report-file=skyline_report.csv',
             tty=True,
             stdin_open=True,
             auto_remove=True,
             volumes={scans_folder_abs_path: {'bind': '/data', 'mode': 'rw'}},
+            detach=True
         )
+        with open(f'{config.output_folder}/quant/skyline_log.txt', 'w') as log_file:
+            # Stream logs and write them to the file
+            for log in container.logs(stream=True):
+                log_file.write(log.decode('utf-8'))
+        container.stop()
     else:
         os.system(
             f'"{config.skyline_runner}"' +

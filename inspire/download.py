@@ -89,11 +89,20 @@ def download_utils(force_reload=False):
     if force_reload:
         shutil.rmtree(f'{home}/inSPIRE_models/utilities')
 
-    if os.path.isdir(f'{home}/inSPIRE_models/utilities'):
-        print(
-            OKCYAN_TEXT + '\tUtils already downloaded.' + ENDC_TEXT
-        )
-    else:
+    download=True
+    if os.path.isfile(f'{home}/inSPIRE_models/utilities/version.txt'):
+        with open(f'{home}/inSPIRE_models/utilities/version.txt', 'r') as version_file:
+            version = version_file.read().strip()
+            if version == '>=2.0':
+                print(
+                    OKCYAN_TEXT + '\tUtils already downloaded.' + ENDC_TEXT
+                )
+                download=False
+
+    if download:
+        if os.path.isdir(f'{home}/inSPIRE_models/utilities'):
+            shutil.rmtree(f'{home}/inSPIRE_models/utilities')
+
         os.mkdir(f'{home}/inSPIRE_models/utilities')
         print(
             OKCYAN_TEXT + '\tDownloading external utilities...' + ENDC_TEXT
