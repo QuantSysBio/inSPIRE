@@ -100,6 +100,7 @@ def run_inspire(pipeline=None, config_file=None):
 
     if pipeline == 'downloadExample':
         download_data()
+        return
     else:
         config = Config(config_file)
         config.validate()
