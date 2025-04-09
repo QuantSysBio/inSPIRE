@@ -9,8 +9,9 @@ import tensorflow as tf
 
 from inspire.calibration import calibrate
 from inspire.config import Config
+from inspire.convert import convert_raw_to_mgf
 from inspire.constants import ENDC_TEXT, OKGREEN_TEXT
-from inspire.download import download_data, download_models
+from inspire.download import download_data, download_models, download_invitro_data
 from inspire.get_spectral_angle import get_spectral_angle
 from inspire.plot_spectra import plot_spectra
 from inspire.plot_isobars import plot_isobars
@@ -32,7 +33,9 @@ tf.config.set_visible_devices([], 'GPU')
 PIPELINE_OPTIONS = [
     'calibrate',
     'core',
+    'convert',
     'downloadExample',
+    'download_invitroData',
     'prepare',
     'plotIsobars',
     'spectralPrepare',
@@ -81,6 +84,7 @@ def main():
 
     if args.pipeline == 'downloadExample':
         download_data()
+        return
     else:
         config = Config(args.config_file)
         config.validate()
@@ -91,9 +95,14 @@ def main():
         )
         download_models(force_reload=config.force_reload)
 
+    if args.pipeline == 'download_invitroData':
+        download_invitro_data(config)
+        return
+
     if args.pipeline == 'calibrate' or (
         config.collision_energy is None and
-        not os.path.exists(f'{config.output_folder}/collisionEnergyStats.csv')
+        not os.path.exists(f'{config.output_folder}/collisionEnergyStats.csv') and
+        args.pipeline != 'convert'
     ):
         print(
             OKGREEN_TEXT +
@@ -102,8 +111,16 @@ def main():
         )
         calibrate(config)
 
-    if config.collision_energy is None:
+    if config.collision_energy is None and args.pipeline != 'convert':
         config.collision_energy = fetch_collision_energy(config.output_folder)
+
+    if args.pipeline == 'convert':
+        print(
+            OKGREEN_TEXT +
+            'Creating Formatted Spectral Prediction Input...' +
+            ENDC_TEXT
+        )
+        convert_raw_to_mgf(config)
 
     if args.pipeline in ('spectralPrepare', 'prepare', 'core'):
         print(

@@ -55,12 +55,12 @@ def predict_spectra(config, pipeline='core'):
         home = str(Path.home())
         d_irt = load_model(
             f'{home}/inSPIRE_models/models/irt_config.yml',
-            f'{home}/inSPIRE_models/models/irt_model.yml',
+            f'{home}/inSPIRE_models/models/irt_model.json',
             f'{home}/inSPIRE_models/models/weight_66_0.00796.hdf5',
         )
         d_spectra = load_model(
             f'{home}/inSPIRE_models/models/spectra_config.yml',
-            f'{home}/inSPIRE_models/models/spectra_model.yml',
+            f'{home}/inSPIRE_models/models/spectra_model.json',
             f'{home}/inSPIRE_models/models/weight_163_0.11385.hdf5',
         )
 

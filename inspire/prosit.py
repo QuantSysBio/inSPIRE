@@ -175,8 +175,8 @@ def load_model(config_loc, model_loc, weights_loc):
         config_dict = yaml.safe_load(stream)
 
     with open(model_loc, 'r', encoding='UTF-8') as model_file:
-        model = tf.keras.models.model_from_yaml(
-            model_file.read(), custom_objects={"Attention": PrositAttention}
+        model = tf.keras.models.model_from_json(
+            model_file.read(), custom_objects={"PrositAttention": PrositAttention}
         )
     model.load_weights(weights_loc)
 
@@ -340,7 +340,6 @@ def prosit_predict(data, d_model):
     # check for mandatory keys
     input_data = [data[key] for key in d_model["config"]["x"]]
 
-    keras.backend.set_session(d_model["session"])
 
     prediction = d_model["model"].predict(
         input_data, verbose=True, batch_size=PROSIT_PRED_BATCH_SIZE

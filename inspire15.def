@@ -1,0 +1,62 @@
+Bootstrap: docker
+From: ubuntu:20.04
+
+
+%post
+    apt-get update && apt-get install -y python3.9
+    apt-get install -y python3-pip
+    pip3 install kaleido==1.0.0rc11
+    apt install -y ca-certificates gnupg
+    apt update
+    apt install -y wget && wget https://github.com/percolator/percolator/releases/download/rel-3-05/ubuntu.tar.gz && tar -xvzf ubuntu.tar.gz && apt install -y gdebi-core && dpkg -i percolator-v3-05-linux-amd64.deb
+    gpg --homedir /tmp --no-default-keyring --keyring /usr/share/keyrings/mono-official-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF
+    echo "deb [signed-by=/usr/share/keyrings/mono-official-archive-keyring.gpg] https://download.mono-project.com/repo/ubuntu stable-focal main" | tee /etc/apt/sources.list.d/mono-official-stable.list
+    apt install -y mono-devel
+    apt install -y r-base
+    R -e 'install.packages("data.table", repos="http://cran.us.r-project.org")'
+    R -e 'install.packages("parallel", repos="http://cran.us.r-project.org")'
+    R -e 'install.packages("dplyr", repos="http://cran.us.r-project.org")'
+    R -e 'install.packages("plyr", repos="http://cran.us.r-project.org")'
+    R -e 'install.packages("seqinr", repos="http://cran.us.r-project.org")'
+    R -e 'install.packages("stringr", repos="http://cran.us.r-project.org")'
+    pip3 install --upgrade pip
+    pip3 install Cython
+    pip3 install "inspirems==1.5.2"
+    inspire -h
+    pip3 install polars
+    pip3 install pyarrow
+    pip3 install kaleido==0.2.1
+
+%runscript
+    inspire --config_file /mnt/config.yml --pipeline download_invitroData
+    if [ "$1" = "generateDB" ];then
+        Rscript /mnt/outputFolder/inspire_invitro/step0_createSplicedProteome.R
+    elif [ "$1" = "inSPIRE_15" ]; then
+        inspire --config_file /mnt/config.yml --pipeline convert
+        inspire --config_file /mnt/config.yml --pipeline prepare
+        inspire --config_file /mnt/config.yml --pipeline predictSpectra
+        inspire --config_file /mnt/config.yml --pipeline featureGeneration
+        inspire --config_file /mnt/config_contam.yml --pipeline prepare
+        inspire --config_file /mnt/config_contam.yml --pipeline predictSpectra
+        inspire --config_file /mnt/config_contam.yml --pipeline featureGeneration
+    elif [ "$1" = "inSPIRE_combined" ]; then
+        python3 /mnt/outputFolder/inspire_invitro/step1_combine.py
+        inspire --config_file  /mnt/outputFolder/inspire_invitro/combined_config.yml --pipeline featureSelection
+        inspire --config_file  /mnt/outputFolder/inspire_invitro/combined_config.yml --pipeline finalRescoring
+    elif [ "$1" = "finaliseResults" ]; then
+        python3 /mnt/outputFolder/inspire_invitro/step2_filter_combined.py
+        inspire --config_file /mnt/config.yml --pipeline validate
+        python3 /mnt/outputFolder/inspire_invitro/step3_take_assigned.py
+        inspire --config_file /mnt/config.yml --pipeline plotSpectra
+        rm -rf /mnt/outputFolder/inspire_invitro
+    else
+        echo "unknown argument $1"
+    fi
+
+%labels
+    Author john.cormican
+    Version v0.0.1
+
+%help
+    This is a container for running inSPIRE 1.5 on invitro data.
+    

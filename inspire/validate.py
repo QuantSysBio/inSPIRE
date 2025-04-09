@@ -6,6 +6,8 @@ import re
 from Bio import SeqIO
 import numpy as np
 import pandas as pd
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 from scipy.stats import spearmanr
 
 from inspire.constants import (
@@ -399,6 +401,46 @@ def validate_spliced(config):
         ],
         axis=1,
     )
+
+    fig = make_subplots(rows=1, cols=2, horizontal_spacing=0.15,)
+    for col_idx, metric in enumerate(['spectralAngle', 'spearmanR']):
+
+        for val, col in zip(['nonspliced', 'spliced'], ['orange', 'dodgerblue']):
+            sub_df = final_df[final_df['accessionGroup'] == val]
+            fig.add_trace(
+                go.Violin(
+                    x=sub_df['accessionGroup'],
+                    y=sub_df[metric],
+                    name=val,
+                    fillcolor=col,
+                    line_color='black',
+                    line_width=0.5,
+                    marker_size=0.25,
+                    scalegroup=val,
+                    opacity=0.8,
+                    meanline_visible=True,
+                ), row=1, col=col_idx+1
+            )
+
+    fig.update_layout(
+        {
+            'yaxis1': {'title_text': 'Spectral Angle'},
+            'yaxis2': {'title_text': 'Spearman Correlation'},
+        },
+        plot_bgcolor='rgba(0,0,0,0)', showlegend=False, bargap=0.1,
+        font_family='Helvetica', font_color='black',
+        margin={'l':0, 'r':0, 't':20, 'b':0}, height=300, width=500,
+    )
+    fig.update_xaxes(
+        showline=True, linewidth=0.5, linecolor='black',
+        showgrid=False, ticks="outside",
+    )
+    fig.update_yaxes(
+        showline=True, linewidth=0.5, linecolor='black',
+        showgrid=False, ticks="outside", range=[0,1]
+    )
+    fig.write_image(f'{config.output_folder}/spectralAngle_distro.svg')
+    
 
     final_df.to_csv(
         f'{config.output_folder}/filtered_finalAssignments.csv',

@@ -6,8 +6,53 @@ from urllib.request import urlretrieve
 import tarfile
 import zipfile
 
-from inspire.constants import ENDC_TEXT, FIGSHARE_EXAMPLE_PATH, FIGSHARE_PATH, OKCYAN_TEXT
+from inspire.constants import ENDC_TEXT, FIGSHARE_EXAMPLE_PATH, FIGSHARE_INVITRO_PATH, FIGSHARE_PATH, OKCYAN_TEXT
 
+
+
+def download_thermo_raw_file_parser():
+    """ Function to download the ThermoRawFileParser.
+    """
+    home = str(Path.home())
+    if os.path.isdir(f'{home}/inSPIRE_models/ThermoRawFileParser'):
+        print(
+            OKCYAN_TEXT + '\tThermoRawFileParser already downloaded.' + ENDC_TEXT
+        )
+    else:
+        os.mkdir(f'{home}/inSPIRE_models/ThermoRawFileParser')
+        print(
+            OKCYAN_TEXT + '\tDownloading ThermoRawFileParser...' + ENDC_TEXT
+        )
+        urlretrieve(THERMO_PARSER_PATH, f'{home}/inSPIRE_models/ThermoRawFileParser/parser.zip')
+        print(
+            OKCYAN_TEXT + '\tExtracting ThermoRawFileParser...' + ENDC_TEXT
+        )
+        with zipfile.ZipFile(f'{home}/inSPIRE_models/ThermoRawFileParser/parser.zip') as zip_ref:
+            zip_ref.extractall(f'{home}/inSPIRE_models/ThermoRawFileParser')
+        print(
+            OKCYAN_TEXT + '\tThermoParserReady ready.' + ENDC_TEXT
+        )
+
+def download_invitro_data(config):
+    """ Function to download the in vitro data from figshare.
+    """
+    if os.path.isdir(f'{config.output_folder}/inspire_invitro'):
+        print(
+            OKCYAN_TEXT + '\in vitro data already downloaded.' + ENDC_TEXT
+        )
+    else:
+        print(
+            OKCYAN_TEXT + '\tDownloading in vitro data...' + ENDC_TEXT
+        )
+        urlretrieve(FIGSHARE_INVITRO_PATH, f'{config.output_folder}/inspire_invitro.zip')
+        print(
+            OKCYAN_TEXT + '\tExtracting in vitro data...' + ENDC_TEXT
+        )
+        with zipfile.ZipFile(f'{config.output_folder}/inspire_invitro.zip') as zip_ref:
+            zip_ref.extractall(f'{config.output_folder}')
+
+        os.remove(f'{config.output_folder}/inspire_invitro.zip')
+    
 
 def download_models(force_reload=False):
     """ Function to download the required models for inSPIRE execution from
