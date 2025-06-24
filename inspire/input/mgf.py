@@ -79,8 +79,8 @@ def process_mgf_file(
             if scan_ids is None or scan_id in scan_ids:
                 sources.append(source)
                 matched_scan_ids.append(scan_id)
-                matched_intensities.append(np.array(list(spectrum['intensity array'])))
-                matched_mzs.append(np.array(list(spectrum['m/z array'])))
+                matched_intensities.append(list(spectrum['intensity array']))
+                matched_mzs.append(list(spectrum['m/z array']))
                 if with_charge:
                     charge_list.append(int(spectrum['params']['charge'][0]))
                 if with_retention_time:
@@ -106,6 +106,6 @@ def process_mgf_file(
         mgf_data['ms1Intensity'] = pl.Series(ms1_intes)
 
     mgf_df = pl.DataFrame(mgf_data)
-    mgf_df = mgf_df.unique(subset=[SOURCE_KEY, SCAN_KEY])
+    mgf_df = mgf_df.unique(subset=[SOURCE_KEY, SCAN_KEY], maintain_order=True)
 
     return mgf_df

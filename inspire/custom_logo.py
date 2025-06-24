@@ -108,7 +108,6 @@ class CustomLogo(Logo):
         # draw
         self.draw()
 
-    
     def _compute_custom_alpha_glyphs(self, custom_alphas):
         """
         Specifies the placement and styling of all glyphs within the logo.

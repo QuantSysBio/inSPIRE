@@ -26,7 +26,7 @@ def predict_spectra(config, pipeline='core'):
         The pipeline which is being run.
     """
     if config.spectral_predictor == 'ms2pip':
-        raise ValueError('inSPIRE 2.0 does not support running MS2PIP natively.')
+        raise ValueError('inSPIRE 2.0+ does not support running MS2PIP natively.')
 
     home = str(Path.home())
     d_irt = load_model(

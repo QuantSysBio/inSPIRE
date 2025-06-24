@@ -75,12 +75,13 @@ PEAKS_11_RELEVANT_COLUMNS = [
 ]
 
 ID_NUMBERS = {
+    'Cysteinylation': 5,
     'Deamidation (NQ)': 4,
     'Deamidation (N)': 4,
     'Deamidation (Q)': 4,
-    'Phospho (S)': 5,
-    'Phospho (T)': 5,
-    'Phospho (Y)': 5,
+    'Phospho (S)': 6,
+    'Phospho (T)': 6,
+    'Phospho (Y)': 6,
     'Acetylation (N-term)': 3,
     'Acetylation (Protein N-term)': 3,
     'Oxidation (M)': 2,
@@ -209,15 +210,18 @@ def collect_peaks_var_mods(peaks_df):
     """
     var_mod_df = deepcopy(peaks_df[[PEAKS_PTM_KEY, PEAKS_PEPTIDE_KEY]])
     var_mod_df = var_mod_df.with_columns(
-        pl.col(PEAKS_PTM_KEY).apply(
-            lambda x: None if not isinstance(x, str) else [a.strip(' ') for a in x.split(';')],
+        pl.col(PEAKS_PTM_KEY).map_elements(
+            lambda x: None if not isinstance(x, str) or x == '' else [
+                a.strip(' ') for a in x.split(';')
+            ],
             skip_nulls=False,
         ).alias('ptm_names')
     )
 
     var_mod_df = var_mod_df.with_columns(
-        pl.col(PEAKS_PEPTIDE_KEY).str.replace_all(r'[A-Za-z]', '').apply(
-            lambda x : [a.strip('(').strip(')') for a in x.split(')(')]
+        pl.col(PEAKS_PEPTIDE_KEY).str.replace_all(r'[A-Za-z]', '').map_elements(
+            lambda x : [a.strip('(').strip(')') for a in x.split(')(')],
+            return_dtype=pl.List(pl.String),
         ).alias('peaks_ptm_weights')
     )
 
@@ -233,8 +237,9 @@ def collect_peaks_var_mods(peaks_df):
         })
 
     var_mod_df = var_mod_df.with_columns(
-        pl.struct(['ptm_names', 'peaks_ptm_weights']).apply(
-            lambda x : ["~".join(y) for y in zip(x['ptm_names'], x['peaks_ptm_weights'])]
+        pl.struct(['ptm_names', 'peaks_ptm_weights']).map_elements(
+            lambda x : ["~".join(y) for y in zip(x['ptm_names'], x['peaks_ptm_weights'])],
+            return_dtype=pl.List(pl.String),
         ).alias('combined_ptm_data')
     )
     ptms = [x.split('~') for x in var_mod_df['combined_ptm_data'].explode().unique()]
@@ -287,8 +292,12 @@ def read_single_peaks_data(df_loc):
 
     if var_mod_dict:
         peaks_df = peaks_df.with_columns(
-            pl.struct([PEAKS_PEPTIDE_KEY, PEAKS_ASCORE_KEY]).apply(
-                lambda x: separate_peaks_ptms(x, var_mod_dict)
+            pl.struct([PEAKS_PEPTIDE_KEY, PEAKS_ASCORE_KEY]).map_elements(
+                lambda x: separate_peaks_ptms(x, var_mod_dict),
+                return_dtype=pl.Struct([
+                    pl.Field(PEPTIDE_KEY, pl.String),
+                    pl.Field(PTM_SEQ_KEY, pl.String),
+                ]),
             ).alias('results')
         ).unnest('results')
         peaks_df = peaks_df.drop(PEAKS_PEPTIDE_KEY)
@@ -299,8 +308,6 @@ def read_single_peaks_data(df_loc):
         peaks_df = peaks_df.with_columns(
             pl.lit(None).alias(PTM_SEQ_KEY)
         )
-
-    print(peaks_df.columns)
 
     # Rename to match inSPIRE naming scheme.
     peaks_df = peaks_df.rename({
@@ -314,7 +321,7 @@ def read_single_peaks_data(df_loc):
 
     # Filter for Prosit and add feature columns not present.
     peaks_df = peaks_df.with_columns(
-        pl.col(PEAKS_CHIMERA_KEY).apply(
+        pl.col(PEAKS_CHIMERA_KEY).map_elements(
             lambda x : 1 if x == 'Yes' else 0
         ).alias('fromChimera'),
         pl.col(ACCESSION_KEY).fill_null(
@@ -327,11 +334,11 @@ def read_single_peaks_data(df_loc):
         (pl.col(PEAKS_MASS_KEY)/pl.col(SEQ_LEN_KEY)).alias('avgResidueMass'),
         pl.lit(0).alias(DELTA_SCORE_KEY),
         pl.lit(0).alias('missedCleavages'),
-        pl.col(PEAKS_SOURCE_KEY).apply(remove_source_suffixes).alias(SOURCE_KEY),
-        pl.col(PEAKS_SCAN_KEY).apply(
+        pl.col(PEAKS_SOURCE_KEY).map_elements(remove_source_suffixes).alias(SOURCE_KEY),
+        pl.col(PEAKS_SCAN_KEY).map_elements(
             lambda x : x if isinstance(x, int) else int(x.split(':')[-1])
         ).alias(SCAN_KEY),
-        pl.col(ACCESSION_KEY).apply(
+        pl.col(ACCESSION_KEY).map_elements(
             lambda x : -1 if isinstance(x, str) and ('DECOY' in x or 'rev' in x) else 1
         ).alias(LABEL_KEY),
     )
@@ -351,6 +358,7 @@ def read_single_peaks_data(df_loc):
             PEAKS_PTM_KEY,
             PEAKS_SCAN_KEY,
             PEAKS_SOURCE_KEY,
+            RT_KEY,
         ]
     )
 

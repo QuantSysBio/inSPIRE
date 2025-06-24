@@ -7,12 +7,13 @@ from plotly.subplots import make_subplots
 
 from inspire.constants import (
     ION_OFFSET,
-    KNOWN_PTM_WEIGHTS,
     LOSS_NAMES,
     NEUTRAL_LOSSES,
     PROTON,
+    STANDARD_PTM_DICT,
 )
 from inspire.mz_match import get_ion_masses, compute_potential_mws
+from inspire.utils import reverse_skyline_mod_seq
 
 
 LOSS_NAMES = ['',  '*', '&#xb0;']
@@ -529,33 +530,12 @@ def convert_names_and_mzs(mod_seq, pred_names):
     plotting_names : list of str
         A list of the annotations for the prosit predicted ions.
     """
-    if '(ox)' not in mod_seq and 'C' not in mod_seq:
-        mods = None
-        un_mod_seq = mod_seq.replace('(ox)', '')
-    else:
-        mods = '0.'
-        un_mod_seq = ''
-        while mod_seq:
-            if len(mod_seq) > 1:
-                if mod_seq[1] == '(':
-                    un_mod_seq += 'M'
-                    mods += '1'
-                    mod_seq = mod_seq[5:]
-                    continue
-            un_mod_seq += mod_seq[0]
-            if mod_seq[0] != 'C':
-                mods += '0'
-            else:
-                mods += '2'
-            mod_seq = mod_seq[1:]
-        mods += '.0'
+    mods = reverse_skyline_mod_seq(mod_seq)
+    un_mod_seq = ''.join(c for c in mod_seq if c.isalpha())
+
     masses, _ = get_ion_masses(
         un_mod_seq,
-        {
-            0: 0.0,
-            1: KNOWN_PTM_WEIGHTS['Oxidation (M)'],
-            2: KNOWN_PTM_WEIGHTS['Carbamidomethylation'],
-        },
+        STANDARD_PTM_DICT,
         modifications=mods
     )
     pred_mzs = []

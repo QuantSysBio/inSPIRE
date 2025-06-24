@@ -222,6 +222,7 @@ def calculate_competitor_spectral_data(competitors_df, config):
     prosit_df = msp_to_df(
         f'{config.output_folder}/validationPredictions.msp', 'prosit', None
     )
+    prosit_df = prosit_df.to_pandas()
     prosit_df = prosit_df.drop_duplicates(subset=['modified_sequence', 'charge'])
     competitors_df['modified_sequence'] = competitors_df['matched_pcps'].apply(
         lambda x : x.replace('[+16.0]', '(ox)').replace('[+57.0]', '')
@@ -419,7 +420,9 @@ def _separate_psm_id(df_row):
     df_row['source'] = source
     df_row['scan'] = scan
     df_row['contModPep'] = mod_pep
-    df_row['contPeptide'] = mod_pep.replace('[+1.0]', '').replace('[+16.0]', '').replace('[+57.0]', '')
+    df_row['contPeptide'] = mod_pep.replace(
+        '[+1.0]', ''
+    ).replace('[+16.0]', '').replace('[+57.0]', '')
     return df_row
 
 def cont_filter(df_row):

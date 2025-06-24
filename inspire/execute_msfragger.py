@@ -15,12 +15,28 @@ UNSPECIFIC_CLEAVAGE = (
 )
 
 TRYPTIC_CLEAVAGE = (
-    'search_enzyme_name_1 = trypsin\n'+
+    'search_enzyme_name_1 = trypsin\n' +
     'search_enzyme_cut_1 = KR\n' +
     'search_enzyme_nocut_1 = \n' +
     'search_enzyme_sense_1 = C\n' +
     'allowed_missed_cleavage_1 = 2\n'
 )
+
+MODIFICATIONS_STANDARD = (
+    'variable_mod_01 = 15.9949 M 3\n'
+)
+
+MODIFICATIONS_EXTENDED = (
+    'variable_mod_01 = 15.9949 M 3\n' +
+    'variable_mod_02 = 57.0215 C 3\n' +
+    'variable_mod_03 = 42.0106 [^ 1\n' +
+    'variable_mod_04 = 0.9840 NQ 3\n' +
+    'variable_mod_05 = 119.0041 C 3\n'
+)
+
+CARBA_FIXED = 'add_C_cysteine = 57.0215'
+NO_CARBA_FIXED = 'add_C_cysteine = 0.0'
+
 
 def get_proteins(protein_file, all_ids, all_proteins):
     """ Function to retrieve protein IDs and names from a file.
@@ -93,10 +109,11 @@ def write_search_proteome(proteome, output_folder, contams_db):
         encoding='UTF-8',
     ) as out_file:
         for prot_id, prot_seq in zip(all_ids, all_proteins):
-            rev_sequence = prot_seq[::-1]
-            out_file.write(
-                f'>rev_{prot_id}\n{rev_sequence}\n'
-            )
+            if not prot_id.startswith('rev_'):
+                rev_sequence = prot_seq[::-1]
+                out_file.write(
+                    f'>rev_{prot_id}\n{rev_sequence}\n'
+                )
 
 
 def write_fragger_params(config, fragger_params_template):
@@ -119,6 +136,13 @@ def write_fragger_params(config, fragger_params_template):
     else:
         cleavage = UNSPECIFIC_CLEAVAGE
 
+    if config.fragger_mods == 'standard':
+        modifications = MODIFICATIONS_STANDARD
+        carba_fixed = CARBA_FIXED
+    else:
+        modifications = MODIFICATIONS_EXTENDED
+        carba_fixed = NO_CARBA_FIXED
+
     with open(
         fragger_params_template,
         mode='r',
@@ -132,6 +156,8 @@ def write_fragger_params(config, fragger_params_template):
             fragment_units=ms2_units,
             top_n_candidates=10,
             cleavage_parameters=cleavage,
+            fragger_modifications=modifications,
+            carba_fixed=carba_fixed,
         )
 
     with open(
@@ -160,12 +186,13 @@ def clean_up_fragger(config):
                 frag_out.write(f'{config.scans_folder}/{s_file}\n')
 
     # Remove intermediate files
-    mzml_files = [
-        f'{config.scans_folder}/{scan_f}' for scan_f in os.listdir(config.scans_folder)
-        if scan_f.lower().endswith('mzML')
-    ]
-    for mzml_file in mzml_files:
-        os.remove(mzml_file)
+    if config.scans_format == 'mgf':
+        mzml_files = [
+            f'{config.scans_folder}/{scan_f}' for scan_f in os.listdir(config.scans_folder)
+            if scan_f.lower().endswith('mzML')
+        ]
+        for mzml_file in mzml_files:
+            os.remove(mzml_file)
 
 def execute_msfragger(config):
     """ Function to run an MSFragger search with inSPIRE default settings.

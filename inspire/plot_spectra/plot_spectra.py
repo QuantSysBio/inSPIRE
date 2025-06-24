@@ -10,24 +10,27 @@ import plotly.io as pio
 
 from inspire.constants import (
     CHARGE_KEY,
-    KNOWN_PTM_WEIGHTS,
+    INTENSITIES_KEY,
+    MOD_SEQ_KEY,
+    MZS_KEY,
     PEPTIDE_KEY,
     SCAN_KEY,
     SOURCE_KEY,
     SPECTRAL_ANGLE_KEY,
+    STANDARD_PTM_DICT,
 )
 
 from inspire.input.msp import msp_to_df
 from inspire.predict_spectra import predict_spectra
 from inspire.spectral_features import calculate_spectral_features
-from inspire.utils import convert_mod_seq_to_ptm_seq, fetch_scan_data
+from inspire.utils import reverse_skyline_mod_seq, fetch_scan_data
 from inspire.plot_spectra.plot_spec_utils import (
     convert_names_and_mzs, create_traces, get_plot_details, get_unmatched,
     experiment_match, get_npp_ions, add_legend, update_fig_layout,
 )
 
-PLOTS_PER_PAGE = 15
-PLOTS_PER_LINE = 3
+PLOTS_PER_PAGE = 10
+PLOTS_PER_LINE = 2
 
 
 def pair_plot(df_row, mz_accuracy, mz_units):
@@ -47,34 +50,30 @@ def pair_plot(df_row, mz_accuracy, mz_units):
         A list of the annotations needed for the bar plot.
     """
     index = df_row['index']
-    peptide = df_row['peptide']
+    peptide = df_row[PEPTIDE_KEY]
     pred_intes = [-x for x in df_row['prositIntes']]
 
     pred_mzs, plotting_names = convert_names_and_mzs(
-        df_row['modified_sequence'],
+        df_row[MOD_SEQ_KEY],
         list(df_row['prositIons'])
     )
 
     matched_peaks, l2_norm, matched_p_mz, matched_names = experiment_match(
-        df_row['mzs'], df_row['intensities'], pred_mzs, plotting_names, mz_accuracy, mz_units
+        df_row[MZS_KEY], df_row[INTENSITIES_KEY], pred_mzs, plotting_names, mz_accuracy, mz_units
     )
     non_prosit_pred_peaks, prec_peak = get_npp_ions(
-        df_row['mzs'], df_row['intensities'], matched_peaks['mzs'], l2_norm, peptide,
+        df_row[MZS_KEY], df_row[INTENSITIES_KEY], matched_peaks[MZS_KEY], l2_norm, peptide,
         df_row['charge'],
-        {
-            0: 0.0,
-            1: KNOWN_PTM_WEIGHTS['Oxidation (M)'],
-            2: KNOWN_PTM_WEIGHTS['Carbamidomethylation'],
-        },
+        STANDARD_PTM_DICT,
         df_row['ptm_seq'], mz_accuracy, mz_units
     )
 
     unmatched_peaks = get_unmatched(
-        df_row['mzs'],
-        df_row['intensities'],
-        matched_peaks['mzs'],
-        non_prosit_pred_peaks['mzs'],
-        prec_peak['mzs'],
+        df_row[MZS_KEY],
+        df_row[INTENSITIES_KEY],
+        matched_peaks[MZS_KEY],
+        non_prosit_pred_peaks[MZS_KEY],
+        prec_peak[MZS_KEY],
         l2_norm,
     )
 
@@ -85,8 +84,8 @@ def pair_plot(df_row, mz_accuracy, mz_units):
 
 
     for npp_mz, npp_inte, npp_name in zip(
-        non_prosit_pred_peaks['mzs'],
-        non_prosit_pred_peaks['intensities'],
+        non_prosit_pred_peaks[MZS_KEY],
+        non_prosit_pred_peaks[INTENSITIES_KEY],
         non_prosit_pred_peaks['names'],
     ):
         if npp_inte > 0.4:
@@ -142,7 +141,7 @@ def plot_spectra(config):
         on=[SOURCE_KEY, SCAN_KEY]
     )
 
-    input_df['pepLen'] = input_df['peptide'].apply(len)
+    input_df['pepLen'] = input_df[PEPTIDE_KEY].apply(len)
     input_df = input_df[(input_df['pepLen'] > 6) & (input_df['pepLen'] < 31)]
     input_df = input_df[input_df['charge'] < 7]
 
@@ -150,15 +149,24 @@ def plot_spectra(config):
     if input_df.shape[0] % PLOTS_PER_PAGE:
         n_groups += 1
 
-    input_df['modified_sequence'] = input_df['modifiedSequence'].apply(
-        lambda x : x.replace('[+16.0]', '(ox)').replace('[+57.0]', '')
+    input_df['modified_sequence'] = input_df[MOD_SEQ_KEY].apply(
+        lambda x : x.replace('[+16.0]', '(ox)').replace('[+57.0]', '').replace(
+            '[+42.0]', ''
+        ).replace('[+1.0]', '').replace('[+119.0]', '').replace(
+            '[+43.0]', ''
+        ).replace('[+26.0]', '').replace('[-17.0]', '')
     )
     input_df['precursor_charge'] = input_df[CHARGE_KEY]
 
     if 'collisionEnergy' in input_df.columns:
         input_df = input_df.rename(columns={'collisionEnergy': 'collision_energy'})
-    else:
-        input_df['collision_energy'] = config.collision_energy
+    elif config.collision_energy is not None:
+        if isinstance(config.collision_energy, dict):
+            input_df['collision_energy'] = input_df['source'].apply(
+                lambda x : config.collision_energy[x]
+            )
+        else:
+            input_df['collision_energy'] = config.collision_energy
 
     input_df[['modified_sequence', 'precursor_charge', 'collision_energy']].to_csv(
         f'{config.output_folder}/plotInput.csv', index=False,
@@ -181,8 +189,8 @@ def plot_spectra(config):
     input_df = input_df.reset_index(drop=True)
     input_df['group'] = input_df.index // PLOTS_PER_PAGE
     input_df['index'] = input_df.index % PLOTS_PER_PAGE
-    input_df['ptm_seq'] = input_df['modifiedSequence'].apply(
-        convert_mod_seq_to_ptm_seq
+    input_df['ptm_seq'] = input_df[MOD_SEQ_KEY].apply(
+        reverse_skyline_mod_seq
     )
     input_df['plot_data'] = input_df.apply(
         lambda x : pair_plot(x, config.mz_accuracy, config.mz_units),
@@ -193,11 +201,7 @@ def plot_spectra(config):
         input_df['results'] = input_df.apply(
             lambda x : calculate_spectral_features(
                 x,
-                {
-                    0: 0.0,
-                    1: KNOWN_PTM_WEIGHTS['Oxidation (M)'],
-                    2: KNOWN_PTM_WEIGHTS['Carbamidomethylation'],
-                },
+                STANDARD_PTM_DICT,
                 config.mz_accuracy,
                 config.mz_units,
                 None,
@@ -211,7 +215,7 @@ def plot_spectra(config):
 
     titles = []
     for idx in range(input_df.shape[0]):
-        seq = input_df[PEPTIDE_KEY].iloc[idx]
+        seq = input_df[MOD_SEQ_KEY].iloc[idx]
         scan_nr = input_df[SCAN_KEY].iloc[idx]
         charge = input_df[CHARGE_KEY].iloc[idx]
 

@@ -21,8 +21,8 @@ from inspire.quant.utils import plot_correlations
 from inspire.utils import is_control
 
 SKYLINE_INTERMEDIATE_FILES = [
-    'inspire_identifications.fasta',
-    'inspire_identifications.ssl',
+    'identifications.fasta',
+    'identifications.ssl',
     'skyline_config.blib',
     'skyline_config.redundant.blib',
     'skyline_config.skyd',
@@ -84,29 +84,35 @@ def create_skyline_input(config):
     config : inspire.config.Config
         Config object which controls the experiment.
     """
-    output_df = pl.read_csv(f'{config.output_folder}/finalPsmAssignments.csv')
+    if config.for_pisces:
+        output_df = pl.read_csv(f'{config.output_folder}/peptidesForQuantification.csv')
+    else:
+        output_df = pl.read_csv(f'{config.output_folder}/finalPsmAssignments.csv')
+
     output_df = output_df.with_columns(
-        pl.struct([ACCESSION_KEY, PEPTIDE_KEY]).apply(
+        pl.struct([ACCESSION_KEY, PEPTIDE_KEY]).map_elements(
             lambda df_row : (
                 f'>{df_row[ACCESSION_KEY]}_{df_row[PEPTIDE_KEY]}\n{df_row[PEPTIDE_KEY]}\n'
-            )
+            ), return_dtype=pl.String,
         ).alias('fastaEntry')
     )
 
     # Write all peptides to the fasta file
     with open(
-        f'{config.output_folder}/quant/inspire_identifications.fasta',
+        f'{config.output_folder}/quant/identifications.fasta',
         mode='w',
         encoding='UTF-8',
     ) as out_fasta:
-        output_df['fastaEntry'].apply(
-            out_fasta.write
-        )
+        for fasta_entry in output_df['fastaEntry'].to_list():
+            out_fasta.write(fasta_entry)
 
     # Filter identifications
-    quant_df = output_df.filter(
-        pl.col(FINAL_Q_VALUE_KEY).lt(config.quantification_cut_off)
-    )
+    if not config.for_pisces:
+        quant_df = output_df.filter(
+            pl.col(FINAL_Q_VALUE_KEY).lt(config.quantification_cut_off)
+        )
+    else:
+        quant_df = output_df
 
     # Format for Skyline
     quant_df = quant_df.rename({
@@ -121,7 +127,7 @@ def create_skyline_input(config):
     quant_df.select(
         SKYLINE_INPUT_KEYS
     ).write_csv(
-        f'{config.output_folder}/quant/inspire_identifications.ssl',
+        f'{config.output_folder}/quant/identifications.ssl',
         separator='\t',
     )
 
@@ -135,12 +141,12 @@ def copy_skyline_files_to_scans_dir(config):
         Config object which controls the experiment.
     """
     shutil.copyfile(
-        f'{config.output_folder}/quant/inspire_identifications.fasta',
-        f'{config.scans_folder}/inspire_identifications.fasta',
+        f'{config.output_folder}/quant/identifications.fasta',
+        f'{config.scans_folder}/identifications.fasta',
     )
     shutil.copyfile(
-        f'{config.output_folder}/quant/inspire_identifications.ssl',
-        f'{config.scans_folder}/inspire_identifications.ssl',
+        f'{config.output_folder}/quant/identifications.ssl',
+        f'{config.scans_folder}/identifications.ssl',
     )
 
     with open(
@@ -183,20 +189,21 @@ def execute_skyline(config):
         container = client.containers.run(
             'proteowizard/pwiz-skyline-i-agree-to-the-vendor-licenses',
             ' wine SkylineCmd --timestamp --dir=/data --in=skyline_config.sky ' +
-            # ' --full-scan-rt-filter=ms2_ids --full-scan-rt-filter-tolerance=0.25 '
-            ' --import-search-file=inspire_identifications.ssl ' +
-            ' --import-fasta=inspire_identifications.fasta ' +
+            ' --import-search-file=identifications.ssl ' +
+            ' --import-fasta=identifications.fasta ' +
             ' --import-search-include-ambiguous ' +
             ' --report-conflict-resolution=overwrite ' +
             ' --report-add=skyline_report_template.skyr --report-name=myreport --report-invariant' +
-            f' --report-file=skyline_report.csv',
+            ' --report-file=skyline_report.csv',
             tty=True,
             stdin_open=True,
             auto_remove=True,
             volumes={scans_folder_abs_path: {'bind': '/data', 'mode': 'rw'}},
             detach=True
         )
-        with open(f'{config.output_folder}/quant/skyline_log.txt', 'w') as log_file:
+        with open(
+            f'{config.output_folder}/quant/skyline_log.txt', 'w', encoding='UTF-8',
+        ) as log_file:
             # Stream logs and write them to the file
             for log in container.logs(stream=True):
                 log_file.write(log.decode('utf-8'))
@@ -205,8 +212,8 @@ def execute_skyline(config):
         os.system(
             f'"{config.skyline_runner}"' +
             f' --timestamp --dir={scans_folder_abs_path} --in=skyline_config.sky ' +
-            ' --import-search-file=inspire_identifications.ssl ' +
-            ' --import-fasta=inspire_identifications.fasta ' +
+            ' --import-search-file=identifications.ssl ' +
+            ' --import-fasta=identifications.fasta ' +
             ' --report-conflict-resolution=overwrite ' +
             ' --import-search-include-ambiguous ' +
             ' --report-add=skyline_report_template.skyr --report-name=myreport --report-invariant' +
@@ -220,7 +227,9 @@ def execute_skyline(config):
             f'{config.output_folder}/quant/skyline_report.csv',
         )
     else:
-        raise RuntimeError(f'Skyline failed. Check log at: {config.output_folder}/quant/skyline_log.txt')
+        raise RuntimeError(
+            f'Skyline failed. Check log at: {config.output_folder}/quant/skyline_log.txt'
+        )
 
     # Remove intermediate files.
     for skyline_file in SKYLINE_INTERMEDIATE_FILES:
@@ -365,10 +374,13 @@ def add_id_data(pivot_quant_df, sources, config):
         The input DataFrame with identification columns added.
     """
     # Read and filter assignments by q-value and remove duplicates within a raw file.
-    identification_df = pd.read_csv(f'{config.output_folder}/finalPsmAssignments.csv')
-    identification_df = identification_df[
-        identification_df[FINAL_Q_VALUE_KEY] < config.quantification_cut_off
-    ]
+    if config.for_pisces:
+        identification_df = pd.read_csv(f'{config.output_folder}/peptidesForQuantification.csv')
+    else:
+        identification_df = pd.read_csv(f'{config.output_folder}/finalPsmAssignments.csv')
+        identification_df = identification_df[
+            identification_df[FINAL_Q_VALUE_KEY] < config.quantification_cut_off
+        ]
     identification_df = identification_df.drop_duplicates(
         subset=[PEPTIDE_KEY, ACCESSION_KEY, SOURCE_KEY]
     )

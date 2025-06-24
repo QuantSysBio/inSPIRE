@@ -1,4 +1,4 @@
 """ Init file for inSPIRE package
 """
 # Version of inSPIRE package
-__version__ = '2.0'
+__version__ = '3.0rc2'

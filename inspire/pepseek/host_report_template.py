@@ -4,8 +4,6 @@
 import os
 import webbrowser
 
-import pandas as pd
-
 from inspire.constants import ENDC_TEXT, OKCYAN_TEXT
 
 def create_host_report(config):

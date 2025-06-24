@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 import os
 import warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # pylint: disable=wrong-import-position
+os.environ['POLARS_MAX_THREADS'] = '1' # pylint: disable=wrong-import-position
 
 import pandas as pd
 from scipy.stats import ConstantInputWarning
@@ -115,7 +116,7 @@ def run_inspire(pipeline=None, config_file=None):
     if pipeline == 'calibrate' or (
         config.collision_energy is None and
         not os.path.exists(f'{config.output_folder}/collisionEnergyStats.csv')
-        and pipeline not in ('convert', 'fragger')
+        and pipeline not in ('convert', 'fragger', 'predictBinding')
     ):
         print(
             OKGREEN_TEXT +
@@ -124,7 +125,9 @@ def run_inspire(pipeline=None, config_file=None):
         )
         calibrate(config)
 
-    if config.collision_energy is None and pipeline not in ('convert', 'fragger'):
+    if config.collision_energy is None and pipeline not in (
+        'convert', 'fragger', 'predictBinding'
+    ):
         config.collision_energy = fetch_collision_energy(config.output_folder)
 
     if pipeline == 'convert':

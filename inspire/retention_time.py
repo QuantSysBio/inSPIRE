@@ -6,7 +6,7 @@ import os
 import pandas as pd
 import polars as pl
 from pyteomics import achrom
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import TheilSenRegressor
 from sklearn.model_selection import KFold
 
 from inspire.constants import (
@@ -64,8 +64,10 @@ def add_delta_irt(combined_df, config, scan_file):
     combined_df : pd.DataFrame
         The DataFrame updated with a deltaRT column.
     """
-    if combined_df[RT_KEY].n_unique() <= 1:
-        combined_df['deltaRT'] = 0
+    if combined_df[RT_KEY].n_unique() <= 1 and config.rt_fit_loc is None:
+        combined_df = combined_df.with_columns(
+            pl.lit(0.0).alias('predRT')
+        )
         return combined_df
 
     kfold = KFold(n_splits=10, shuffle=True, random_state=42)
@@ -84,13 +86,17 @@ def add_delta_irt(combined_df, config, scan_file):
         if os.path.exists(f'{config.rt_fit_loc}/rt_fit_{scan_file}.csv'):
             rt_df = pd.read_csv(f'{config.rt_fit_loc}/rt_fit_{scan_file}.csv')
         else:
-            rt_dfs = [x for x in os.listdir(config.rt_fit_loc) if x.startswith('rt_fit')]
-            rt_df = pd.read_csv(f'{config.rt_fit_loc}/{rt_dfs[0]}')
+            rt_df = pd.concat(
+                [
+                    pd.read_csv(f'{config.rt_fit_loc}/{rt_file}') for rt_file in
+                    os.listdir(config.rt_fit_loc) if 'rt_fit_' in rt_file
+                ]
+            )
 
         coef = rt_df['coefficents'].mean()
         intercept = rt_df['intercepts'].mean()
         combined_df = combined_df.with_columns(
-            pl.col('iRT').apply(lambda x : (x*coef)+ intercept).alias('predRT')
+            (pl.col('iRT').mul(coef) + intercept).alias('predRT')
         )
         combined_df = combined_df.with_columns(
             (pl.col('predRT') - pl.col('retentionTime')).truediv(coef).abs().alias('deltaRT')
@@ -112,15 +118,17 @@ def add_delta_irt(combined_df, config, scan_file):
                     pl.col(LABEL_KEY).eq(1)
                 )
 
-            top_spec_angle_cut = train_df[SPECTRAL_ANGLE_KEY].quantile(0.9)
-            train_df = train_df.filter(
-                (pl.col(SPECTRAL_ANGLE_KEY) > top_spec_angle_cut)
-            )
+            if SPECTRAL_ANGLE_KEY in train_df.columns:
+                top_spec_angle_cut = train_df[SPECTRAL_ANGLE_KEY].quantile(0.9)
+                train_df = train_df.filter(
+                    (pl.col(SPECTRAL_ANGLE_KEY) > top_spec_angle_cut)
+                )
 
             if combined_df_irt_null_count > 0:
                 test_df['predRT'] = _add_achrom_rt_preds(train_df, test_df)
+                coef = 1.0
             else:
-                reg = LinearRegression().fit(
+                reg = TheilSenRegressor(random_state=37).fit(
                     train_df.select('iRT').to_numpy(),
                     train_df[RT_KEY].to_numpy(),
                 )
@@ -132,16 +140,17 @@ def add_delta_irt(combined_df, config, scan_file):
                 test_df = test_df.with_columns(
                     pred_rt.alias('predRT')
                 )
+                coef = reg.coef_[0]
 
             test_df = test_df.with_columns(
-                (pl.col('predRT') - pl.col('retentionTime')).abs().alias('deltaRT')
+                (pl.col('predRT') - pl.col('retentionTime')).truediv(coef).abs().alias('deltaRT')
             )
             combined_df_list.append(test_df)
     except ValueError:
         try:
             # Simplest way to avoid errors on tiny files.
             train_df = train_df.filter(pl.col(LABEL_KEY).eq(1))
-            reg = LinearRegression().fit(
+            reg = TheilSenRegressor(random_state=37).fit(
                 train_df.select('iRT').to_numpy(),
                 train_df[RT_KEY].to_numpy(),
             )
@@ -154,10 +163,12 @@ def add_delta_irt(combined_df, config, scan_file):
                 pred_rt.alias('predRT')
             )
             combined_df = combined_df.with_columns(
-                (pl.col('predRT') - pl.col('retentionTime')).abs().alias('deltaRT')
+                (
+                    pl.col('predRT') - pl.col('retentionTime')
+                ).abs().truediv(reg.coef_[0]).alias('deltaRT')
             )
         except ValueError:
-            reg = LinearRegression().fit(
+            reg = TheilSenRegressor(random_state=37).fit(
                 combined_df.select('iRT').to_numpy(),
                 combined_df[RT_KEY].to_numpy(),
             )
@@ -170,7 +181,9 @@ def add_delta_irt(combined_df, config, scan_file):
                 pred_rt.alias('predRT')
             )
             combined_df = combined_df.with_columns(
-                (pl.col('predRT') - pl.col('retentionTime')).abs().alias('deltaRT')
+                (
+                    pl.col('predRT') - pl.col('retentionTime')
+                ).truediv(reg.coef_[0]).abs().alias('deltaRT')
             )
 
 

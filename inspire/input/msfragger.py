@@ -108,7 +108,9 @@ def _extract_mod_weight(code):
     -------
     mass : int or None
     """
-    if code['mass'] is not None:
+    if code is None:
+        return None
+    if code.get('mass') is not None:
         return round(code['mass'])
     return None
 
@@ -134,7 +136,7 @@ def _get_msf_mods_pepxml(msf_df, fixed_modifications):
         return pd.DataFrame(), {}
 
     msf_mods = sorted(
-        msf_df['modifications'].explode().apply(
+        msf_df['modifications'].explode().map_elements(
             _extract_mod_weight,
             skip_nulls=False,
         ).drop_nulls().unique().to_list()
@@ -311,7 +313,7 @@ def read_single_ms_fragger_data(df_loc, fixed_modifications, file_idx):
     msf_df = pl.DataFrame(all_psms)
 
     msf_df = msf_df.with_columns(
-        pl.col('SpecId').apply(
+        pl.col('SpecId').map_elements(
             _extract_psm_id_data
         ).alias('results')
     ).unnest('results')
@@ -323,19 +325,19 @@ def read_single_ms_fragger_data(df_loc, fixed_modifications, file_idx):
     var_mod_df, msf_name_to_id = _get_msf_mods_pepxml(msf_df, fixed_modifications)
 
     msf_df = msf_df.with_columns(
-        pl.col('modified_peptide').apply(
-            lambda mod_pep : _separate_msf_ptms(mod_pep, msf_name_to_id)
+        pl.col('modified_peptide').map_elements(
+            lambda mod_pep : _separate_msf_ptms(mod_pep, msf_name_to_id), skip_nulls=False,
         ).alias(PTM_SEQ_KEY)
     )
 
     msf_df = msf_df.with_columns(
-        pl.col('proteins').apply(flatten_protein_data).alias('results')
+        pl.col('proteins').map_elements(flatten_protein_data).alias('results')
     )
     msf_df = msf_df.drop('proteins')
     msf_df = msf_df.unnest('results')
 
     msf_df= msf_df.with_columns(
-        pl.col(PEPTIDE_KEY).apply(len).alias(MSF_PEP_LEN_KEY),
+        pl.col(PEPTIDE_KEY).str.len_chars().alias(MSF_PEP_LEN_KEY),
     )
     msf_df= msf_df.with_columns(
         (
@@ -355,7 +357,7 @@ def read_single_ms_fragger_data(df_loc, fixed_modifications, file_idx):
     msf_df = msf_df.with_columns(
         pl.lit(0).alias('fromChimera'),
         pl.lit(0).alias('missedCleavages'),
-        pl.col(MASS_DIFF_KEY).apply(abs).alias(MASS_DIFF_KEY),
+        pl.col(MASS_DIFF_KEY).abs().alias(MASS_DIFF_KEY),
     )
 
     # Filter for Prosit and add feature columns not present.

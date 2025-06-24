@@ -91,7 +91,9 @@ def download_utils(force_reload=False):
 
     download=True
     if os.path.isfile(f'{home}/inSPIRE_models/utilities/version.txt'):
-        with open(f'{home}/inSPIRE_models/utilities/version.txt', 'r') as version_file:
+        with open(
+            f'{home}/inSPIRE_models/utilities/version.txt', 'r', encoding='UTF-8',
+        ) as version_file:
             version = version_file.read().strip()
             if version == '>=2.0':
                 print(

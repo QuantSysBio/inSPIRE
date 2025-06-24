@@ -61,7 +61,6 @@ def de_analysis(config):
     kmeans = KMeans(n_clusters=7, random_state=42)
     quant_df['cluster'] = kmeans.fit_predict(quant_df[['foldChange']])
 
-    
     try:
         create_quant_logoplots(quant_df, config.output_folder, kmeans.cluster_centers_)
     except Exception as e:

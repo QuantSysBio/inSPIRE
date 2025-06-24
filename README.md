@@ -49,7 +49,7 @@ conda activate inspire
 3) You will then need to install the inspire package:
 
 ```
-pip install inspirems==2.0
+pip install inspirems==3.0rc2
 ```
 
 4) To check your installation, run the following command (it is normal for this call to hang for a few seconds on first execution)

@@ -156,12 +156,12 @@ def process_accession_groups(main_df, config):
         and removed any PSMs of accession groups to ignore.
     """
     if config.accession_format == 'invitroSPI':
-        main_df = main_df.with_columns(pl.col(ACCESSION_KEY).apply(
+        main_df = main_df.with_columns(pl.col(ACCESSION_KEY).map_elements(
             lambda x : get_invitro_spi_acc_group(x, config.search_engine)
         ).alias(ACCESSION_STRATUM_KEY))
     else:
         main_df = main_df.with_columns(
-            pl.col(ACCESSION_KEY).apply(
+            pl.col(ACCESSION_KEY).map_elements(
                 lambda x : get_accession_group(
                     x,
                     config.search_engine,
@@ -180,7 +180,7 @@ def process_accession_groups(main_df, config):
             rev_prot_seqs.append(new_entry)
 
         main_df = main_df.with_columns(
-            pl.struct([ACCESSION_KEY, ACCESSION_STRATUM_KEY, PEPTIDE_KEY, LABEL_KEY]).apply(
+            pl.struct([ACCESSION_KEY, ACCESSION_STRATUM_KEY, PEPTIDE_KEY, LABEL_KEY]).map_elements(
                 lambda x : validate_accession_stratum(x, prot_sequences, rev_prot_seqs, config),
             ).alias('results')
         )

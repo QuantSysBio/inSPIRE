@@ -11,7 +11,6 @@ from inspire.constants import (
     ENGINE_SCORE_KEY,
     FINAL_SCORE_KEY,
     FINAL_POSTEP_KEY,
-    OUT_POSTEP_KEY,
     PEPTIDE_KEY,
     SCAN_KEY,
     SOURCE_KEY,
@@ -177,7 +176,7 @@ def extract_epitope_candidates(config):
         plot_binding_clustermap(config)
         plot_binding_clustermap(config, host=True)
     except Exception as e:
-        print(f'Binding cluster map plotting failed with exception {e}')        
+        print(f'Binding cluster map plotting failed with exception {e}')
 
     # Provide MS2 spectral plots for identified peptides.
     plot_spectra(config)
