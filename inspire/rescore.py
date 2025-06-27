@@ -1,5 +1,6 @@
 """ Functions for rescoring PSMs with an optimised feature set.
 """
+import os
 from pathlib import Path
 import subprocess
 
@@ -90,8 +91,11 @@ def apply_rescoring(
         trailing_args = ''
 
     if proteome is not None:
+        if os.path.exists(f'{output_folder}/search_proteome.fasta'):
+            proteome = f'{output_folder}/search_proteome.fasta'
+        print(f'proteome is {proteome}')
         trailing_args += (
-            f' -f {proteome} -z no_enzyme --results-proteins {prot_out_key} -P {decoy_prot_key}'
+            f' -f {proteome} -z trypsin --results-proteins {prot_out_key} -P {decoy_prot_key}'
         )
 
     bash_command = (

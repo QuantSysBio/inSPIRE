@@ -249,40 +249,53 @@ def msp_to_df(msp_filename, msp_format, mods_df):
         collision_energies = []
         ptm_seqs = []
         ion_names = []
+        named_ions = None
+        bufsize = 65536
+        while True:
+            lines = msp_file.readlines(bufsize)
+            if not lines:
+                break
+            for line in lines:
+                if line.startswith('Name: '):
+                    if named_ions is not None:
+                        normed_intensities = process_intensities(intensities)
+                        ion_intensities.append(normed_intensities)
+                        ion_names.append(named_ions)
+                        peptides.append(sequence)
+                        charges.append(charge)
+                        modified_sequences.append(modified_sequence)
+                        irts.append(irt)
+                        collision_energies.append(col_e)
 
-        while (line := msp_file.readline()):
-            if line.startswith('Name: '):
-                sequence, charge = msp_process_sequence_and_charge(line)
-
-                line = msp_file.readline()
-                assert line.startswith('MW: ')
-
-                line = msp_file.readline()
-                assert line.startswith('Comment: ')
-
-                if msp_format == 'prosit':
+                    sequence, charge = msp_process_sequence_and_charge(line)
+                    named_ions = []
+                    intensities = []
+                    active = False
+                if line.startswith('Comment: '):
                     modified_sequence, irt, col_e = process_prosit_comment(line, sequence)
-                else:
-                    modified_sequence = sequence
-                    ptm_seq = get_ms2pip_mods(line, sequence, mod_id_mappings)
-                line = msp_file.readline()
-                assert line.startswith('Num peaks: ')
 
-                if msp_format == 'prosit':
-                    named_ions, normed_intensities = msp_process_peaks(line, msp_file)
-                else:
-                    named_ions, normed_intensities = ms2pip_process_peaks(line, msp_file)
+                if line.startswith('Num peaks: '):
+                    active = True
+                    continue
+                if active:
+                    peak_data = line.strip().split('\t')
+                    intensity = float(peak_data[1])
+                    regex_match = re.match(r'(.*?)/(.*?)ppm', peak_data[2].strip('"'))
+                    ion = regex_match.group(1).strip(')').strip('(')
+                    if intensity > 0:
+                        named_ions.append(ion)
+                        intensities.append(intensity)
 
-                ion_intensities.append(normed_intensities)
-                ion_names.append(named_ions)
-                peptides.append(sequence)
-                charges.append(charge)
-                modified_sequences.append(modified_sequence)
-                if msp_format == 'prosit':
-                    irts.append(irt)
-                    collision_energies.append(col_e)
-                else:
-                    ptm_seqs.append(ptm_seq)
+
+    if named_ions is not None:
+        normed_intensities = process_intensities(intensities)
+        ion_intensities.append(normed_intensities)
+        ion_names.append(named_ions)
+        peptides.append(sequence)
+        charges.append(charge)
+        modified_sequences.append(modified_sequence)
+        irts.append(irt)
+        collision_energies.append(col_e)
 
     df_data = {
         CHARGE_KEY: charges,

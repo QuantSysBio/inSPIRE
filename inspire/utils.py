@@ -53,7 +53,7 @@ def fetch_proteome(proteome, with_desc=True, replace_il=True):
         )
     ]
 
-def parallel_remap(combined_df, n_cores, proteome, out_column, trace_accession=True):
+def parallel_remap(combined_df, n_cores, proteome, out_column, trace_accession=True, reverse=False):
     """ Function to remap peptides in a DataFrame to a proteome in parallel.
 
     Parameters
@@ -92,7 +92,7 @@ def parallel_remap(combined_df, n_cores, proteome, out_column, trace_accession=T
     pep_df_list = pep_df.partition_by('batch')
     func_args = []
     for sub_pep_df in pep_df_list:
-        func_args.append([sub_pep_df, proteome, out_column, trace_accession])
+        func_args.append([sub_pep_df, proteome, out_column, trace_accession, reverse])
 
     with mp.get_context('spawn').Pool(processes=n_cores) as pool:
         pep_df_list = pool.starmap(_sub_remap, func_args)
@@ -104,7 +104,7 @@ def parallel_remap(combined_df, n_cores, proteome, out_column, trace_accession=T
         return combined_df.to_pandas()
     return combined_df
 
-def _sub_remap(pep_df, proteome, out_column, trace_accession):
+def _sub_remap(pep_df, proteome, out_column, trace_accession, reverse):
     if trace_accession:
         return_type = pl.String
     else:
@@ -112,7 +112,7 @@ def _sub_remap(pep_df, proteome, out_column, trace_accession):
 
     pep_df = pep_df.with_columns(
         pl.col('peptide').map_elements(
-            lambda x : remap_to_proteome(x, proteome, trace_accession=trace_accession),
+            lambda x : remap_to_proteome(x, proteome, trace_accession=trace_accession, reverse=reverse),
             return_dtype=return_type,
         ).alias(out_column)
     )
@@ -122,7 +122,8 @@ def _sub_remap(pep_df, proteome, out_column, trace_accession):
 def remap_to_proteome(
         peptide,
         proteome,
-        trace_accession=True
+        trace_accession=True,
+        reverse=False,
     ):
     """ Function to check for the presence of an identified peptide as either canonical
         or spliced in the input proteome.
@@ -130,13 +131,20 @@ def remap_to_proteome(
     il_peptide = peptide.replace('I', 'L')
     accession_stratum = 'unknown'
     for protein in proteome:
-        if il_peptide in protein[1]:
+        if reverse:
+            search_prot = protein[1][::-1]
+            name = 'rev_' + protein[0]
+        else:
+            search_prot = protein[1]
+            name = protein[0]
+
+        if il_peptide in search_prot:
             if not trace_accession:
                 return True
             if accession_stratum == 'unknown':
-                accession_stratum = protein[0]
+                accession_stratum = name
             else:
-                accession_stratum += f' {protein[0]}'
+                accession_stratum += f' {name}'
 
     if not trace_accession:
         return False

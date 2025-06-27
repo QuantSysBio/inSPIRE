@@ -7,6 +7,7 @@ setup(
     description='Helping to integrate Spectral Predictors and Rescoring.',
     author='John Cormican, Juliane Liepe, Martin Pasen',
     author_email='juliane.liepe@mpinat.mpg.de',
+	license_files = ('LICENSE.txt',),
     packages=[
         'inspire',
         'inspire.input',

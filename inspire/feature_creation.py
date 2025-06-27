@@ -379,12 +379,20 @@ def filter_input_columns(combined_df, config, file_idx):
 
     if config.remap_to_proteome:
         proteome = fetch_proteome(config.proteome, with_desc=False)
-        combined_df = parallel_remap(
-            combined_df,
+        pos_df = parallel_remap(
+            combined_df.filter(pl.col(LABEL_KEY).eq(1)),
             config.n_cores,
             proteome,
             IN_ACCESSION_KEY[config.rescore_method],
         )
+        neg_df = parallel_remap(
+            combined_df.filter(pl.col(LABEL_KEY).ne(1)),
+            config.n_cores,
+            proteome,
+            IN_ACCESSION_KEY[config.rescore_method],
+            reverse=True,
+        )
+        combined_df = pl.concat([pos_df, neg_df])
         if config.drop_unknown:
             combined_df = combined_df.filter(
                 pl.col(IN_ACCESSION_KEY[config.rescore_method]).ne('unknown') |

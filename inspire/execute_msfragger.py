@@ -220,11 +220,12 @@ def execute_msfragger(config):
 
     write_search_proteome(config.proteome, config.output_folder, contams_db)
     write_fragger_params(config, fragger_params_template)
+    experiment_title = config.experiment_title.replace(' ', '_')
 
     os.system(
         f'{sys.executable} {frag_pipe_script_path} {config.fragger_db_splits} ' +
         f' "java -Xmx{config.fragger_memory}g -jar" ' +
-        f' {config.fragger_path} {config.output_folder}/fragger.params ' +
+        f' {config.fragger_path} {config.output_folder}/fragger.params {experiment_title} ' +
         f' {raw_files_for_fragger} > {config.output_folder}/fragger.log '
     )
 
