@@ -12,6 +12,7 @@ from inspire.constants import (
     FIGSHARE_EXAMPLE_PATH,
     FIGSHARE_EXTERNAL_UTILS_PATH,
     FIGSHARE_PATH,
+    FIGSHARE_PISCES_MODELS,
     OKCYAN_TEXT,
     THERMO_PARSER_PATH,
 )
@@ -41,6 +42,50 @@ def download_thermo_raw_file_parser():
         )
 
 
+def download_pisces_models(force_reload=False):
+    """ Function to download the required models for inSPIRE execution from
+        figshare.
+
+    Parameters
+    ----------
+    force_reload : bool (default=False)
+        Flag indicating whether to remove the existing inSPIRE_models folder
+        and redownload all models.
+    """
+    home = str(Path.home())
+    if force_reload:
+        os.rmdir(f'{home}/inSPIRE_models/pisces_models')
+
+    download=True
+    if os.path.isfile(f'{home}/inSPIRE_models/pisces_models/version.txt'):
+        with open(
+            f'{home}/inSPIRE_models/pisces_models/version.txt', 'r', encoding='UTF-8',
+        ) as version_file:
+            version = version_file.read().strip()
+            if version == '>=3.0':
+                print(
+                    OKCYAN_TEXT + '\tModels already downloaded.' + ENDC_TEXT
+                )
+                download=False
+
+    if download:
+        if not os.path.isdir(f'{home}/inSPIRE_models/pisces_models'):
+            os.mkdir(f'{home}/inSPIRE_models/pisces_models')
+        print(
+            OKCYAN_TEXT + '\tDownloading PISCES models...' + ENDC_TEXT
+        )
+        urlretrieve(FIGSHARE_PISCES_MODELS, f'{home}/inSPIRE_models/pisces_models.zip')
+        print(
+            OKCYAN_TEXT + '\tExtracting Models...' + ENDC_TEXT
+        )
+        with zipfile.ZipFile(f'{home}/inSPIRE_models/pisces_models.zip') as zip_ref:
+            zip_ref.extractall(f'{home}/inSPIRE_models')
+        os.rename(f'{home}/inSPIRE_models/version.txt', f'{home}/inSPIRE_models/pisces_models/version.txt')
+        print(
+            OKCYAN_TEXT + '\tPISCES Models ready.' + ENDC_TEXT
+        )
+
+
 def download_models(force_reload=False):
     """ Function to download the required models for inSPIRE execution from
         figshare.
@@ -53,13 +98,22 @@ def download_models(force_reload=False):
     """
     home = str(Path.home())
     if force_reload:
-        os.rmdir(f'{home}/inSPIRE_models')
+        os.rmdir(f'{home}/inSPIRE_models/models')
+    
 
-    if os.path.isdir(f'{home}/inSPIRE_models/models'):
-        print(
-            OKCYAN_TEXT + '\tModels already downloaded.' + ENDC_TEXT
-        )
-    else:
+    download=True
+    if os.path.isfile(f'{home}/inSPIRE_models/models/version.txt'):
+        with open(
+            f'{home}/inSPIRE_models/models/version.txt', 'r', encoding='UTF-8',
+        ) as version_file:
+            version = version_file.read().strip()
+            if version == '>=3.0':
+                print(
+                    OKCYAN_TEXT + '\tModels already downloaded.' + ENDC_TEXT
+                )
+                download=False
+
+    if download:
         if not os.path.isdir(f'{home}/inSPIRE_models'):
             os.mkdir(f'{home}/inSPIRE_models')
         print(
@@ -95,7 +149,7 @@ def download_utils(force_reload=False):
             f'{home}/inSPIRE_models/utilities/version.txt', 'r', encoding='UTF-8',
         ) as version_file:
             version = version_file.read().strip()
-            if version == '>=2.0':
+            if version == '>=3.0':
                 print(
                     OKCYAN_TEXT + '\tUtils already downloaded.' + ENDC_TEXT
                 )

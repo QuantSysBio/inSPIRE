@@ -36,7 +36,7 @@ from inspire.constants import (
 from inspire.spectral_features import DELTA_FEATURES
 
 PISCES_MODEL_PATH = (
-    'pisces_models/{setting}/{dn_method}/model{model_step}/clf{model_idx}_all.json'
+    '{home}/inSPIRE_models/pisces/{setting}/{dn_method}/model{model_step}/clf{model_idx}_all.json'
 )
 
 BASE_FEATURES = [

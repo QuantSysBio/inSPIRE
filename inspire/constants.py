@@ -12,13 +12,14 @@ PROSIT_SEQ_KEY = 'modified_sequence'
 PROSIT_CHARGE_KEY = 'precursor_charge'
 PROSIT_COLLISION_ENERGY_KEY = 'collision_energy'
 
-FIGSHARE_PATH = 'https://figshare.com/ndownloader/articles/20368035/versions/2'
+FIGSHARE_PATH = 'https://figshare.com/ndownloader/articles/20368035/versions/3'
 FIGSHARE_EXAMPLE_PATH = 'https://figshare.com/ndownloader/files/37963665'
 THERMO_PARSER_PATH = (
     'https://github.com/compomics/ThermoRawFileParser/releases/download/' +
     'v1.4.2/ThermoRawFileParser1.4.2.zip'
 )
-FIGSHARE_EXTERNAL_UTILS_PATH = 'https://figshare.com/ndownloader/articles/22189198/versions/9'
+FIGSHARE_EXTERNAL_UTILS_PATH = 'https://figshare.com/ndownloader/articles/22189198/versions/10'
+FIGSHARE_PISCES_MODELS = 'https://figshare.com/ndownloader/articles/29458643/versions/2'
 
 HEADER_TEXT = '\033[95m'
 OKBLUE_TEXT = '\033[94m'

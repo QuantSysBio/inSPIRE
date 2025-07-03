@@ -493,8 +493,14 @@ def calculate_spectral_features(
     )
 
     if len(truly_matched_intes) > 0:
-        spearman_total = spearmanr(normed_matched_intensities, ordered_prosit_intes)[0]
-        pearson_total = pearsonr(normed_matched_intensities, ordered_prosit_intes)[0]
+        try:
+            spearman_total = spearmanr(normed_matched_intensities, ordered_prosit_intes)[0]
+        except:
+            spearman_total = np.nan
+        try:
+            pearson_total = pearsonr(normed_matched_intensities, ordered_prosit_intes)[0]
+        except:
+            pearson_total = np.nan
         if not np.isnan(spearman_total):
             results[SPEARMAN_KEY] = float(spearman_total)
         else:
