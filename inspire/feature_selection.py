@@ -1,6 +1,6 @@
 """ Functions for running automated feature selection.
 """
-
+from pathlib import Path
 import pandas as pd
 import xgboost as xgb
 import yaml
@@ -36,7 +36,7 @@ from inspire.constants import (
 from inspire.spectral_features import DELTA_FEATURES
 
 PISCES_MODEL_PATH = (
-    '{home}/inSPIRE_models/pisces/{setting}/{dn_method}/model{model_step}/clf{model_idx}_all.json'
+    '{home}/inSPIRE_models/pisces_models/{setting}/{dn_method}/model{model_step}/clf{model_idx}_all.json'
 )
 
 BASE_FEATURES = [
@@ -274,10 +274,12 @@ def get_pisces_scores(all_features_df, use_binding_affinity, enzyme, search_engi
             noes_idx = 3
 
     scored_dfs = []
+    home = str(Path.home())
 
     if engine_scored_df.shape[0]:
         clf = xgb.XGBClassifier() # or which ever sklearn booster you're are using
         clf.load_model(PISCES_MODEL_PATH.format(
+            home=home,
             setting=setting,
             dn_method=search_engine,
             model_step=1,
@@ -293,6 +295,7 @@ def get_pisces_scores(all_features_df, use_binding_affinity, enzyme, search_engi
     if unscored_df.shape[0]:
         clf = xgb.XGBClassifier() # or which ever sklearn booster you're are using
         clf.load_model(PISCES_MODEL_PATH.format(
+            home=home,
             setting=setting,
             dn_method=search_engine,
             model_step=1,

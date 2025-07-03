@@ -53,13 +53,15 @@ def download_pisces_models(force_reload=False):
         and redownload all models.
     """
     home = str(Path.home())
+    pisces_model_path = f'{home}/inSPIRE_models/pisces_models'
+
     if force_reload:
-        os.rmdir(f'{home}/inSPIRE_models/pisces_models')
+        os.rmdir(f'{pisces_model_path}')
 
     download=True
-    if os.path.isfile(f'{home}/inSPIRE_models/pisces_models/version.txt'):
+    if os.path.isfile(f'{pisces_model_path}/version.txt'):
         with open(
-            f'{home}/inSPIRE_models/pisces_models/version.txt', 'r', encoding='UTF-8',
+            f'{pisces_model_path}/version.txt', 'r', encoding='UTF-8',
         ) as version_file:
             version = version_file.read().strip()
             if version == '>=3.0':
@@ -69,8 +71,8 @@ def download_pisces_models(force_reload=False):
                 download=False
 
     if download:
-        if not os.path.isdir(f'{home}/inSPIRE_models/pisces_models'):
-            os.mkdir(f'{home}/inSPIRE_models/pisces_models')
+        if not os.path.isdir(f'{pisces_model_path}'):
+            os.mkdir(f'{pisces_model_path}')
         print(
             OKCYAN_TEXT + '\tDownloading PISCES models...' + ENDC_TEXT
         )
@@ -80,7 +82,19 @@ def download_pisces_models(force_reload=False):
         )
         with zipfile.ZipFile(f'{home}/inSPIRE_models/pisces_models.zip') as zip_ref:
             zip_ref.extractall(f'{home}/inSPIRE_models')
-        os.rename(f'{home}/inSPIRE_models/version.txt', f'{home}/inSPIRE_models/pisces_models/version.txt')
+
+        for mode in os.listdir(pisces_model_path):
+            for method in os.listdir(f'{pisces_model_path}/{mode}'):
+                for model_idx in os.listdir(f'{pisces_model_path}/{mode}/{method}'):
+                    for model in os.listdir(f'{pisces_model_path}/{mode}/{method}/{model_idx}'):
+                        if not model.startswith('clf'):
+                            true_name = 'clf' + model.split('_clf')[-1]
+                            os.rename(
+                                f'{pisces_model_path}/{mode}/{method}/{model_idx}/{model}',
+                                f'{pisces_model_path}/{mode}/{method}/{model_idx}/{true_name}'
+                            )
+
+        os.rename(f'{home}/inSPIRE_models/version.txt', f'{pisces_model_path}/version.txt')
         print(
             OKCYAN_TEXT + '\tPISCES Models ready.' + ENDC_TEXT
         )
