@@ -95,6 +95,7 @@ def download_pisces_models(force_reload=False):
                             )
 
         os.rename(f'{home}/inSPIRE_models/version.txt', f'{pisces_model_path}/version.txt')
+        os.remove(f'{home}/inSPIRE_models/pisces_models.zip')
         print(
             OKCYAN_TEXT + '\tPISCES Models ready.' + ENDC_TEXT
         )
@@ -139,6 +140,8 @@ def download_models(force_reload=False):
         )
         with zipfile.ZipFile(f'{home}/inSPIRE_models/models.zip') as zip_ref:
             zip_ref.extractall(f'{home}/inSPIRE_models/models')
+
+        os.remove(f'{home}/inSPIRE_models/models.zip')
         print(
             OKCYAN_TEXT + '\tModels ready.' + ENDC_TEXT
         )

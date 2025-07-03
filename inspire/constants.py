@@ -18,7 +18,7 @@ THERMO_PARSER_PATH = (
     'https://github.com/compomics/ThermoRawFileParser/releases/download/' +
     'v1.4.2/ThermoRawFileParser1.4.2.zip'
 )
-FIGSHARE_EXTERNAL_UTILS_PATH = 'https://figshare.com/ndownloader/articles/22189198/versions/10'
+FIGSHARE_EXTERNAL_UTILS_PATH = 'https://figshare.com/ndownloader/articles/22189198/versions/11'
 FIGSHARE_PISCES_MODELS = 'https://figshare.com/ndownloader/articles/29458643/versions/2'
 
 HEADER_TEXT = '\033[95m'
