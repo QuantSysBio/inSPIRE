@@ -163,6 +163,7 @@ def apply_non_spectral_percolator(
         'non_spectral',
         config.rescore_command,
         proteome,
+        enzyme=config.enzyme,
     )
 
     output_peptides_df = apply_post_processing(non_spectral_pep_df, config)

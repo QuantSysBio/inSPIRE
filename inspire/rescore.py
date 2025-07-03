@@ -39,6 +39,7 @@ def apply_rescoring(
         rescore_command,
         proteome=None,
         decoy_prot_key='rev_',
+        enzyme=None,
     ):
     """ Function to apply percolator and return the PSMs matched.
 
@@ -63,6 +64,9 @@ def apply_rescoring(
     psm_output_key = f'{output_folder}/{output_prefix}.{rescore_method}.psms.txt'
     pep_output_key = f'{output_folder}/{output_prefix}.{rescore_method}.peptides.txt'
     prot_out_key = f'{output_folder}/{output_prefix}.{rescore_method}.proteins.txt'
+
+    if enzyme is None:
+        enzyme = 'no_enzyme'
 
     if rescore_method == 'mokapot':
         clis = (
@@ -95,7 +99,7 @@ def apply_rescoring(
             proteome = f'{output_folder}/search_proteome.fasta'
         print(f'proteome is {proteome}')
         trailing_args += (
-            f' -f {proteome} -z trypsin --results-proteins {prot_out_key} -P {decoy_prot_key}'
+            f' -f {proteome} -z {enzyme} --results-proteins {prot_out_key} -P {decoy_prot_key}'
         )
 
     bash_command = (
@@ -266,6 +270,7 @@ def final_rescoring(config):
         config.rescore_command,
         proteome,
         decoy_prot_key=config.decoy_protein_flag,
+        enzyme=config.enzyme,
     )
 
     print(
