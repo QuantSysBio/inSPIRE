@@ -21,7 +21,7 @@ from inspire.constants import (
 from inspire.input.msp import msp_to_df
 from inspire.predict_spectra import predict_spectra
 from inspire.spectral_features import calculate_spectral_features
-from inspire.utils import convert_mod_seq_to_ptm_seq, fetch_scan_data
+from inspire.utils import reverse_skyline_mod_seq, fetch_scan_data
 from inspire.plot_spectra.plot_spec_utils import (
     convert_names_and_mzs, create_traces, get_plot_details, get_unmatched,
     experiment_match, get_npp_ions, add_legend, update_fig_layout,
@@ -54,7 +54,7 @@ def isobar_pair_plot(df_row, mz_accuracy, mz_units, id_grp_name):
     pred_intes = [-x for x in df_row[f'{id_grp_name}prositIons'].values()]
 
     pred_mzs, plotting_names = convert_names_and_mzs(
-        df_row[f'{id_grp_name}modified_sequence'],
+        df_row[f'{id_grp_name}modifiedSequence'],
         list(df_row[f'{id_grp_name}prositIons'].keys())
     )
 
@@ -179,8 +179,10 @@ def plot_isobars(config):
         predict_spectra(config, pipeline=f'plot{id_grp_name}Spectra')
         prosit_df = msp_to_df(
             f'{config.output_folder}/plot{id_grp_name}Predictions.msp', 'prosit', None,
-        ).rename(columns={'modified_sequence': f'{id_grp_name}modified_sequence'})
-        prosit_df = prosit_df.drop_duplicates(subset=[f'{id_grp_name}modified_sequence', CHARGE_KEY])
+        ).rename({'modified_sequence': f'{id_grp_name}modified_sequence'}).to_pandas()
+        prosit_df = prosit_df.drop_duplicates(
+            subset=[f'{id_grp_name}modified_sequence', CHARGE_KEY],
+        )
         prosit_df = prosit_df.rename(columns={
             'prositIons': f'{id_grp_name}prositIons',
             'modified_sequence': f'{id_grp_name}modified_sequence',
@@ -199,7 +201,7 @@ def plot_isobars(config):
     input_df['index'] = input_df.index % PLOTS_PER_PAGE
     for idx, id_grp_name in enumerate(['', 'isobar']):
         input_df[f'{id_grp_name}ptm_seq'] = input_df[f'{id_grp_name}modifiedSequence'].apply(
-            convert_mod_seq_to_ptm_seq
+            reverse_skyline_mod_seq
         )
         input_df[f'{id_grp_name}plot_data'] = input_df.apply(
             lambda x : isobar_pair_plot(x, config.mz_accuracy, config.mz_units, id_grp_name),
@@ -284,7 +286,7 @@ def plot_isobars(config):
                 )
 
             fig.layout['annotations'] += tuple(annotations)
-        
+
         plot_data = sub_df['isobarplot_data'].tolist()
         for idx, (traces, annotations) in enumerate(plot_data):
             for trace in traces:

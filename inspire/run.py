@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 import os
 import warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # pylint: disable=wrong-import-position
+os.environ['POLARS_MAX_THREADS'] = '1' # pylint: disable=wrong-import-position
 
 import pandas as pd
 from scipy.stats import ConstantInputWarning
@@ -13,7 +14,9 @@ from inspire.calibration import calibrate
 from inspire.config import Config
 from inspire.convert import convert_raw_to_mgf
 from inspire.constants import ENDC_TEXT, OKGREEN_TEXT
-from inspire.download import download_data, download_models, download_utils
+from inspire.download import (
+    download_data, download_models, download_pisces_models, download_utils,
+)
 from inspire.pepseek.extract_candidates import extract_epitope_candidates
 from inspire.execute_msfragger import execute_msfragger
 from inspire.get_spectral_angle import get_spectral_angle
@@ -111,11 +114,12 @@ def run_inspire(pipeline=None, config_file=None):
         )
         download_models(force_reload=config.force_reload)
         download_utils(force_reload=config.force_reload)
+        download_pisces_models(force_reload=config.force_reload)
 
     if pipeline == 'calibrate' or (
         config.collision_energy is None and
         not os.path.exists(f'{config.output_folder}/collisionEnergyStats.csv')
-        and pipeline not in ('convert', 'fragger')
+        and pipeline not in ('convert', 'fragger', 'predictBinding')
     ):
         print(
             OKGREEN_TEXT +
@@ -124,7 +128,9 @@ def run_inspire(pipeline=None, config_file=None):
         )
         calibrate(config)
 
-    if config.collision_energy is None and pipeline not in ('convert', 'fragger'):
+    if config.collision_energy is None and pipeline not in (
+        'convert', 'fragger', 'predictBinding'
+    ):
         config.collision_energy = fetch_collision_energy(config.output_folder)
 
     if pipeline == 'convert':

@@ -250,6 +250,8 @@ def plot_distros(quant_df, config, sources):
 
 
 def join_peptide(df_row, clusters):
+    """ Function to join peptide sequences from different clusters into a single string.
+    """
     peptide = ''
     for cluster in clusters:
         if isinstance(df_row[cluster], str):

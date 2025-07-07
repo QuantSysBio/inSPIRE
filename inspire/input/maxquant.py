@@ -211,7 +211,7 @@ def read_single_mq_data(mq_data):
     mods_df = _create_mq_mods_df(mq_df)
     var_mod_dict = dict(zip(mods_df[PTM_NAME_KEY].tolist(), mods_df[PTM_ID_KEY].tolist()))
     mq_df = mq_df.with_columns(
-        pl.col(MQ_MOD_SEQ_KEY).apply(
+        pl.col(MQ_MOD_SEQ_KEY).map_elements(
             lambda x : _create_ptm_seq_col(x, var_mod_dict)
         ).alias(PTM_SEQ_KEY)
     )
@@ -234,7 +234,7 @@ def read_single_mq_data(mq_data):
     mq_df = filter_for_prosit(mq_df)
 
     mq_df = mq_df.with_columns(
-        pl.struct([MQ_ACCESSION_KEY, MQ_DECOY_KEY]).apply(
+        pl.struct([MQ_ACCESSION_KEY, MQ_DECOY_KEY]).map_elements(
             lambda x : 'reverseSeq' if x[MQ_DECOY_KEY] == '+' else (
                 x[MQ_ACCESSION_KEY] if x[MQ_ACCESSION_KEY] else 'unknown'
             ),
@@ -252,14 +252,14 @@ def read_single_mq_data(mq_data):
 
     mq_df = mq_df.with_columns(
         pl.struct([MQ_MASS_KEY, SEQ_LEN_KEY])
-        .apply(
+        .map_elements(
             lambda x : x[MQ_MASS_KEY]/x[SEQ_LEN_KEY],
             skip_nulls=False,
         ).alias('avgResidueMass')
     )
     mq_df = mq_df.with_columns(
         pl.col(MQ_DECOY_KEY)
-        .apply(
+        .map_elements(
             lambda x : -1 if x == '+' else 1,
             skip_nulls=False,
         ).alias(LABEL_KEY)

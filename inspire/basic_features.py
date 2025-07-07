@@ -49,7 +49,7 @@ def _add_modification_weights(df_row, mod_weight_dict):
         A value for the mean weight of residues including modifications.
     """
     if not isinstance(df_row[PTM_SEQ_KEY], str):
-        return df_row['avgResidueMass']
+        return float(df_row['avgResidueMass'])
 
     mod_wt_av = sum(
         mod_weight_dict.get(
@@ -57,7 +57,7 @@ def _add_modification_weights(df_row, mod_weight_dict):
         ) for aa_char in df_row[PTM_SEQ_KEY]
     )/df_row[SEQ_LEN_KEY]
 
-    return df_row['avgResidueMass'] + mod_wt_av
+    return float(df_row['avgResidueMass'] + mod_wt_av)
 
 def create_basic_features(search_df, mods_df):
     """ Function to create the basic features used by percolator/mokapot.
@@ -73,10 +73,9 @@ def create_basic_features(search_df, mods_df):
         The input DataFrame with update columns containing features
         for percolator/mokapot.
     """
-    seq_len_mean = pl.mean(search_df[SEQ_LEN_KEY])
-
+    seq_len_mean = search_df.select(pl.mean(SEQ_LEN_KEY))[SEQ_LEN_KEY][0]
     search_df = search_df.with_columns(
-        (pl.col(SEQ_LEN_KEY) - seq_len_mean).abs().alias('seqLenMeanDiff')
+        (pl.col(SEQ_LEN_KEY) - pl.lit(seq_len_mean)).abs().alias('seqLenMeanDiff')
     )
 
     search_df = search_df.with_columns(
@@ -89,19 +88,19 @@ def create_basic_features(search_df, mods_df):
     if not mods_df.empty:
         mod_ids = [str(x) for x in mods_df[PTM_ID_KEY].tolist()]
         search_df = search_df.with_columns(
-            pl.col(PTM_SEQ_KEY).apply(
+            pl.col(PTM_SEQ_KEY).map_elements(
                 lambda x : len(
                     [char for char in x if char in mod_ids]
                 ) if isinstance(x, str) else 0,
-                skip_nulls=False,
+                skip_nulls=False, return_dtype=pl.Int64,
             ).alias('nVarMods')
         )
 
         mod_weight_dict = fetch_mod_weight_dict(mods_df)
         search_df = search_df.with_columns(
-            pl.struct([PTM_SEQ_KEY, SEQ_LEN_KEY, 'avgResidueMass']).apply(
+            pl.struct([PTM_SEQ_KEY, SEQ_LEN_KEY, 'avgResidueMass']).map_elements(
                 lambda x : _add_modification_weights(x, mod_weight_dict),
-                skip_nulls=False,
+                skip_nulls=False, return_dtype=pl.Float64,
             ).alias('avgResidueMass')
         )
     else:
@@ -110,22 +109,28 @@ def create_basic_features(search_df, mods_df):
         )
 
     search_df = search_df.with_columns(
-        pl.col(PEPTIDE_KEY).apply(_check_reps).alias('nRepeatedResidues')
+        pl.col(PEPTIDE_KEY).map_elements(
+            _check_reps, return_dtype=pl.Int64
+        ).alias('nRepeatedResidues')
     )
 
     search_df = search_df.with_columns(
-        pl.col(PEPTIDE_KEY).apply(lambda x : len(set(x))/len(x)).alias('fracUnique')
+        pl.col(PEPTIDE_KEY).map_elements(
+            lambda x : len(set(x))/len(x), return_dtype=pl.Float64,
+        ).alias('fracUnique')
     )
 
     search_df = search_df.with_columns(
-        pl.col(PEPTIDE_KEY).apply(lambda x : x.count('C')/len(x)).alias('fracC')
+        pl.col(PEPTIDE_KEY).map_elements(
+            lambda x : x.count('C')/len(x), return_dtype=pl.Float64,
+        ).alias('fracC')
     )
 
     search_df = search_df.with_columns(
-        pl.col(PEPTIDE_KEY).apply(
-            lambda x : (x.count('K') + x.count('R'))/(len(x) - 1)
+        pl.col(PEPTIDE_KEY).map_elements(
+            lambda x : (x.count('K') + x.count('R'))/(len(x) - 1),
+            return_dtype=pl.Float64,
         ).alias('fracKR')
     )
-
 
     return search_df

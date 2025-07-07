@@ -80,7 +80,7 @@ def compute_potential_mws(sequence, modifications, reverse, ptm_id_weights):
     return mzs, tracking_mw
 
 
-def get_ion_masses(sequence, ptm_id_weights, modifications=None):
+def get_ion_masses(sequence, ptm_id_weights, modifications=None, with_a=False):
     """ Function to the get mz's for all the ions predicted by prosit.
 
     Parameters
@@ -113,6 +113,8 @@ def get_ion_masses(sequence, ptm_id_weights, modifications=None):
 
     # b- and y-ions for each of the charge options
     prosit_ions = {}
+    if with_a:
+        prosit_ions['a'] = ION_OFFSET['a'] + sub_seq_mass
     prosit_ions['b'] = ION_OFFSET['b'] + sub_seq_mass
     prosit_ions['y'] = ION_OFFSET['y'] + rev_sub_seq_mass
 

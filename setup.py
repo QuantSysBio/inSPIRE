@@ -3,10 +3,11 @@ from setuptools import setup
 
 setup(
     name='inspirems',
-    version='2.0',
+    version='3.0rc3',
     description='Helping to integrate Spectral Predictors and Rescoring.',
     author='John Cormican, Juliane Liepe, Martin Pasen',
     author_email='juliane.liepe@mpinat.mpg.de',
+	license_files = ('LICENSE.txt',),
     packages=[
         'inspire',
         'inspire.input',
@@ -59,6 +60,7 @@ setup(
 		'MarkupSafe==2.1.3',
 		'matplotlib==3.8.2',
 		'ml-dtypes==0.2.0',
+		'mhcnuggets==2.4.1',
 		'numpy==1.26.2',
 		'oauthlib==3.2.2',
 		'opt-einsum==3.3.0',
@@ -67,7 +69,7 @@ setup(
 		'patsy==0.5.3',
 		'Pillow==10.1.0',
 		'plotly==5.18.0',
-		'polars==0.19.15',
+		'polars==1.30.0',
 		'protobuf==4.23.4',
         'pyarrow==14.0.1',
 		'pyasn1==0.5.1',

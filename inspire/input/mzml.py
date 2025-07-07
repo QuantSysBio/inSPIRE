@@ -33,6 +33,7 @@ def process_mzml_file(mzml_filename, scan_ids, with_charge=False, with_retention
     intensities_list = []
     scan_id_list = []
     mzml_filenames = []
+    ms1s_list = []
     filename = mzml_filename.split('/')[-1]
 
     if with_charge:
@@ -49,6 +50,12 @@ def process_mzml_file(mzml_filename, scan_ids, with_charge=False, with_retention
                 scan_id_list.append(scan_id)
                 intensities_list.append(np.array(list(spectrum['intensity array'])))
                 ion_list.append(np.array(list(spectrum['m/z array'])))
+                ms1s_list.append( spectrum[
+                        'precursorList'
+                    ]['precursor'][0]['selectedIonList'][
+                        'selectedIon'
+                    ][0]['peak intensity']
+                )
 
                 if with_charge:
                     charge_list.append(
@@ -60,19 +67,20 @@ def process_mzml_file(mzml_filename, scan_ids, with_charge=False, with_retention
                 if with_retention_time:
                     rt_list.append(float(spectrum['scanList']['scan'][0]['scan start time']))
 
-    scans_df =  pl.DataFrame(
-        {
-            SOURCE_KEY: pl.Series(mzml_filenames),
-            SCAN_KEY: pl.Series(scan_id_list),
-            INTENSITIES_KEY: pl.Series(intensities_list),
-            MZS_KEY: pl.Series(ion_list)
-        }
-    )
-    if with_charge:
-        scans_df[CHARGE_KEY] = pl.Series(charge_list)
-    if with_retention_time:
-        scans_df[RT_KEY] = pl.Series(rt_list)
+    scans_dict = {
+        SOURCE_KEY: pl.Series(mzml_filenames),
+        SCAN_KEY: pl.Series(scan_id_list),
+        INTENSITIES_KEY: pl.Series(intensities_list),
+        MZS_KEY: pl.Series(ion_list),
+        'ms1Intensity': pl.Series(ms1s_list),
+    }
 
-    scans_df = scans_df.unique(subset=[SOURCE_KEY, SCAN_KEY])
+    if with_charge:
+        scans_dict[CHARGE_KEY] = pl.Series(charge_list)
+    if with_retention_time:
+        scans_dict[RT_KEY] = pl.Series(rt_list)
+    scans_df =  pl.DataFrame(scans_dict)
+
+    scans_df = scans_df.unique(subset=[SOURCE_KEY, SCAN_KEY], maintain_order=True)
 
     return scans_df

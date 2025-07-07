@@ -1,9 +1,9 @@
 """ Functions for rescoring PSMs with an optimised feature set.
 """
+import os
 from pathlib import Path
 import subprocess
 
-import pandas as pd
 import polars as pl
 
 from inspire.constants import (
@@ -28,7 +28,7 @@ from inspire.constants import (
     SPECTRAL_ANGLE_KEY,
 )
 from inspire.input.mhcpan import read_mhcpan_output
-from inspire.utils import fetch_proteome, parallel_remap
+from inspire.utils import fetch_proteome, parallel_remap, split_psm_ids
 
 def apply_rescoring(
         output_folder,
@@ -39,6 +39,7 @@ def apply_rescoring(
         rescore_command,
         proteome=None,
         decoy_prot_key='rev_',
+        enzyme=None,
     ):
     """ Function to apply percolator and return the PSMs matched.
 
@@ -63,6 +64,9 @@ def apply_rescoring(
     psm_output_key = f'{output_folder}/{output_prefix}.{rescore_method}.psms.txt'
     pep_output_key = f'{output_folder}/{output_prefix}.{rescore_method}.peptides.txt'
     prot_out_key = f'{output_folder}/{output_prefix}.{rescore_method}.proteins.txt'
+
+    if enzyme is None:
+        enzyme = 'no_enzyme'
 
     if rescore_method == 'mokapot':
         clis = (
@@ -91,8 +95,11 @@ def apply_rescoring(
         trailing_args = ''
 
     if proteome is not None:
+        if os.path.exists(f'{output_folder}/search_proteome.fasta'):
+            proteome = f'{output_folder}/search_proteome.fasta'
+        print(f'proteome is {proteome}')
         trailing_args += (
-            f' -f {proteome} -z no_enzyme --results-proteins {prot_out_key} -P {decoy_prot_key}'
+            f' -f {proteome} -z {enzyme} --results-proteins {prot_out_key} -P {decoy_prot_key}'
         )
 
     bash_command = (
@@ -109,36 +116,15 @@ def apply_rescoring(
 
     psm_results_df = pl.read_csv(psm_output_key, separator='\t')
     psm_results_df = psm_results_df.with_columns(
-        pl.col(PEPTIDE_KEY).apply(lambda x : x[2:-2])
+        pl.col(PEPTIDE_KEY).map_elements(lambda x : x[2:-2], return_dtype=pl.String)
     )
 
     peptide_results_df = pl.read_csv(pep_output_key, separator='\t')
     peptide_results_df = peptide_results_df.with_columns(
-        pl.col(PEPTIDE_KEY).apply(lambda x : x[2:-2])
+        pl.col(PEPTIDE_KEY).map_elements(lambda x : x[2:-2], return_dtype=pl.String)
     )
 
     return psm_results_df, peptide_results_df
-
-def _split_psm_ids(psm_id):
-    """ Function for splitting a PSM Id back into its source name, scan number
-        and peptide sequence.
-
-    Parameters
-    ----------
-    df_row : pd.Series
-        A row of the DataFrame to which the function is being applied.
-
-    Parameters
-    ----------
-    df_row : pd.Series
-        The same row with source and scan added.
-    """
-    results = {}
-    source_scan_list = psm_id.split('_')
-    results['modifiedSequence'] = source_scan_list[-1]
-    results[SCAN_KEY] = int(source_scan_list[-2])
-    results[SOURCE_KEY] = '_'.join(source_scan_list[:-2])
-    return results
 
 def _regroup_accession(df_row, acc_cols):
     """ Helper function to remove one hot encoding from Accession Stratum.
@@ -180,16 +166,15 @@ def _add_key_features(target_psms, config):
     psm_id_key = PSM_ID_KEY[config.rescore_method]
 
     input_key = f'{config.output_folder}/input_all_features.tab'
-    input_df = pl.from_pandas(pd.read_csv(
+    input_df = pl.read_csv(
         input_key,
-        sep='\t',
-    ))
+        separator='\t',
+    )
     input_df = input_df.unique(subset=[psm_id_key, PEPTIDE_KEY])
 
     key_features = [
         SPECTRAL_ANGLE_KEY,
         'spearmanR',
-        'predCoverage',
         'matchedCoverage',
         RT_KEY,
         'deltaRT',
@@ -201,7 +186,7 @@ def _add_key_features(target_psms, config):
             x for x in input_df.columns if x.startswith('accession') and x != 'accessionGroup'
         ]
         input_df = input_df.with_columns(
-            pl.struct(acc_cols).apply(
+            pl.struct(acc_cols).map_elements(
                 lambda x : _regroup_accession(x, acc_cols)
             ).alias(ACCESSION_STRATUM_KEY)
         )
@@ -211,7 +196,7 @@ def _add_key_features(target_psms, config):
     if config.use_binding_affinity is not None:
         mhc_pan_df = read_mhcpan_output(
             f'{config.output_folder}/mhcpan',
-            per_allele=True,
+            per_allele=True, alleles=config.alleles,
         )
         mhc_pan_df = mhc_pan_df.rename({
             'Peptide': PEPTIDE_KEY,
@@ -247,13 +232,13 @@ def _add_key_features(target_psms, config):
                 )
             else:
                 output_df = output_df.with_columns(
-                    pl.col(col).apply(
+                    pl.col(col).map_elements(
                         lambda x : 'Strong-Binder' if x == '<=SB' else (
                             'Weak-Binder' if x == '<=WB' else (
                                 'Not predicted' if x is None else
                             'Non-Binder')
                         ),
-                        skip_nulls=False,
+                        skip_nulls=False, return_dtype=pl.String,
                     )
                 )
         key_features.extend(mhc_pan_cols)
@@ -285,6 +270,7 @@ def final_rescoring(config):
         config.rescore_command,
         proteome,
         decoy_prot_key=config.decoy_protein_flag,
+        enzyme=config.enzyme,
     )
 
     print(
@@ -322,9 +308,11 @@ def apply_post_processing(target_psms, config):
     output_df, key_features = _add_key_features(target_psms, config)
 
     output_df = output_df.with_columns(
-        pl.col(psm_id_key)
-        .apply(_split_psm_ids, skip_nulls=False)
-        .alias("results")
+        pl.col(psm_id_key).map_elements(split_psm_ids, skip_nulls=False, return_dtype=pl.Struct([
+            pl.Field('modifiedSequence', pl.String),
+            pl.Field(SCAN_KEY, pl.Int64),
+            pl.Field(SOURCE_KEY, pl.String),
+        ])).alias("results")
     ).unnest("results")
 
     output_df = output_df.rename({
@@ -373,8 +361,12 @@ def apply_post_processing(target_psms, config):
                 'mapsToContaminant',
                 trace_accession=False,
             )
-        if config.proteome is not None:
             final_columns.extend(['mapsToTarget', 'mapsToContaminant'])
+        else:
+            output_df = output_df.with_columns(
+                pl.col(ACCESSION_KEY).str.contains('CONTAMS').alias('mapsToContaminant'),
+            )
+            final_columns.append('mapsToContaminant')
 
 
     final_columns.append(ACCESSION_KEY)

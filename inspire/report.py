@@ -35,7 +35,7 @@ from inspire.figures import (
 )
 from inspire.html_template import create_html_report
 from inspire.input.mhcpan import read_mhcpan_output
-from inspire.rescore import apply_rescoring
+from inspire.rescore import apply_rescoring, apply_post_processing
 
 NON_SPECTRAL_FEATURES = [
     ENGINE_SCORE_KEY,
@@ -98,10 +98,8 @@ def combine_results(output_folder, mhc_pan_df, input_file):
     return final_assignments_df
 
 def apply_non_spectral_percolator(
-        output_folder,
+        config,
         fdr,
-        rescore_method,
-        rescore_command,
         proteome,
         use_score_only=False
     ):
@@ -127,14 +125,14 @@ def apply_non_spectral_percolator(
         A DataFrame of results from Percolator trained without spectral features.
     """
     all_features_df = pl.from_pandas(
-        pd.read_csv(f'{output_folder}/input_all_features.tab', sep='\t')
+        pd.read_csv(f'{config.output_folder}/input_all_features.tab', sep='\t')
     )
     all_features_df = all_features_df.filter(
-        pl.col(IN_ACCESSION_KEY[rescore_method]).ne('deNovo')
+        pl.col(IN_ACCESSION_KEY[config.rescore_method]).ne('deNovo')
     )
 
-    prefix_keys = PREFIX_KEYS[rescore_method]
-    psm_id_key = PSM_ID_KEY[rescore_method]
+    prefix_keys = PREFIX_KEYS[config.rescore_method]
+    psm_id_key = PSM_ID_KEY[config.rescore_method]
 
     if proteome is not None:
         all_features_df = all_features_df.with_columns(
@@ -149,25 +147,33 @@ def apply_non_spectral_percolator(
         )
     else:
         non_spectral_df = all_features_df.select(
-            prefix_keys + NON_SPECTRAL_FEATURES + SUFFIX_KEYS[rescore_method]
+            prefix_keys + NON_SPECTRAL_FEATURES + SUFFIX_KEYS[config.rescore_method]
         )
 
     non_spectral_df.write_csv(
-        f'{output_folder}/non_spectral_perc_input.tab',
+        f'{config.output_folder}/non_spectral_perc_input.tab',
         separator='\t',
     )
 
-    non_spectral_psm_df, _ = apply_rescoring(
-        output_folder,
+    non_spectral_psm_df, non_spectral_pep_df = apply_rescoring(
+        config.output_folder,
         'non_spectral_perc_input.tab',
         fdr,
-        rescore_method,
+        config.rescore_method,
         'non_spectral',
-        rescore_command,
+        config.rescore_command,
         proteome,
+        enzyme=config.enzyme,
     )
+
+    output_peptides_df = apply_post_processing(non_spectral_pep_df, config)
+    output_psm_df = apply_post_processing(non_spectral_psm_df, config)
+
+    output_peptides_df.write_csv(f'{config.output_folder}/nonSpectralPeptideAssignments.csv')
+    output_psm_df.write_csv(f'{config.output_folder}/nonSpectralPsmAssignments.csv')
+
     non_spectral_psm_df = non_spectral_psm_df.rename(
-        {OUT_PSM_ID_KEY[rescore_method]: psm_id_key}
+        {OUT_PSM_ID_KEY[config.rescore_method]: psm_id_key}
     )
 
     non_spectral_psm_df = non_spectral_psm_df.join(
@@ -362,17 +368,15 @@ def generate_report(config):
         proteome = None
 
     non_spectral_df = apply_non_spectral_percolator(
-        config.output_folder,
+        config,
         non_spectral_fdr,
-        config.rescore_method,
-        config.rescore_command,
         proteome,
     )
 
     assignment_df = pl.read_csv(f'{config.output_folder}/finalPsmAssignments.csv')
 
     if config.use_binding_affinity in ['asFeature', 'asValidation']:
-        mhcpan_df = read_mhcpan_output(f'{config.output_folder}/mhcpan')
+        mhcpan_df = read_mhcpan_output(f'{config.output_folder}/mhcpan', alleles=config.alleles)
         mhcpan_df = mhcpan_df.to_pandas()
         binders_df = combine_results(config.output_folder, mhcpan_df, 'finalPsmAssignments.csv')
         ns_binders_df = combine_results(

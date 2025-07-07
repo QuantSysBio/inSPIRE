@@ -1,11 +1,7 @@
 """ Script containing functions for writing plotting utils of PEPSeek Epitopes results.
 """
-from math import ceil
 import os
 
-from logomaker import Logo
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -43,23 +39,32 @@ def get_host_peps(config):
     host_prot = fetch_proteome(config.host_proteome, with_desc=False)
     ep_df = ep_df[(ep_df['qValue'] < 0.01) & (ep_df['postErrProb'] < 0.1)]
     ep_df = ep_df[
-        (ep_df['peptide'].apply(len) <= 15) & 
+        (ep_df['peptide'].apply(len) <= 15) &
         (ep_df['peptide'].apply(len) >= 8)
     ]
-    print(ep_df)
+
     ep_df = ep_df.drop_duplicates(subset=['peptide'])
     ep_df = ep_df[ep_df['peptide'].apply(lambda x : _check_pep(x, host_prot))]
-    print(ep_df)
 
     if config.epitope_cut_level == 'psm':
-        host_basic_df = pd.read_csv(f'{config.output_folder}/non_spectral.{config.rescore_method}.psms.txt', sep='\t')
+        host_basic_df = pd.read_csv(
+            f'{config.output_folder}/non_spectral.{config.rescore_method}.psms.txt', sep='\t',
+        )
     else:
-        host_basic_df = pd.read_csv(f'{config.output_folder}/non_spectral.{config.rescore_method}.peptides.txt', sep='\t')
-    
-    host_basic_df = host_basic_df[(host_basic_df['q-value'] < 0.01) & (host_basic_df['posterior_error_prob'] < 0.1)]
+        host_basic_df = pd.read_csv(
+            f'{config.output_folder}/non_spectral.{config.rescore_method}.peptides.txt', sep='\t',
+        )
+
+    host_basic_df = host_basic_df[
+        (host_basic_df['q-value'] < 0.01) & (host_basic_df['posterior_error_prob'] < 0.1)
+    ]
     host_basic_df = host_basic_df.drop_duplicates(subset=['peptide'])
-    host_basic_df = host_basic_df[host_basic_df['peptide'].apply(lambda x : _check_pep(x, host_prot))]
-    host_basic_df['peptide'] = host_basic_df['peptide'].apply(lambda x : x.split('.')[1] if '.' in x else x)
+    host_basic_df = host_basic_df[
+        host_basic_df['peptide'].apply(lambda x : _check_pep(x, host_prot))
+    ]
+    host_basic_df['peptide'] = host_basic_df['peptide'].apply(
+        lambda x : x.split('.')[1] if '.' in x else x
+    )
     ep_df = pd.merge(ep_df, host_basic_df[['peptide']], how='left', on='peptide', indicator=True)
     ep_df['foundBySearchEngine'] = ep_df['_merge'].apply(lambda x : 'Yes' if x == 'both' else 'No')
 
@@ -70,10 +75,18 @@ def bar_plot(config, host=False):
     """
     if host:
         host_prot = fetch_proteome(config.host_proteome, with_desc=False)
-        host_insp_df = pd.read_csv(f'{config.output_folder}/final.{config.rescore_method}.peptides.txt', sep='\t')
-        host_insp_df = host_insp_df[(host_insp_df['q-value'] < 0.01) & (host_insp_df['posterior_error_prob'] < 0.1)]
-        host_basic_df = pd.read_csv(f'{config.output_folder}/non_spectral.{config.rescore_method}.peptides.txt', sep='\t')
-        host_basic_df = host_basic_df[(host_basic_df['q-value'] < 0.01) & (host_basic_df['posterior_error_prob'] < 0.1)]
+        host_insp_df = pd.read_csv(
+            f'{config.output_folder}/final.{config.rescore_method}.peptides.txt', sep='\t',
+        )
+        host_insp_df = host_insp_df[
+            (host_insp_df['q-value'] < 0.01) & (host_insp_df['posterior_error_prob'] < 0.1)
+        ]
+        host_basic_df = pd.read_csv(
+            f'{config.output_folder}/non_spectral.{config.rescore_method}.peptides.txt', sep='\t',
+        )
+        host_basic_df = host_basic_df[
+            (host_basic_df['q-value'] < 0.01) & (host_basic_df['posterior_error_prob'] < 0.1)
+        ]
         for name in ['peptides', 'proteins']:
             if name == 'peptides':
                 joined_df = pd.merge(

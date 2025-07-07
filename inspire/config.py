@@ -13,13 +13,18 @@ ALL_CONFIG_KEYS = [
     'accessionFlags',
     'accessionFormat',
     'accessionKeys',
+    'additionalPsms',
     'alleles',
+    'baPredictionLimit',
+    'calibratePerFile',
     'collisionEnergy',
-    'fraggerUseContams',
+    'contaminantData',
     'combinedScansFile',
     'controlFlags',
+    'deNovoFilterResults',
     'deltaMethod',
     'distillerLog',
+    'dropUnknown',
     'dropUnknownPTMs',
     'epitopeCandidateCutOff',
     'epitopeCutLevel',
@@ -31,10 +36,13 @@ ALL_CONFIG_KEYS = [
     'fixedModifications',
     'filterCysteine',
     'forceReload',
+    'forPisces',
     'fraggerMemory',
+    'fraggerMods',
     'fraggerDbSplits',
     'fraggerPath',
     'fraggerParams',
+    'fraggerUseContams',
     'hostOnlyResults',
     'hostProteome',
     'includeFeatures',
@@ -49,6 +57,7 @@ ALL_CONFIG_KEYS = [
     'netMHCpan',
     'outputFolder',
     'pathogenProteome',
+    'piscesDnEngine',
     'plotSpectraSourceSplit',
     'proteinDecoyKey',
     'proteome',
@@ -181,9 +190,13 @@ class Config:
         else:
             self.delta_method = config_dict.get('deltaMethod', 'ignore')
         self.reuse_input = config_dict.get('reuseInput', False)
-        self.minimal_features = config_dict.get('useMinimalFeatures', False)
+        self.for_pisces = config_dict.get('forPisces', False)
+        self.pisces_dn_method = config_dict.get('piscesDnEngine')
+        self.minimal_features = config_dict.get('useMinimalFeatures', self.for_pisces)
+        self.additional_psms = config_dict.get('additionalPsms')
 
         # MSFragger
+        self.fragger_mods = config_dict.get('fraggerMods', 'standard')
         self.fragger_use_contams = config_dict.get('fraggerUseContams', True)
         self.fragger_memory = config_dict.get('fraggerMemory', 60)
         self.fragger_db_splits = config_dict.get('fraggerDbSplits', 4)
@@ -211,6 +224,8 @@ class Config:
         self.decoy_protein_flag = config_dict.get('proteinDecoyKey', 'rev_')
 
         # Optional
+        self.drop_unknown = config_dict.get('dropUnknown', False)
+        self.calibrate_per_file = config_dict.get('calibratePerFile', True)
         self.remap_to_proteome = config_dict.get('remapToProteome', False)
         self.fdr = config_dict.get('falseDiscoveryRate', 0.01)
         self.exclude_features = config_dict.get('excludeFeatures', [])
@@ -253,10 +268,7 @@ class Config:
         )
         self.use_binding_affinity = config_dict.get('useBindingAffinity', None)
         self.pan_command = config_dict.get('netMHCpan')
-        default_ba_pred_limit = 15
-        if self.use_binding_affinity == 'asFeature':
-            default_ba_pred_limit = 31
-        self.ba_pred_limit = config_dict.get('baPredictionLimit', default_ba_pred_limit)
+        self.ba_pred_limit = config_dict.get('baPredictionLimit', 15)
 
         # MS2PIP Model
         self.ms2pip_model = config_dict.get('ms2pipModel', None)
@@ -390,16 +402,18 @@ class Config:
     def validate(self):
         """ Function to validate config settings.
         """
-        if self.search_engine not in ('mascot', 'maxquant', 'peaks', 'msfragger'):
+        if self.search_engine not in (
+            'mascot', 'maxquant', 'peaks', 'peaksDeNovo', 'msfragger', 'psms', 'casanovo'
+        ):
             raise ValueError(
                 f'Unsupported Search Engine: "{self.search_engine}". Supported ' +
-                'engines are "mascot", "peaks", "msfragger", and "maxquant".'
+                'engines are "mascot", "peaks", "peaksDeNovo", "psms", "msfragger", and "maxquant".'
             )
 
-        if self.scans_format not in ('mgf', 'mzML'):
+        if self.scans_format not in ('mgf', 'mzML', 'mzML_rt'):
             raise ValueError(
                 f'Unsupported Scans Format: "{self.scans_format}". Supported ' +
-                'formats are "mgf" and "mzML".'
+                'formats are "mgf", "mzML", and "mzML_rt.'
             )
 
         if self.mz_units not in ('Da', 'ppm'):

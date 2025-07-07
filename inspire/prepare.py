@@ -16,6 +16,7 @@ from inspire.constants import (
     PTM_NAME_KEY,
     PTM_SEQ_KEY,
     SEQ_LEN_KEY,
+    SOURCE_KEY,
 )
 from inspire.input.search_results import generic_read_df
 from inspire.utils import get_ox_flag
@@ -83,17 +84,37 @@ def write_prosit_input_df(
     # Create modified sequence.
     ox_flag = get_ox_flag(mods_df)
     search_df = search_df.with_columns(
-        pl.struct([PEPTIDE_KEY, PTM_SEQ_KEY]).apply(
+        pl.struct([PEPTIDE_KEY, PTM_SEQ_KEY]).map_elements(
             lambda x : create_prosit_mod_seq(x[PEPTIDE_KEY], x[PTM_SEQ_KEY], ox_flag),
-            skip_nulls=False,
+            skip_nulls=False, return_dtype=pl.String,
         ).alias('modified_sequence')
     )
 
     # Write sequences in Prosit's input format.
-    prosit_df = search_df.select('modified_sequence', CHARGE_KEY).rename(
-        {CHARGE_KEY: 'precursor_charge'}
-    )
-    if isinstance(collision_energy, list):
+    if isinstance(collision_energy, dict):
+        prosit_df = search_df.select(SOURCE_KEY, 'modified_sequence', CHARGE_KEY).rename(
+            {CHARGE_KEY: 'precursor_charge'}
+        )
+        prosit_df = prosit_df.with_columns(
+            pl.col('source').replace(collision_energy).cast(
+                pl.Int64
+            ).alias('collision_energy')
+        ).drop(SOURCE_KEY)
+        prosit_df = prosit_df.unique()
+        if overwrite:
+            prosit_df.write_csv(
+                f'{config.output_folder}/{filename}.csv',
+            )
+        else:
+            with open(f'{config.output_folder}/{filename}.csv', mode='ab') as out_file:
+                prosit_df.write_csv(
+                    out_file,
+                    include_header=False,
+                )
+    elif isinstance(collision_energy, list):
+        prosit_df = search_df.select('modified_sequence', CHARGE_KEY).rename(
+            {CHARGE_KEY: 'precursor_charge'}
+        )
         prosit_df = prosit_df.unique()
         prosit_df['collision_energy'] = [collision_energy for _ in range(prosit_df.shape[0])]
         prosit_df = prosit_df.explode('collision_energy')
@@ -105,9 +126,12 @@ def write_prosit_input_df(
             with open(f'{config.output_folder}/{filename}.csv', mode='ab') as out_file:
                 prosit_df.write_csv(
                     out_file,
-                    has_header=False,
+                    include_header=False,
                 )
     else:
+        prosit_df = search_df.select('modified_sequence', CHARGE_KEY).rename(
+            {CHARGE_KEY: 'precursor_charge'}
+        )
         prosit_df = prosit_df.with_columns(
             pl.lit(collision_energy).alias('collision_energy')
         )
@@ -120,7 +144,7 @@ def write_prosit_input_df(
             with open(f'{config.output_folder}/{filename}.csv', mode='ab') as out_file:
                 prosit_df.write_csv(
                     out_file,
-                    has_header=False,
+                    include_header=False,
                 )
 
 def prepare_for_spectral_prediction(config):
@@ -208,8 +232,8 @@ def write_ms2pip_input_df(target_df, mods_df, output_folder, output_name):
 
     target_df = target_df.with_row_count(name='spec_id')
     target_df = target_df.with_columns(
-        pl.col('spec_id').apply(lambda x : f'peptide_{x}'),
-        pl.col(PTM_SEQ_KEY).apply(
+        pl.col('spec_id').map_elements(lambda x : f'peptide_{x}'),
+        pl.col(PTM_SEQ_KEY).map_elements(
             lambda x : get_ms2pip_mods(x, mod_id_mappings)
         ).alias('modifications'),
     )
@@ -248,13 +272,13 @@ def prepare_for_mhcpan(config):
         len_df = target_df.filter(pl.col(SEQ_LEN_KEY) == length)
         peptides = len_df.select(PEPTIDE_KEY).unique()
         peptides = peptides.with_row_count('id').with_columns(
-            (pl.col('id')//10_000).alias('batch')
+            (pl.col('id')//500).alias('batch')
         )
         split_peptides = peptides.partition_by('batch')
         for idx, pep_group_df in enumerate(split_peptides):
             pep_group_df.select('peptide').write_csv(
                 f'{config.output_folder}/mhcpan/inputLen{length}_{idx}.txt',
-                has_header=False,
+                include_header=False,
             )
 
     print(

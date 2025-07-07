@@ -36,7 +36,9 @@ AA_COLOUR_SCHEME = {
 }
 
 
-def create_comparison_logo_plot(data_frame_list, title_list, peptide_length, output_folder, out_name, data_index=None):
+def create_comparison_logo_plot(
+    data_frame_list, title_list, peptide_length, output_folder, out_name, data_index=None,
+):
     """ Function to compare frequencies of amino acids
     """
     dim_val = len(data_frame_list)-1
@@ -85,7 +87,7 @@ def create_comparison_logo_plot(data_frame_list, title_list, peptide_length, out
                 logo_plot.ax.set_yticks(y_ticks)
             else:
                 logo_plot.ax.set_ylim([-ceil(max_val*5)/5, ceil(max_val*5)/5])
-            
+
             if data_index is not None:
                 logo_plot.ax.set_xlim([0.5, peptide_length+0.5])
                 logo_plot.ax.set_xticklabels(data_index)

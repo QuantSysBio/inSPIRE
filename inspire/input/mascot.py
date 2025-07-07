@@ -243,10 +243,10 @@ def _read_mascot_dfs(
     hits_df = hits_df.drop([MASCOT_MASS_KEY, MASCOT_PRED_MASS_KEY])
 
     hits_df = hits_df.with_columns(
-        pl.col(MASCOT_PEP_QUERY_KEY).apply(
+        pl.col(MASCOT_PEP_QUERY_KEY).map_elements(
             lambda x : scan_file + str(x)
         ).alias(MASCOT_PEP_QUERY_KEY),
-        pl.col(MASCOT_DECOY_KEY).apply(
+        pl.col(MASCOT_DECOY_KEY).map_elements(
             lambda x : -1 if 'Reversed' in x or 'random' in x or 'Random' in x else 1
         ).alias(LABEL_KEY)
     )
@@ -380,7 +380,7 @@ def read_single_mascot_data(input_filename, scan_title_format, variable_mods):
         unmatched_df['newId'].tolist(), unmatched_df[PTM_ID_KEY].tolist()
     )}
     hits_df = hits_df.with_columns(
-        pl.col(PTM_SEQ_KEY).apply(
+        pl.col(PTM_SEQ_KEY).map_elements(
             lambda x : _replace_ptm_id(x, replacements)
         )
     )
@@ -464,7 +464,7 @@ def read_mascot_data(
 
     if with_accession:
         hits_df = hits_df.with_columns(
-            pl.col(ACCESSION_KEY).apply(
+            pl.col(ACCESSION_KEY).map_elements(
                 lambda x : 1 if 'PSP' in x else 0
             ).alias('PSP')
         )
@@ -474,7 +474,7 @@ def read_mascot_data(
     hits_df = mascot_reduce_to_max(hits_df, reduce, with_accession)
 
     hits_df = hits_df.with_columns(
-        pl.col(MASCOT_SCAN_TITLE_KEY).apply(
+        pl.col(MASCOT_SCAN_TITLE_KEY).map_elements(
             lambda x : separate_scan_and_source(x, scan_title_format, source_list, source_filename),
             skip_nulls=False,
         ).alias('results')
@@ -515,7 +515,7 @@ def mascot_reduce_to_max(main_df, reduce, with_accession):
         )
     if reduce:
         main_df = main_df.with_columns(
-            pl.col(PEPTIDE_KEY).apply(
+            pl.col(PEPTIDE_KEY).map_elements(
                 lambda x : x.replace('I', 'L')
             ).alias('ilSub')
         )

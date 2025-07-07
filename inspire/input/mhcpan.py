@@ -110,7 +110,7 @@ def read_single_mhcpan_file(mhc_pan_file):
     )
     return mhc_pan_df
 
-def read_mhcpan_output(mhc_pan_dir, per_allele=False):
+def read_mhcpan_output(mhc_pan_dir, per_allele=False, alleles=None):
     """ Function read raw mhcpan output files.
 
     Parameters
@@ -134,6 +134,10 @@ def read_mhcpan_output(mhc_pan_dir, per_allele=False):
     for mhc_pan_file in mhc_pan_files:
         input_code = mhc_pan_file.split('_')[-3] + mhc_pan_file.split('_')[-1]
         mhc_pan_df = read_single_mhcpan_file(mhc_pan_file)
+        allele = mhc_pan_file.split('_')[-2].split('.txt')[0]
+        if alleles is not None:
+            if allele not in alleles:
+                continue
 
         if per_allele:
             allele = mhc_pan_file.split('_')[-2].split('.txt')[0]
@@ -170,14 +174,15 @@ def read_mhcpan_output(mhc_pan_dir, per_allele=False):
         for length in mhc_dfs:
             all_dfs.extend(mhc_dfs[length])
 
+    all_dfs = [x for x in all_dfs if x.shape[0]]
     mhc_pan_combined_df = pd.concat(all_dfs)
     if not per_allele:
         # If different HLAs have been predicted find the minimum prediction.
         mhc_pan_combined_df['minAffinity'] = mhc_pan_combined_df.groupby(
             ['Peptide']
-        )['Aff(nM)'].transform(min)
+        )['%Rank_BA'].transform('min')
         mhc_pan_combined_df = mhc_pan_combined_df[
-            mhc_pan_combined_df['Aff(nM)'] == mhc_pan_combined_df['minAffinity']
+            mhc_pan_combined_df['%Rank_BA'] == mhc_pan_combined_df['minAffinity']
         ]
         mhc_pan_combined_df = mhc_pan_combined_df.drop_duplicates('Peptide')
 

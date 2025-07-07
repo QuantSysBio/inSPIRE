@@ -1,6 +1,7 @@
 """ Helpful functions used across the module.
 """
 import multiprocessing as mp
+import os
 import pickle
 import re
 
@@ -26,13 +27,20 @@ from inspire.constants import (
 )
 from inspire.input.mgf import process_mgf_file
 from inspire.input.mzml import process_mzml_file
+from inspire.input.mzml_rt import process_mzml_file_with_rt_adjustment
 
-def fetch_proteome(proteome, with_desc=True):
+def fetch_proteome(proteome, with_desc=True, replace_il=True):
     """ Function to read in proteome fasta file and return list of tuples containing:
         0. protein name
         1. protein sequence
         2. protein description (optional)
     """
+    if not replace_il:
+        return [
+            (x.name, str(x.seq)) for x in SeqIO.parse(
+                proteome, 'fasta',
+            )
+        ]
     if with_desc:
         return [
             (x.name, str(x.seq).replace('I', 'L'), x.description) for x in SeqIO.parse(
@@ -45,7 +53,7 @@ def fetch_proteome(proteome, with_desc=True):
         )
     ]
 
-def parallel_remap(combined_df, n_cores, proteome, out_column, trace_accession=True):
+def parallel_remap(combined_df, n_cores, proteome, out_column, trace_accession=True, reverse=False):
     """ Function to remap peptides in a DataFrame to a proteome in parallel.
 
     Parameters
@@ -67,6 +75,8 @@ def parallel_remap(combined_df, n_cores, proteome, out_column, trace_accession=T
     combined_df : pl.DataFrame
         DataFrame including peptides identified with remapped accessions.
     """
+    if (return_pandas := isinstance(combined_df, pd.DataFrame)):
+        combined_df = pl.from_pandas(combined_df)
     pep_df = combined_df.select(PEPTIDE_KEY).unique()
     batch_size = pep_df.shape[0]//n_cores
     batch_values = []
@@ -82,7 +92,7 @@ def parallel_remap(combined_df, n_cores, proteome, out_column, trace_accession=T
     pep_df_list = pep_df.partition_by('batch')
     func_args = []
     for sub_pep_df in pep_df_list:
-        func_args.append([sub_pep_df, proteome, out_column, trace_accession])
+        func_args.append([sub_pep_df, proteome, out_column, trace_accession, reverse])
 
     with mp.get_context('spawn').Pool(processes=n_cores) as pool:
         pep_df_list = pool.starmap(_sub_remap, func_args)
@@ -90,12 +100,20 @@ def parallel_remap(combined_df, n_cores, proteome, out_column, trace_accession=T
 
     combined_df = combined_df.join(remapped_pep_df, how='inner', on='peptide')
 
+    if return_pandas:
+        return combined_df.to_pandas()
     return combined_df
 
-def _sub_remap(pep_df, proteome, out_column, trace_accession):
+def _sub_remap(pep_df, proteome, out_column, trace_accession, reverse):
+    if trace_accession:
+        return_type = pl.String
+    else:
+        return_type = pl.Boolean
+
     pep_df = pep_df.with_columns(
-        pl.col('peptide').apply(
-            lambda x : remap_to_proteome(x, proteome, trace_accession=trace_accession)
+        pl.col('peptide').map_elements(
+            lambda x : remap_to_proteome(x, proteome, trace_accession=trace_accession, reverse=reverse),
+            return_dtype=return_type,
         ).alias(out_column)
     )
     return pep_df
@@ -104,7 +122,8 @@ def _sub_remap(pep_df, proteome, out_column, trace_accession):
 def remap_to_proteome(
         peptide,
         proteome,
-        trace_accession=True
+        trace_accession=True,
+        reverse=False,
     ):
     """ Function to check for the presence of an identified peptide as either canonical
         or spliced in the input proteome.
@@ -112,13 +131,20 @@ def remap_to_proteome(
     il_peptide = peptide.replace('I', 'L')
     accession_stratum = 'unknown'
     for protein in proteome:
-        if il_peptide in protein[1]:
+        if reverse:
+            search_prot = protein[1][::-1]
+            name = 'rev_' + protein[0]
+        else:
+            search_prot = protein[1]
+            name = protein[0]
+
+        if il_peptide in search_prot:
             if not trace_accession:
                 return True
             if accession_stratum == 'unknown':
-                accession_stratum = protein[0]
+                accession_stratum = name
             else:
-                accession_stratum += f' {protein[0]}'
+                accession_stratum += f' {name}'
 
     if not trace_accession:
         return False
@@ -135,7 +161,7 @@ def accession_informed_filter(target_df, drop_feature_key):
     """ Function for filtering with competitors from lower accession strata excluded.
     """
     target_df = target_df.with_columns(
-        pl.struct(ENGINE_SCORE_KEY, ACCESSION_STRATUM_KEY).apply(
+        pl.struct(ENGINE_SCORE_KEY, ACCESSION_STRATUM_KEY).map_elements(
             get_mod_score
         ).alias('modEngineScore')
     )
@@ -155,7 +181,7 @@ def accession_informed_filter(target_df, drop_feature_key):
         pl.lit('yes').alias('drop')
     )
     target_df = target_df.filter(
-        pl.col(drop_feature_key).is_not()
+        pl.col(drop_feature_key).not_()
     ).drop(['modEngineScore', 'maxModScore', drop_feature_key])
 
     target_df = target_df.join(
@@ -174,9 +200,15 @@ def fetch_collision_energy(output_folder):
     results_df = pd.read_csv(
         f'{output_folder}/collisionEnergyStats.csv'
     )
-    optimal_collision_energy = results_df['collisionEnergy'].iloc[
-        results_df[SPECTRAL_ANGLE_KEY].idxmax()
-    ]
+    if 'source' in results_df:
+        optimal_collision_energy = dict(zip(
+            results_df['source'].astype(str).tolist(),
+            results_df['collisionEnergy'].tolist(),
+        ))
+    else:
+        optimal_collision_energy = results_df['collisionEnergy'].iloc[
+            results_df[SPECTRAL_ANGLE_KEY].idxmax()
+        ]
 
     return optimal_collision_energy
 
@@ -348,15 +380,94 @@ def modify_sequence_for_skyline(df_row, mod_weights):
     modified_sequence = ''
     for idx, entry in enumerate(df_row[PEPTIDE_KEY]):
         mod = df_row[PTM_SEQ_KEY][idx+2]
+        if idx == 0:
+            aditional = ''
+            if df_row[PTM_SEQ_KEY][0] != '0':
+                first_wt = mod_weights[int(df_row[PTM_SEQ_KEY][0])]
+                if first_wt > 0:
+                    aditional = f'[+{round(first_wt, 1)}]'
+                else:
+                    aditional = f'[{round(first_wt, 1)}]'
+        else:
+            aditional = ''
+
         if mod != '0':
             mod_wt = mod_weights[int(mod)]
             if mod_wt > 0:
-                modified_sequence += f'{entry}[+{round(mod_wt, 1)}]'
+                modified_sequence += f'{entry}{aditional}[+{round(mod_wt, 1)}]'
             else:
-                modified_sequence += f'{entry}[{round(mod_wt, 1)}]'
+                modified_sequence += f'{entry}{aditional}[{round(mod_wt, 1)}]'
+        elif aditional:
+            modified_sequence += f'{entry}{aditional}'
         else:
             modified_sequence += entry
+
     return modified_sequence
+
+
+def reverse_skyline_mod_seq(mod_seq):
+    """ Function to get ptm_seq from skyline mod seq.
+    """
+    if '[' not in mod_seq:
+        mods = None
+    else:
+        if mod_seq[0] == '[':
+            if mod_seq[1:6] == '+42.0':
+                mods = '3.'
+                mod_seq = mod_seq[7:]
+            elif mod_seq[1:6] == '+43.0':
+                mods = '6.'
+                mod_seq = mod_seq[7:]
+            elif mod_seq[1:6] == '-17.0':
+                mods = '7.'
+                mod_seq = mod_seq[7:]
+            elif mod_seq[1:6] == '+26.0':
+                mods = '8.'
+                mod_seq = mod_seq[7:]
+        else:
+            mods = '0.'
+        while mod_seq:
+            if len(mod_seq) > 1:
+                if len(mod_seq) == 1 or mod_seq[1] != '[':
+                    mods += '0'
+                    mod_seq = mod_seq[1:]
+                elif mod_seq[1] == '[':
+                    if mod_seq[2:7] == '+42.0':
+                        mods = mods.replace('0.', '3.')
+                        mod_seq = mod_seq[0] + mod_seq[8:]
+                    elif mod_seq[2:7] == '+43.0':
+                        mods = mods.replace('0.', '6.')
+                        mod_seq = mod_seq[0] + mod_seq[8:]
+                    elif mod_seq[2:7] == '-17.0':
+                        mods = mods.replace('0.', '7.')
+                        mod_seq = mod_seq[0] + mod_seq[8:]
+                    elif mod_seq[2:7] == '+26.0':
+                        mods = mods.replace('0.', '8.')
+                        mod_seq = mod_seq[0] + mod_seq[8:]
+                    elif mod_seq[2:7] == '+57.0':
+                        mods += '1'
+                        mod_seq = mod_seq[8:]
+                    elif mod_seq[2:7] == '+16.0':
+                        mods += '2'
+                        mod_seq = mod_seq[8:]
+                    elif mod_seq[2:6] == '+1.0':
+                        mods += '4'
+                        mod_seq = mod_seq[7:]
+                    elif mod_seq[2:8] == '+119.0':
+                        mods += '5'
+                        mod_seq = mod_seq[9:]
+                    else:
+                        raise ValueError(f'Unknown mod in {mod_seq}')
+                else:
+                    mods += '2'
+                    mod_seq = mod_seq[8:]
+            else:
+                mods += '0'
+                break
+        mods += '.0'
+
+    return mods
+
 
 def read_distiller_log(distiller_log):
     """ Function to read the source file names from a distiller log.
@@ -412,9 +523,9 @@ def filter_for_prosit(search_df):
         pl.col(PEPTIDE_KEY).is_not_null() & (pl.col(CHARGE_KEY).is_not_null())
     )
     search_df = search_df.filter(
-        pl.col(PEPTIDE_KEY).apply(
-            lambda x : isinstance(x, str) and 'U' not in x and len(x) > 6 and len(x) < 31,
-            skip_nulls=False,
+        pl.col(PEPTIDE_KEY).map_elements(
+            lambda x : isinstance(x, str) and 'U' not in x and len(x) > 4 and len(x) < 31,
+            skip_nulls=False, return_dtype=pl.Boolean,
         )
     )
     search_df = search_df.filter(
@@ -495,7 +606,7 @@ def add_fixed_modifications(search_df, mods_df, fixed_modifications):
         ptm_weights.append(ptm_weight)
         str_ptm_idx = str(ptm_idx)
         search_df = search_df.with_columns(
-            pl.struct([PEPTIDE_KEY, PTM_SEQ_KEY]).apply(
+            pl.struct([PEPTIDE_KEY, PTM_SEQ_KEY]).map_elements(
                 lambda x, mod=modification, ptm_id=str_ptm_idx : _modify_ptm_seq(
                     x[PEPTIDE_KEY],
                     x[PTM_SEQ_KEY],
@@ -518,33 +629,26 @@ def add_fixed_modifications(search_df, mods_df, fixed_modifications):
 
     return search_df, mods_df
 
-def convert_mod_seq_to_ptm_seq(mod_seq):
-    """ Function to convert the modified prosit sequence to the PTM seq used elsewhere.
 
-    Parameters
-    ----------
-    mod_seq : str
-        The input sequence for Prosit.
-
-    Returns
-    -------
-    ptm_seq : str
-        The string of digits used to represent any PTMs present.
+def get_nuggets_pred_df(config):
+    """ Function to read in mhc nuggets predictions.
     """
-    ptm_seq = '0.'
-    while mod_seq:
-        if len(mod_seq) == 1 or mod_seq[1] != '[':
-            ptm_seq += '0'
-            mod_seq = mod_seq[1:]
-        elif mod_seq[1] == '[' and mod_seq[0] == 'C':
-            ptm_seq += '2'
-            mod_seq = mod_seq[8:]
+    for idx, allele in enumerate(config.alleles):
+        if idx == 0:
+            nugget_pred_df = pl.read_csv(f'{config.output_folder}/{allele}_nuggets.csv')
+            nugget_pred_df = nugget_pred_df.rename({'ic50': f'ic50_{allele}'})
         else:
-            ptm_seq += '1'
-            mod_seq = mod_seq[8:]
-
-    ptm_seq += '.0'
-    return ptm_seq
+            mini_pred_df = pl.read_csv(f'{config.output_folder}/{allele}_nuggets.csv')
+            mini_pred_df = mini_pred_df.rename({'ic50': f'ic50_{allele}'})
+            nugget_pred_df = nugget_pred_df.join(
+                mini_pred_df, how='inner', on='peptide',
+            )
+    nugget_pred_df = nugget_pred_df.with_columns(
+        pl.min_horizontal(*[f'ic50_{allele}' for allele in config.alleles]).alias(
+            'nuggetsPrediction'
+        )
+    )
+    return nugget_pred_df
 
 def fetch_scan_data(input_df, config, with_charge, with_rt=False):
     """ Function to fetch the experimental scan data.
@@ -581,6 +685,9 @@ def fetch_scan_data(input_df, config, with_charge, with_rt=False):
         )]
     else:
         for scan_file in source_files:
+            if not os.path.exists(f'{config.scans_folder}/{scan_file}.{config.scans_format}'):
+                continue
+
             if isinstance(input_df, pd.DataFrame):
                 scan_ids = input_df[input_df[SOURCE_KEY] == scan_file][SCAN_KEY].tolist()
             else:
@@ -593,6 +700,12 @@ def fetch_scan_data(input_df, config, with_charge, with_rt=False):
                     with_charge=with_charge,
                     with_retention_time=with_rt,
                 )
+            elif config.scans_format == 'mzML_rt':
+                scan_df = process_mzml_file_with_rt_adjustment(
+                    f'{config.scans_folder}/{scan_file}.mzML',
+                    set(scan_ids),
+                    with_charge=with_charge,
+                )
             else:
                 mgf_filename = f'{config.scans_folder}/{scan_file}.{config.scans_format}'
                 scan_df = process_mgf_file(
@@ -604,7 +717,9 @@ def fetch_scan_data(input_df, config, with_charge, with_rt=False):
                     with_charge=with_charge,
                     with_retention_time=with_rt,
                 )
-            scan_dfs.append(scan_df)
+
+            if scan_df.shape[0]:
+                scan_dfs.append(scan_df)
 
     total_scan_df = pl.concat(scan_dfs)
 
@@ -624,3 +739,24 @@ def is_control(source, control_flags):
             return True
 
     return False
+
+def split_psm_ids(psm_id):
+    """ Function for splitting a PSM Id back into its source name, scan number
+        and peptide sequence.
+
+    Parameters
+    ----------
+    df_row : pd.Series
+        A row of the DataFrame to which the function is being applied.
+
+    Parameters
+    ----------
+    df_row : pd.Series
+        The same row with source and scan added.
+    """
+    results = {}
+    source_scan_list = psm_id.split('_')
+    results['modifiedSequence'] = source_scan_list[-1]
+    results[SCAN_KEY] = int(source_scan_list[-2])
+    results[SOURCE_KEY] = '_'.join(source_scan_list[:-2])
+    return results

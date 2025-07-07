@@ -49,8 +49,6 @@ def create_quant_report(config):
         raw_corr = in_f.read()
 
 
-    with open(f'{out_path}/img/quant_pca.svg', mode='r', encoding='UTF-8') as in_f:
-        quant_pca = in_f.read()
 
     with open(f'{out_path}/img/quant_distro.svg', mode='r', encoding='UTF-8') as in_f:
         quant_distro = in_f.read()
@@ -141,7 +139,6 @@ def create_quant_report(config):
         ''' + quant_distro
     )
 
-        
     if (
         os.path.exists(f'{out_path}/img/quant_logo_plots.svg') and
         os.path.exists(f'{out_path}/img/quant_cluster_violin.svg')
@@ -166,27 +163,31 @@ def create_quant_report(config):
             '''
                 <br><br>
                 <p>
-                    The figure shows amino acids over and under represented at C-terminus among clusters
-                    compared to the central cluster (cluster 4). Considering changes at the C-terminus could
-                    be relevant for identification of alternate cleavage mechanisms or changes in HLA-I molecule
-                    preference given that C-terminus is an anchor site.
+                    The figure shows amino acids over and under represented at C-terminus among
+                    clusters compared to the central cluster (cluster 4). Considering changes at
+                    the C-terminus could be relevant for identification of alternate cleavage
+                    mechanisms or changes in HLA-I molecule preference given that C-terminus is
+                    an anchor site.
                 </p>
             ''' + quant_logo
         )
 
-    html_string += (
-        '''
-                <h3>
-                    Clustering Over Files
-                </h3>
-                <p>
-                    The figure the raw files after principal component analysis of normalised
-                    peptide intensities. We should see technical replicates clustering
-                    together. Furthermore, we hope to see separation between infected and
-                    control files in the case of PEPSeek.
-                </p>
-        ''' + quant_pca
-    )
+    if os.path.exists(f'{out_path}/img/quant_pca.svg'):
+        with open(f'{out_path}/img/quant_pca.svg', mode='r', encoding='UTF-8') as in_f:
+            quant_pca = in_f.read()
+        html_string += (
+            '''
+                    <h3>
+                        Clustering Over Files
+                    </h3>
+                    <p>
+                        The figure the raw files after principal component analysis of normalised
+                        peptide intensities. We should see technical replicates clustering
+                        together. Furthermore, we hope to see separation between infected and
+                        control files in the case of PEPSeek.
+                    </p>
+            ''' + quant_pca
+        )
 
     if os.path.exists(f'{out_path}/img/quant_clustermap.svg'):
         with open(f'{out_path}/img/quant_clustermap.svg', mode='r', encoding='UTF-8') as in_f:
@@ -211,8 +212,8 @@ def create_quant_report(config):
                         Volcano Plots of Up and Downregulated Peptides
                     </h3>
                     <p>
-                        This plot shows up and downregulation on the peptide level. These results are
-                        also available in csv format in the quantitative outputs.
+                        This plot shows up and downregulation on the peptide level. These results
+                        are also available in csv format in the quantitative outputs.
                     </p>
             ''' + pep_volcano
         )

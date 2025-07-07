@@ -5,12 +5,10 @@ import polars as pl
 
 from inspire.constants import (
     ACCESSION_STRATUM_KEY,
-    BOLD_TEXT,
     ENDC_TEXT,
     ENGINE_SCORE_KEY,
     KNOWN_PTM_WEIGHTS,
     LABEL_KEY,
-    OKBLUE_TEXT,
     OKCYAN_TEXT,
     PTM_ID_KEY,
     PTM_NAME_KEY,
@@ -19,7 +17,6 @@ from inspire.constants import (
     SEQ_LEN_KEY,
     SOURCE_KEY,
     SPECTRAL_ANGLE_KEY,
-    UNDERLINE_TEXT,
     CHARGE_KEY,
     INTENSITIES_KEY,
     MZS_KEY,
@@ -35,12 +32,11 @@ from inspire.input.search_results import generic_read_df
 from inspire.feature_creation import combine_spectral_data
 from inspire.predict_spectra import predict_spectra
 from inspire.prepare import write_prosit_input_df
-from inspire.spectral_features import calculate_spectral_features
+from inspire.spectral_features import calculate_spectral_features, get_spectral_return_dtype
 from inspire.utils import (
     check_bad_mods,
     get_ox_flag,
     get_cam_flag,
-    remove_source_suffixes,
 )
 
 COLLISION_ENERGY_RANGE = [20 + i for i in range(21)]
@@ -62,13 +58,13 @@ def _get_top_hits(config):
     unknown_mods = {str(x) for x in unknown_mods}
 
     target_df = target_df.with_columns(
-        pl.col(PTM_SEQ_KEY).apply(
+        pl.col(PTM_SEQ_KEY).map_elements(
             lambda x : check_bad_mods(x, unknown_mods),
-            skip_nulls=False,
+            skip_nulls=False, return_dtype=pl.Boolean,
         ).alias('unknownModifications')
     )
     target_df = target_df.filter(
-        ~pl.col('unknownModifications')
+        pl.col('unknownModifications').not_()
     ).drop(
         ['unknownModifications'],
     )
@@ -80,10 +76,25 @@ def _get_top_hits(config):
         target_df[LABEL_KEY] == 1
     )
 
-    if config.rescore_method == 'percolatorSeparate':
+    if config.calibrate_per_file:
+        target_dfs = []
+        for source_file in sorted(target_df[SOURCE_KEY].unique().to_list()):
+            filt_targ_df = target_df.filter(pl.col('source').eq(source_file))
+            filt_targ_df = filter_target_df(filt_targ_df, config.rescore_method)
+            target_dfs.append(filt_targ_df)
+        target_df = pl.concat(target_dfs)
+    else:
+        target_df = filter_target_df(target_df, config.rescore_method)
+
+    return target_df, mods_df
+
+def filter_target_df(target_df, rescore_method):
+    """ Function to filter target df to get the top quality hits.
+    """
+    if rescore_method == 'percolatorSeparate':
         score_cut_off = target_df[ENGINE_SCORE_KEY].quantile(0.98)
     else:
-        score_cut_off = target_df[ENGINE_SCORE_KEY].quantile(0.90)
+        score_cut_off = target_df[ENGINE_SCORE_KEY].quantile(0.9)
 
     target_df = target_df.filter(
         (target_df[ENGINE_SCORE_KEY] > score_cut_off)
@@ -96,7 +107,7 @@ def _get_top_hits(config):
             descending=True,
         )
 
-    return target_df, mods_df
+    return target_df
 
 def prepare_calibration(config):
     """ Function to generate Prosit input for collision energy calibration.
@@ -151,6 +162,7 @@ def calibrate(config):
         int(ox_flag): KNOWN_PTM_WEIGHTS['Oxidation (M)']
     }
 
+    results_dfs = []
     scan_dfs = []
     for scan_file in scan_files:
         filtered_search_df = target_df.filter(
@@ -158,9 +170,10 @@ def calibrate(config):
         )
 
         scans = filtered_search_df[SCAN_KEY].unique()
-        if config.scans_format == 'mzML':
+
+        if config.scans_format in ('mzML', 'mzML_rt'):
             scan_df = process_mzml_file(
-                f'{config.scans_folder}/{scan_file}.{config.scans_format}',
+                f'{config.scans_folder}/{scan_file}.mzML',
                 set(scans.to_list()),
             )
         else:
@@ -171,25 +184,46 @@ def calibrate(config):
                 config.source_files,
                 combined_source_file=config.combined_scans_file is not None,
             )
-        scan_dfs.append(scan_df.unique(subset=[SOURCE_KEY, SCAN_KEY]))
-    combined_scan_df = pl.concat(scan_dfs)
-    print(
-        OKCYAN_TEXT +
-        '\t\tCombining all spectral data...' +
-        ENDC_TEXT
+
+        if config.calibrate_per_file:
+            results_df, optimal_collision_energy = get_ce_stats(
+                filtered_search_df, scan_df, prosit_df, ox_flag, mods_dict, config,
+            )
+            results_df = results_df.with_columns(pl.lit(scan_file).alias('source'))
+            results_df = results_df.filter(pl.col('collisionEnergy').eq(optimal_collision_energy))
+            results_dfs.append(results_df)
+        else:
+            scan_dfs.append(scan_df.unique(subset=[SOURCE_KEY, SCAN_KEY]))
+
+    if config.calibrate_per_file:
+        results_df = pl.concat(results_dfs)
+        results_df = results_df.sort(by=['source', 'collisionEnergy'])
+    else:
+        combined_scan_df = pl.concat(scan_dfs)
+        results_df, optimal_collision_energy = get_ce_stats(
+            target_df, combined_scan_df, prosit_df, ox_flag, mods_dict, config
+        )
+        print(f'\n\t---> Optimal Collision Energy Setting: {optimal_collision_energy} <---\n')
+
+    results_df.write_csv(
+        f'{config.output_folder}/collisionEnergyStats.csv'
     )
+
+def get_ce_stats(target_df, scan_df, prosit_df, ox_flag, mods_dict, config):
+    """ Function to get collision energy statist
+    """
+    print('\t\tCombining all spectral data...')
     combined_df = combine_spectral_data(
         target_df,
-        combined_scan_df,
+        scan_df,
         prosit_df,
         ox_flag,
         'prosit',
+        config.output_folder,
+        for_calibration=True,
+        collision_energy=config.collision_energy,
     )
-    print(
-        OKCYAN_TEXT +
-        '\t\tCalculating spectral angles...' +
-        ENDC_TEXT
-    )
+    print('\t\tCalculating spectral angles...')
     combined_df = combined_df.with_columns(
          pl.struct([
             CHARGE_KEY,
@@ -201,7 +235,7 @@ def calibrate(config):
             PROSIT_IONS_KEY,
             PROSIT_SEQ_KEY,
             PTM_SEQ_KEY,
-        ]).apply(
+        ]).map_elements(
             lambda x : calculate_spectral_features(
                 x,
                 mods_dict,
@@ -213,10 +247,13 @@ def calibrate(config):
                 minimal_features=True,
             ),
             skip_nulls=False,
+            return_dtype=get_spectral_return_dtype(
+                True, config.delta_method,
+            )
         ).alias('spectralResults')
     ).unnest('spectralResults')
 
-    results_df = combined_df.groupby('collisionEnergy', maintain_order=True).agg(
+    results_df = combined_df.group_by('collisionEnergy', maintain_order=True).agg(
         pl.mean(SPECTRAL_ANGLE_KEY)
     )
 
@@ -224,12 +261,6 @@ def calibrate(config):
         by='spectralAngle', descending=True,
     )['collisionEnergy'].to_list()[0]
 
-    print(
-        OKBLUE_TEXT + BOLD_TEXT + UNDERLINE_TEXT +
-        f'\n\t---> Optimal Collision Energy Setting: {optimal_collision_energy} <---\n' +
-        ENDC_TEXT
-    )
     results_df = results_df.sort(by='collisionEnergy')
-    results_df.write_csv(
-        f'{config.output_folder}/collisionEnergyStats.csv'
-    )
+
+    return results_df, optimal_collision_energy

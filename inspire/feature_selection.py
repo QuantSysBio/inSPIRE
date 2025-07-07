@@ -1,11 +1,8 @@
 """ Functions for running automated feature selection.
 """
-from itertools import combinations
-
+from pathlib import Path
 import pandas as pd
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import auc, precision_recall_curve
-from sklearn.model_selection import train_test_split
+import xgboost as xgb
 import yaml
 
 from inspire.constants import (
@@ -22,6 +19,10 @@ from inspire.constants import (
     NOT_ASSIGNED_KEY,
     OKCYAN_TEXT,
     PEARSON_KEY,
+    PISCES_BA_FEATURE_SETS,
+    PISCES_CASA_BA_FEATURE_SETS,
+    PISCES_CASA_NOBA_FEATURE_SETS,
+    PISCES_NOBA_FEATURE_SETS,
     PEPTIDE_KEY,
     PRECURSOR_INTE_KEY,
     PREFIX_KEYS,
@@ -33,6 +34,10 @@ from inspire.constants import (
     SPECTRAL_ANGLE_KEY,
 )
 from inspire.spectral_features import DELTA_FEATURES
+
+PISCES_MODEL_PATH = (
+    '{home}/inSPIRE_models/pisces_models/{setting}/{dn_method}/model{model_step}/clf{model_idx}_all.json'
+)
 
 BASE_FEATURES = [
     SPECTRAL_ANGLE_KEY,
@@ -188,51 +193,6 @@ OUTSTANDING_CONFOUNDING_VARIABLES = [
 THRESHOLD_VALUE = 20
 
 
-def get_best_feature_set(fe_df, feature_set):
-    """ Function to get the best combination of features from a feature set
-        for each number of features.
-
-    Parameters
-    ----------
-    fe_df : pd.DataFrame
-        The DataFrame containg all features.
-    feature_set : list of str
-        A list of the features we wish to select between.
-
-    Returns
-    -------
-    features_sets_to_test : list of list of str
-        A list of the best feature combinations for each number of features.
-    """
-    fe_train, fe_test = train_test_split(fe_df, test_size=0.33, random_state=42)
-    fe_train = fe_train[fe_train['testMetric'] != -1]
-    fe_test['trueLabel'] = fe_test['testMetric'].apply(lambda x : 1 if x == -1 else x)
-    features_sets_to_test = []
-    for i in range(1, len(feature_set)+1):
-        max_r2 = -1000
-        best_features = []
-        for feature_selection in combinations(feature_set, i):
-            feature_selection = list(feature_selection)
-            reg = LogisticRegression(max_iter=1000, random_state=42).fit(
-                fe_train[feature_selection + BASE_FEATURES],
-                fe_train['testMetric'],
-            )
-
-            preds = reg.predict_proba(
-                fe_test[feature_selection + BASE_FEATURES]
-            )[:, 1]
-
-            precision, recall, _ = precision_recall_curve(fe_test['trueLabel'], preds)
-            feat_set_r2 = auc(recall, precision)
-
-            if feat_set_r2 > max_r2:
-                max_r2 = feat_set_r2
-                best_features = feature_selection
-
-        features_sets_to_test.append(best_features)
-    return features_sets_to_test
-
-
 def remove_excluded_features(feature_list, all_features_df, exclude_features):
     """ Function to get the maximum possible number of features for Percolator q-value
         calculation when dealing with small datasets.
@@ -283,10 +243,78 @@ def create_test_metric(df_row, sa_cut_off, es_cut_off):
     return 0
 
 
+def get_pisces_scores(all_features_df, use_binding_affinity, enzyme, search_engine):
+    """ Function to get pisces scores
+    """
+    engine_scored_df = all_features_df[all_features_df['engineScore'] > -1]
+    unscored_df = all_features_df[all_features_df['engineScore'] == -1]
+    if enzyme == 'trypsin':
+        setting='trypsin'
+        es_idx = 0
+        noes_idx = 1
+        if search_engine == 'peaksDeNovo':
+            feature_sets = PISCES_NOBA_FEATURE_SETS
+        else:
+            feature_sets = PISCES_CASA_NOBA_FEATURE_SETS
+    else:
+        setting = 'ip'
+        if use_binding_affinity == 'asFeature':
+            if search_engine == 'peaksDeNovo':
+                feature_sets = PISCES_BA_FEATURE_SETS
+            else:
+                feature_sets = PISCES_CASA_BA_FEATURE_SETS
+            es_idx = 0
+            noes_idx = 1
+        else:
+            if search_engine == 'peaksDeNovo':
+                feature_sets = PISCES_NOBA_FEATURE_SETS
+            else:
+                feature_sets = PISCES_CASA_NOBA_FEATURE_SETS
+            es_idx = 2
+            noes_idx = 3
+
+    scored_dfs = []
+    home = str(Path.home())
+
+    if engine_scored_df.shape[0]:
+        clf = xgb.XGBClassifier() # or which ever sklearn booster you're are using
+        clf.load_model(PISCES_MODEL_PATH.format(
+            home=home,
+            setting=setting,
+            dn_method=search_engine,
+            model_step=1,
+            model_idx=es_idx,
+        ))
+
+        engine_scored_df['piscesScore1'] = clf.predict_proba(engine_scored_df[
+            feature_sets[0]
+        ])[:,1]
+        engine_scored_df['modelUsed'] = 0
+        scored_dfs.append(engine_scored_df)
+
+    if unscored_df.shape[0]:
+        clf = xgb.XGBClassifier() # or which ever sklearn booster you're are using
+        clf.load_model(PISCES_MODEL_PATH.format(
+            home=home,
+            setting=setting,
+            dn_method=search_engine,
+            model_step=1,
+            model_idx=noes_idx,
+        ))
+
+        unscored_df['piscesScore1'] = clf.predict_proba(unscored_df[
+            feature_sets[1]
+        ])[:,1]
+        unscored_df['modelUsed'] = 1
+        scored_dfs.append(unscored_df)
+
+    return pd.concat(scored_dfs)
+
+
 def convert_to_irt(all_features_df, config):
     """ Function to convert deltaRT in seconds to iRT value.
     """
-    all_features_df[SOURCE_KEY] = all_features_df['specID'].apply(
+    all_features_df[SOURCE_KEY] = all_features_df['specID'].map_elements(
         lambda x : '_'.join(x.split('_')[:-2])
     )
     sources = all_features_df[SOURCE_KEY].unique().tolist()
@@ -301,7 +329,7 @@ def convert_to_irt(all_features_df, config):
             print(f'No file found for {source}')
             irt_coeffs[source] = 1.0
 
-    all_features_df['deltaRT'] = all_features_df[['deltaRT', 'source']].apply(
+    all_features_df['deltaRT'] = all_features_df[['deltaRT', 'source']].map_elements(
         lambda df_row : abs(
             df_row['deltaRT']/irt_coeffs.get(df_row['source'], 1.0)
         ),
@@ -323,18 +351,25 @@ def select_features(config):
         sep='\t'
     )
 
-    if config.use_irt_diff:
-        all_features_df = convert_to_irt(all_features_df, config)
+    if config.for_pisces:
+        if config.search_engine != 'psms':
+            search_eng_arg = config.search_engine
+        else:
+            search_eng_arg = config.pisces_dn_method
 
-    if config.minimal_features:
+        all_features_df = get_pisces_scores(
+            all_features_df, config.use_binding_affinity, config.enzyme, search_eng_arg,
+        )
+        feature_set = ['modelUsed', 'piscesScore1']
+    elif config.minimal_features:
         feature_set = MINIMAL_FEATURE_SET
     else:
         feature_set = DEFAULT_FEATURE_SET
         if config.delta_method == 'ignore':
             feature_set = [x for x in feature_set if x not in DELTA_FEATURES]
 
-    if config.use_binding_affinity == 'asFeature':
-        feature_set += ['bindingAffinity']
+    if config.use_binding_affinity == 'asFeature' and not config.for_pisces:
+        feature_set += ['mhcpanPrediction', 'nuggetsPrediction']
 
     if config.use_accession_stratum:
         feature_set += [
