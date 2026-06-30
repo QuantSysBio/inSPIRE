@@ -3,28 +3,18 @@
 import re
 
 import numpy as np
-import polars as pl
+import pandas as pd
 from pyteomics import mgf
 
 from inspire.constants import (
     CHARGE_KEY,
     INTENSITIES_KEY,
     MZS_KEY,
-    RT_KEY,
     SCAN_KEY,
     SOURCE_KEY,
 )
 
-def process_mgf_file(
-        mgf_filename,
-        scan_ids,
-        scan_file_format,
-        source_list,
-        combined_source_file=False,
-        with_charge=False,
-        with_retention_time=False,
-        with_ms1=False,
-    ):
+def process_mgf_file(mgf_filename, scan_ids, scan_file_format, source_list, with_charge=False):
     """ Function to process an mgf file to find matches with scan IDs.
 
     Parameters
@@ -50,10 +40,6 @@ def process_mgf_file(
     filename = mgf_filename.split('/')[-1]
     if with_charge:
         charge_list = []
-    if with_retention_time:
-        rt_list = []
-    if with_ms1:
-        ms1_intes = []
 
     with mgf.read(mgf_filename) as reader:
         for spectrum in reader:
@@ -66,10 +52,7 @@ def process_mgf_file(
                         spectrum['params']['title'].split('scan=')[-1]
                     )
                     scan_id = int(regex_match.group(1))
-                if combined_source_file:
-                    source = spectrum['params']['title'].split('File:"')[-1].split('.raw"')[0]
-                else:
-                    source = filename[:-4]
+                source = filename[:-4]
             else:
                 scan_id = int(spectrum['params']['title'].split(' Scan ')[-1].split(' (rt')[0])
                 source = source_list[
@@ -79,33 +62,22 @@ def process_mgf_file(
             if scan_ids is None or scan_id in scan_ids:
                 sources.append(source)
                 matched_scan_ids.append(scan_id)
-                matched_intensities.append(list(spectrum['intensity array']))
-                matched_mzs.append(list(spectrum['m/z array']))
+                matched_intensities.append(np.array(list(spectrum['intensity array'])))
+                matched_mzs.append(np.array(list(spectrum['m/z array'])))
                 if with_charge:
                     charge_list.append(int(spectrum['params']['charge'][0]))
-                if with_retention_time:
-                    rt_list.append(float(spectrum['params']['rtinseconds']))
-                if with_ms1:
-                    try:
-                        ms1_intes.append(float(spectrum['params']['pepmass'][1]))
-                    except Exception: # pylint: disable=bare-except
-                        ms1_intes.append(-1.0)
 
-    mgf_data = {
-        SOURCE_KEY: pl.Series(sources),
-        SCAN_KEY: pl.Series(matched_scan_ids),
-        INTENSITIES_KEY: pl.Series(matched_intensities),
-        MZS_KEY: pl.Series(matched_mzs)
-    }
-
+    mgf_df = pd.DataFrame(
+        {
+            SOURCE_KEY: pd.Series(sources),
+            SCAN_KEY: pd.Series(matched_scan_ids),
+            INTENSITIES_KEY: pd.Series(matched_intensities),
+            MZS_KEY: pd.Series(matched_mzs)
+        }
+    )
     if with_charge:
-        mgf_data[CHARGE_KEY] = pl.Series(charge_list)
-    if with_retention_time:
-        mgf_data[RT_KEY] = pl.Series(rt_list)
-    if with_ms1:
-        mgf_data['ms1Intensity'] = pl.Series(ms1_intes)
+        mgf_df[CHARGE_KEY] = pd.Series(charge_list)
 
-    mgf_df = pl.DataFrame(mgf_data)
-    mgf_df = mgf_df.unique(subset=[SOURCE_KEY, SCAN_KEY], maintain_order=True)
+    mgf_df = mgf_df.drop_duplicates(subset=[SOURCE_KEY, SCAN_KEY])
 
     return mgf_df

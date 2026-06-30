@@ -2,25 +2,15 @@
 """
 from copy import deepcopy
 
-import polars as pl
+from Bio import SeqIO
 
 from inspire.constants import (
     ACCESSION_STRATUM_KEY,
     ACCESSION_KEY,
-    ENGINE_SCORE_KEY,
     LABEL_KEY,
     PEPTIDE_KEY,
-    SOURCE_KEY,
-    SCAN_KEY
 )
-from inspire.utils import fetch_proteome
 
-ACCESSION_SPLITTERS = {
-    'mascot': ',',	
-    'msfragger': ',',	
-    'maxquant': ';',	
-    'peaks': ':',	
-}
 
 def get_accession_group(accession, search_engine, accession_hierarchy, accession_groups):
     """ Function to get the accession group from the accession of a peptide.
@@ -37,13 +27,14 @@ def get_accession_group(accession, search_engine, accession_hierarchy, accession
         A dictionary of mapping accession groups to the flag that will be seen
         in the accession.
     """
-    splitter = ACCESSION_SPLITTERS.get(search_engine)
-    if splitter is None:
+    if search_engine == 'peaks':
+        splitter = ':'
+    elif search_engine == 'maxquant':
+        splitter = ';'
+    elif search_engine == 'mascot':
+        splitter = ','
+    else:
         raise ValueError(f'Unrecognised Search Engine: {search_engine}')
-
-    if accession in ('deNovo', 'unknown'):
-        return len(accession_hierarchy)
-
     all_possible_accessions = accession.split(splitter)
     assignment = None
     for individiual_accession in all_possible_accessions:
@@ -73,21 +64,32 @@ def get_invitro_spi_acc_group(accession, search_engine):
     assignment : int
         The accession group index as defined by the config.accession_hierarchy.
     """
-    splitter = ACCESSION_SPLITTERS.get(search_engine)
-    if splitter is None:
+    if search_engine == 'peaks':
+        splitter = ':'
+    elif search_engine == 'maxquant':
+        splitter = ';'
+    elif search_engine == 'mascot':
+        splitter = ','
+    else:
         raise ValueError(f'Unrecognised Search Engine: {search_engine}')
-
     all_possible_accessions = accession.split(splitter)
-    assignment = 0
+    assignment = None
     for individiual_accession in all_possible_accessions:
-        if 'PCP_' in individiual_accession:
+        if 'PCP' in individiual_accession:
             return 0
-        if 'PSP_' in individiual_accession:
-            assignment = 1
+        if 'PSP' in individiual_accession:
+            data = individiual_accession.split('_')
+            data = [x for x in data if x != 'Reversed']
+            range_1 = set(range(int(data[1]), int(data[2])))
+            range_2 = set(range(int(data[3]), int(data[4])))
 
+            if (list(set(range_1) & set(range_2)) and assignment is None):
+                assignment = 2
+            else:
+                assignment = 1
     return assignment
 
-def validate_accession_stratum(df_row, proteome, rev_proteome, config):
+def validate_accession_group(df_row, proteome, rev_proteome, config):
     """ Function to validate the accession of a non-canonical PSM by checking for the
         sequence in the standard proteome.
 
@@ -95,9 +97,9 @@ def validate_accession_stratum(df_row, proteome, rev_proteome, config):
     ----------
     df_row : pd.Series
         An entry in a DataFrame of search results.
-    proteome : list of tuple
+    proteome : Bio.Seq
         The standard proteome.
-    rev_proteome : list of tuple
+    rev_proteome : Bio.Seq
         The reversed proteome.
     config : inspire.config.Config
         The Config object for the experiment.
@@ -107,36 +109,32 @@ def validate_accession_stratum(df_row, proteome, rev_proteome, config):
     df_row : pd.Series
         The input row updated with accession and accession group validated.
     """
-    pep_seq = df_row[PEPTIDE_KEY].replace('I', 'L')
+    pep_seq = df_row[PEPTIDE_KEY]
     if df_row[ACCESSION_STRATUM_KEY] == 0:
-        return {
-            ACCESSION_KEY: df_row[ACCESSION_KEY],
-            ACCESSION_STRATUM_KEY: df_row[ACCESSION_STRATUM_KEY],
-        }
+        return df_row
 
-    results ={}
     if df_row[LABEL_KEY] == 1:
         for entry in proteome:
-            if pep_seq in entry[1]:
+            if pep_seq in entry.seq:
                 if config.accession_format == 'invitroSPI':
-                    position = entry[1].index(pep_seq) + 1
-                    results[ACCESSION_KEY] = f'PCP_{position}_{position+len(pep_seq)}'
-                    results[ACCESSION_STRATUM_KEY] = 0
+                    position = entry.seq.index(pep_seq) + 1
+                    df_row[ACCESSION_KEY] = f'PCP_{position}_{position+len(pep_seq)}'
+                    df_row[ACCESSION_STRATUM_KEY] = 0
                 else:
-                    results[ACCESSION_KEY] = entry[0]
-                    results[ACCESSION_STRATUM_KEY] = 0
+                    df_row[ACCESSION_KEY] = entry.id
+                    df_row[ACCESSION_STRATUM_KEY] = 0
     else:
         for entry in rev_proteome:
-            if pep_seq in entry[1]:
+            if pep_seq in entry.seq:
                 if config.accession_format == 'invitroSPI':
-                    position = entry[1].index(pep_seq) + 1
-                    results[ACCESSION_KEY] = f'PCP_{position}_{position+len(pep_seq)}'
-                    results[ACCESSION_STRATUM_KEY] = 0
+                    position = entry.seq.index(pep_seq) + 1
+                    df_row[ACCESSION_KEY] = f'PCP_{position}_{position+len(pep_seq)}'
+                    df_row[ACCESSION_STRATUM_KEY] = 0
                 else:
-                    results[ACCESSION_KEY] = entry[0]
-                    results[ACCESSION_STRATUM_KEY] = 0
+                    df_row[ACCESSION_KEY] = entry.id
+                    df_row[ACCESSION_STRATUM_KEY] = 0
 
-    return results
+    return df_row
 
 
 def process_accession_groups(main_df, config):
@@ -156,45 +154,35 @@ def process_accession_groups(main_df, config):
         and removed any PSMs of accession groups to ignore.
     """
     if config.accession_format == 'invitroSPI':
-        main_df = main_df.with_columns(pl.col(ACCESSION_KEY).map_elements(
+        main_df[ACCESSION_STRATUM_KEY] = main_df[ACCESSION_KEY].apply(
             lambda x : get_invitro_spi_acc_group(x, config.search_engine)
-        ).alias(ACCESSION_STRATUM_KEY))
+        )
     else:
-        main_df = main_df.with_columns(
-            pl.col(ACCESSION_KEY).map_elements(
-                lambda x : get_accession_group(
-                    x,
-                    config.search_engine,
-                    config.accession_hierarchy,
-                    config.accession_flags
-                ) if isinstance(x, str) else 0
-            ).alias(ACCESSION_STRATUM_KEY)
+        main_df[ACCESSION_STRATUM_KEY] = main_df[ACCESSION_KEY].apply(
+            lambda x : get_accession_group(
+                x,
+                config.search_engine,
+                config.accession_hierarchy,
+                config.accession_groups
+            ) if isinstance(x, str) else 0
         )
 
     if config.proteome is not None:
-        prot_sequences = fetch_proteome(config.proteome, with_desc=False)
+        with open(config.proteome, 'r', encoding='UTF-8') as fasta_file:
+            prot_sequences = list(SeqIO.parse(fasta_file, 'fasta'))
 
         rev_prot_seqs = []
         for entry in deepcopy(prot_sequences):
-            new_entry = ('reversed_' + entry[0], entry[1][::-1])
-            rev_prot_seqs.append(new_entry)
-
-        main_df = main_df.with_columns(
-            pl.struct([ACCESSION_KEY, ACCESSION_STRATUM_KEY, PEPTIDE_KEY, LABEL_KEY]).map_elements(
-                lambda x : validate_accession_stratum(x, prot_sequences, rev_prot_seqs, config),
-            ).alias('results')
+            entry.seq = entry.seq[::-1]
+            entry.id = 'reverse' + entry.id
+            rev_prot_seqs.append(entry)
+        main_df = main_df.apply(
+            lambda x : validate_accession_group(x, prot_sequences, rev_prot_seqs, config),
+            axis=1
         )
-        main_df = main_df.drop([ACCESSION_KEY, ACCESSION_STRATUM_KEY])
-        main_df = main_df.unnest('results')
-
-    main_df = main_df.sort(
-        by=[LABEL_KEY, ACCESSION_STRATUM_KEY, ENGINE_SCORE_KEY, PEPTIDE_KEY],
-        descending=[True, False, True, False],
-    )
-    main_df = main_df.unique(subset=[SOURCE_KEY, SCAN_KEY, PEPTIDE_KEY])
 
     if 'ignore' in config.accession_hierarchy:
         ignore_idx = config.accession_hierarchy.index('ignore')
-        main_df = main_df.filter(pl.col(ACCESSION_STRATUM_KEY).ne(ignore_idx))
+        main_df = main_df[main_df[ACCESSION_STRATUM_KEY] != ignore_idx]
 
     return main_df

@@ -3,7 +3,6 @@
 
 # Constants for msp read in.
 PROSIT_IONS_KEY = 'prositIons'
-PROSIT_INTES_KEY = 'prositIntes'
 OXIDATION_PREFIX = 'Oxidation@M'
 OXIDATION_PREFIX_LEN = len(OXIDATION_PREFIX)
 
@@ -12,14 +11,8 @@ PROSIT_SEQ_KEY = 'modified_sequence'
 PROSIT_CHARGE_KEY = 'precursor_charge'
 PROSIT_COLLISION_ENERGY_KEY = 'collision_energy'
 
-FIGSHARE_PATH = 'https://figshare.com/ndownloader/articles/20368035/versions/3'
+FIGSHARE_PATH = 'https://figshare.com/ndownloader/articles/20368035/versions/1'
 FIGSHARE_EXAMPLE_PATH = 'https://figshare.com/ndownloader/files/37963665'
-THERMO_PARSER_PATH = (
-    'https://github.com/compomics/ThermoRawFileParser/releases/download/' +
-    'v1.4.2/ThermoRawFileParser1.4.2.zip'
-)
-FIGSHARE_EXTERNAL_UTILS_PATH = 'https://figshare.com/ndownloader/articles/22189198/versions/11'
-FIGSHARE_PISCES_MODELS = 'https://figshare.com/ndownloader/articles/29458643/versions/2'
 
 HEADER_TEXT = '\033[95m'
 OKBLUE_TEXT = '\033[94m'
@@ -33,7 +26,6 @@ UNDERLINE_TEXT = '\033[4m'
 
 CHARGE_KEY = 'charge'
 PEPTIDE_KEY = 'peptide'
-MOD_SEQ_KEY = 'modifiedSequence'
 ACCESSION_KEY = 'proteins'
 INTENSITIES_KEY = 'intensities'
 MZS_KEY = 'mzs'
@@ -78,11 +70,6 @@ PRECURSOR_INTE_KEY = 'precursorIntensity'
 
 # Percolator column names.
 PERC_SCAN_ID = 'scannr'
-IN_ACCESSION_KEY = {
-    'mokapot': 'proteins',
-    'percolator': 'Proteins',
-    'percolatorSeparate': 'Proteins',
-}
 PSM_ID_KEY = {
     'mokapot': 'specID',
     'percolator': 'specID',
@@ -92,6 +79,11 @@ OUT_PSM_ID_KEY = {
     'mokapot': 'specID',
     'percolator': 'PSMId',
     'percolatorSeparate': 'PSMId',
+}
+IN_ACCESSION_KEY = {
+    'mokapot': 'proteins',
+    'percolator': 'Proteins',
+    'percolatorSeparate': 'Proteins',
 }
 OUT_ACCESSION_KEY = {
     'mokapot': 'proteins',
@@ -108,11 +100,6 @@ OUT_Q_KEY = {
     'percolator': 'q-value',
     'percolatorSeparate': 'q-value',
 }
-OUT_POSTEP_KEY = {
-    'mokapot': 'mokapot PEP',
-    'percolator': 'posterior_error_prob',
-    'percolatorSeparate': 'posterior_error_prob',
-}
 
 PREFIX_KEYS = {
     'mokapot': [PSM_ID_KEY['mokapot'], LABEL_KEY, PERC_SCAN_ID],
@@ -126,7 +113,6 @@ SUFFIX_KEYS = {
 }
 FINAL_SCORE_KEY = 'percolatorScore'
 FINAL_Q_VALUE_KEY = 'qValue'
-FINAL_POSTEP_KEY = 'postErrProb'
 
 PRED_ACCESSION_KEY = 'predictedAccession'
 PRED_PEPTIDE_KEY = 'predictedPeptide'
@@ -139,7 +125,6 @@ BASIC_FEATURES = [
     ENGINE_SCORE_KEY,
     DELTA_SCORE_KEY,
     CHARGE_KEY,
-    'ms1Intensity',
     'nVarMods',
     'missedCleavages',
     'avgResidueMass',
@@ -222,14 +207,13 @@ NEUTRAL_LOSSES = [
     NH3,
     H2O,
 ]
-LOSS_NAMES = ['',  '*', '&#xb0;']
 
 RESIDUE_WEIGHTS = {
     'A': 71.037114,
     'R': 156.101111,
     'N': 114.042927,
     'D': 115.026943,
-    'C': 103.009185,
+    'C': 103.009185,# + 57.021464,
     'E': 129.042593,
     'Q': 128.058578,
     'G': 57.021464,
@@ -248,49 +232,27 @@ RESIDUE_WEIGHTS = {
 }
 
 KNOWN_PTM_WEIGHTS = {
-    'Cysteinylation': 119.004099,
     'Deamidated (N)': 0.984016,
     'Deamidated (NQ)': 0.984016,
     'Deamidation (NQ)': 0.984016,
     'Deamidation (N)': 0.984016,
-    'Deamidation (Q)': 0.984016,
     'Oxidation (M)': 15.994915,
     'Acetyl (N-term)': 42.010565,
     'Acetylation (N-term)': 42.010565,
     'Acetyl (Protein N-term)': 42.010565,
-    'Phospho (S)': 79.966331,
-    'Phospho (T)': 79.966331,
     'Phospho (Y)': 79.966331,
     'Phospho (ST)': 79.966331,
     'Phospho (STY)': 79.966331,
     'Phosphorylation (STY)': 79.966331,
     'Carbamidomethyl (C)': 57.021464,
     'Carbamidomethylation': 57.021464,
-    'Carbamylation': 43.005814,
-    'NH3 loss': -17.026549,
-    'Carbamylation and NH3 loss': 25.980265,
-    'unknown': 0.0
-}
-
-STANDARD_PTM_DICT = {
-    0: 0.0,
-    1: KNOWN_PTM_WEIGHTS['Carbamidomethylation'],
-    2: KNOWN_PTM_WEIGHTS['Oxidation (M)'],
-    3: KNOWN_PTM_WEIGHTS['Acetylation (N-term)'],
-    4: KNOWN_PTM_WEIGHTS['Deamidation (NQ)'],
-    5: KNOWN_PTM_WEIGHTS['Cysteinylation'],
-    6: KNOWN_PTM_WEIGHTS['Carbamylation'],
-    7: KNOWN_PTM_WEIGHTS['NH3 loss'],
-    8: KNOWN_PTM_WEIGHTS['Carbamylation and NH3 loss'],
 }
 
 KNOWN_PTM_LOC = {
-    'Cysteinylation': 'C',
     'Deamidated (N)': 'N',
     'Deamidated (NQ)': 'NQ',
     'Deamidation (NQ)': 'NQ',
     'Deamidation (N)': 'N',
-    'Deamidation (Q)': 'Q',
     'Oxidation (M)': 'M',
     'Acetyl (N-term)': 'N-term',
     'Phospho (Y)': 'Y',
@@ -306,7 +268,6 @@ MS2PIP_NAME_MAPPINGS = {
     'Deamidated (NQ)': 'Deamidation',
     'Deamidation (NQ)': 'Deamidation',
     'Deamidation (N)': 'Deamidation',
-    'Deamidation (Q)': 'Deamidation',
     'Oxidation (M)': 'Oxidation',
     'Acetyl (N-term)': 'Acetyl',
     'Phospho (Y)': 'Phospho',
@@ -340,14 +301,6 @@ DELTA_PRO_FEATURES = [
     'BLOSUM6.1',
 ]
 
-MINIMAL_FEATURE_SET = [
-    SPECTRAL_ANGLE_KEY,
-    'deltaRT',
-    SPEARMAN_KEY,
-    'pearsonR',
-    'spearmanR',
-    'matchedCoverage',
-]
 
 # Constants used by deltapro predictor.
 
@@ -476,245 +429,3 @@ BLOSUM6_1_VALUES = {
     'W': 0.24,
     'Y': -0.48
 }
-
-PLOT_AXIS_REQUIREMENTS = {
-    'showline':True,
-    'linewidth':0.5,
-    'linecolor':'black',
-    'showgrid':False,
-    'ticks':'outside',
-}
-
-
-PISCES_BA_FEATURE_SETS = [
-    [
-        'engineScore',
-        'deltaScore',
-        'spectralAngle',
-        'deltaRT',
-        'spearmanR',
-        'matchedCoverage',
-        'pearsonR',
-        'sequenceLength',
-        'charge',
-        'nMajorMatchedDivFrags',
-        'nMajorNotMatchableDivFrags',
-        'mhcpanPrediction', 'mhcpanMedian',
-        'nuggetsPrediction', 'nuggetsMedian',
-        'collisionEnergy',
-        'dRtMedian',
-        'yIsDominantIonSeries',
-        'maxTypeSpectralAngle',
-        'nLossIonsDivFrags',
-        'minTypeSpectralAngle',
-        'spearmanMajorIons',
-        'spearmanMinorIons',
-        'minMatchedCoverage',
-        'maxMatchedCoverage',
-        'nLeucine',
-        'nDeamidation',
-        'nAcetylation',
-        'nUnmodifiedC',
-        'nCysteinylation',
-    ],
-    [
-        'spectralAngle',
-        'deltaRT',
-        'spearmanR',
-        'matchedCoverage',
-        'pearsonR',
-        'sequenceLength',
-        'charge',
-        'nMajorMatchedDivFrags',
-        'nMajorNotMatchableDivFrags',
-        'mhcpanPrediction', 'mhcpanMedian',
-        'nuggetsPrediction', 'nuggetsMedian',
-        'collisionEnergy',
-        'dRtMedian',
-        'yIsDominantIonSeries',
-        'maxTypeSpectralAngle',
-        'nLossIonsDivFrags',
-        'minTypeSpectralAngle',
-        'spearmanMajorIons',
-        'spearmanMinorIons',
-        'minMatchedCoverage',
-        'maxMatchedCoverage',
-        'nLeucine',
-        'nDeamidation',
-        'nAcetylation',
-        'nUnmodifiedC',
-        'nCysteinylation',
-    ],
-]
-
-
-PISCES_CASA_BA_FEATURE_SETS = [
-    [
-        'engineScore',
-        'deltaScore',
-        'spectralAngle',
-        'deltaRT',
-        'spearmanR',
-        'matchedCoverage',
-        'pearsonR',
-        'sequenceLength',
-        'charge',
-        'nMajorMatchedDivFrags',
-        'nMajorNotMatchableDivFrags',
-        'mhcpanPrediction', 'mhcpanMedian',
-        'nuggetsPrediction', 'nuggetsMedian',
-        'collisionEnergy',
-        'dRtMedian',
-        'yIsDominantIonSeries',
-        'maxTypeSpectralAngle',
-        'nLossIonsDivFrags',
-        'minTypeSpectralAngle',
-        'spearmanMajorIons',
-        'spearmanMinorIons',
-        'minMatchedCoverage',
-        'maxMatchedCoverage',
-        'nLeucine',
-        'nDeamidation',
-        'nTermMods',
-        'nUnmodifiedC',
-    ],
-    [
-        'spectralAngle',
-        'deltaRT',
-        'spearmanR',
-        'matchedCoverage',
-        'pearsonR',
-        'sequenceLength',
-        'charge',
-        'nMajorMatchedDivFrags',
-        'nMajorNotMatchableDivFrags',
-        'mhcpanPrediction', 'mhcpanMedian',
-        'nuggetsPrediction', 'nuggetsMedian',
-        'collisionEnergy',
-        'dRtMedian',
-        'yIsDominantIonSeries',
-        'maxTypeSpectralAngle',
-        'nLossIonsDivFrags',
-        'minTypeSpectralAngle',
-        'spearmanMajorIons',
-        'spearmanMinorIons',
-        'minMatchedCoverage',
-        'maxMatchedCoverage',
-        'nLeucine',
-        'nDeamidation',
-        'nTermMods',
-        'nUnmodifiedC',
-    ],
-]
-
-
-PISCES_NOBA_FEATURE_SETS = [
-    [
-        'engineScore',
-        'deltaScore',
-        'spectralAngle',
-        'deltaRT',
-        'spearmanR',
-        'matchedCoverage',
-        'pearsonR',
-        'sequenceLength',
-        'charge',
-        'nMajorMatchedDivFrags',
-        'nMajorNotMatchableDivFrags',
-        'collisionEnergy','dRtMedian',
-        'yIsDominantIonSeries',
-        'maxTypeSpectralAngle',
-        'nLossIonsDivFrags',
-        'minTypeSpectralAngle',
-        'spearmanMajorIons',
-        'spearmanMinorIons',
-        'minMatchedCoverage',
-        'maxMatchedCoverage',
-        'nLeucine',
-        'nDeamidation',
-        'nAcetylation',
-        'nUnmodifiedC',
-        'nCysteinylation',
-    ],
-    [
-        'spectralAngle',
-        'deltaRT',
-        'spearmanR',
-        'matchedCoverage',
-        'pearsonR',
-        'sequenceLength',
-        'charge',
-        'nMajorMatchedDivFrags',
-        'nMajorNotMatchableDivFrags',
-        'collisionEnergy','dRtMedian',
-        'yIsDominantIonSeries',
-        'maxTypeSpectralAngle',
-        'nLossIonsDivFrags',
-        'minTypeSpectralAngle',
-        'spearmanMajorIons',
-        'spearmanMinorIons',
-        'minMatchedCoverage',
-        'maxMatchedCoverage',
-        'nLeucine',
-        'nDeamidation',
-        'nAcetylation',
-        'nUnmodifiedC',
-        'nCysteinylation',
-    ],
-]
-
-
-PISCES_CASA_NOBA_FEATURE_SETS = [
-    [
-        'engineScore',
-        'deltaScore',
-        'spectralAngle',
-        'deltaRT',
-        'spearmanR',
-        'matchedCoverage',
-        'pearsonR',
-        'sequenceLength',
-        'charge',
-        'nMajorMatchedDivFrags',
-        'nMajorNotMatchableDivFrags',
-        'collisionEnergy',
-        'dRtMedian',
-        'yIsDominantIonSeries',
-        'maxTypeSpectralAngle',
-        'nLossIonsDivFrags',
-        'minTypeSpectralAngle',
-        'spearmanMajorIons',
-        'spearmanMinorIons',
-        'minMatchedCoverage',
-        'maxMatchedCoverage',
-        'nLeucine',
-        'nDeamidation',
-        'nTermMods',
-        'nUnmodifiedC',
-    ],
-    [
-        'spectralAngle',
-        'deltaRT',
-        'spearmanR',
-        'matchedCoverage',
-        'pearsonR',
-        'sequenceLength',
-        'charge',
-        'nMajorMatchedDivFrags',
-        'nMajorNotMatchableDivFrags',
-        'collisionEnergy',
-        'dRtMedian',
-        'yIsDominantIonSeries',
-        'maxTypeSpectralAngle',
-        'nLossIonsDivFrags',
-        'minTypeSpectralAngle',
-        'spearmanMajorIons',
-        'spearmanMinorIons',
-        'minMatchedCoverage',
-        'maxMatchedCoverage',
-        'nLeucine',
-        'nDeamidation',
-        'nTermMods',
-        'nUnmodifiedC',
-    ],
-]

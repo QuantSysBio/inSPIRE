@@ -2,7 +2,6 @@
 """
 import pickle
 import pandas as pd
-import polars as pl
 import yaml
 
 from inspire.constants import (
@@ -12,7 +11,6 @@ from inspire.constants import (
     ENGINE_SCORE_KEY,
     FINAL_Q_VALUE_KEY,
     FINAL_SCORE_KEY,
-    IN_ACCESSION_KEY,
     MASS_DIFF_KEY,
     OKCYAN_TEXT,
     OUT_PSM_ID_KEY,
@@ -27,6 +25,7 @@ from inspire.constants import (
     SEQ_LEN_KEY,
     TRUE_PEPTIDE_KEY,
 )
+from inspire.feature_selection import generate_one_hot_entries
 from inspire.figures import (
     create_binders_fig,
     create_psms_fig,
@@ -35,11 +34,10 @@ from inspire.figures import (
 )
 from inspire.html_template import create_html_report
 from inspire.input.mhcpan import read_mhcpan_output
-from inspire.rescore import apply_rescoring, apply_post_processing
+from inspire.rescore import apply_rescoring
 
 NON_SPECTRAL_FEATURES = [
     ENGINE_SCORE_KEY,
-    CHARGE_KEY,
     DELTA_SCORE_KEY,
     MASS_DIFF_KEY,
     SEQ_LEN_KEY,
@@ -67,10 +65,6 @@ def combine_results(output_folder, mhc_pan_df, input_file):
     """
     if 'non_spectral' in input_file:
         final_assignments_df = pd.read_csv(f'{output_folder}/{input_file}', sep='\t')
-        final_assignments_df[PEPTIDE_KEY] = final_assignments_df[PEPTIDE_KEY].apply(
-            lambda x : x.split('.')[1] if '.' in x else x
-        )
-
         if 'mokapot' in input_file:
             score_key = OUT_SCORE_KEY['mokapot']
         else:
@@ -81,8 +75,6 @@ def combine_results(output_folder, mhc_pan_df, input_file):
 
     mhc_pan_df = mhc_pan_df.rename(columns={'Peptide': PEPTIDE_KEY})
     mhc_pan_df = mhc_pan_df[[PEPTIDE_KEY, '%Rank_BA', 'BindLevel']]
-    if 'BindLevel' in final_assignments_df.columns:
-        final_assignments_df = final_assignments_df.drop('BindLevel', axis=1)
     final_assignments_df = pd.merge(
         final_assignments_df,
         mhc_pan_df,
@@ -97,12 +89,7 @@ def combine_results(output_folder, mhc_pan_df, input_file):
 
     return final_assignments_df
 
-def apply_non_spectral_percolator(
-        config,
-        fdr,
-        proteome,
-        use_score_only=False
-    ):
+def apply_non_spectral_percolator(output_folder, fdr, rescore_method, use_score_only=False):
     """ Function to apply percolator without spectral features as a comparison with
         full inSPIRE.
 
@@ -112,10 +99,6 @@ def apply_non_spectral_percolator(
         The folder where all inSPIRE output is written.
     fdr : float
         The false discovery rate we are aiming.
-    rescore_method : str
-        The method to be used for rescoring.
-    proteome : str or None
-        Path to proteome file is protein inference to be performed.
     use_score_only : bool
         Flag indicating whether or not to use the engine score only.
 
@@ -124,59 +107,44 @@ def apply_non_spectral_percolator(
     non_spectral_psm_df : pd.DataFrame
         A DataFrame of results from Percolator trained without spectral features.
     """
-    all_features_df = pl.from_pandas(
-        pd.read_csv(f'{config.output_folder}/input_all_features.tab', sep='\t')
-    )
-    all_features_df = all_features_df.filter(
-        pl.col(IN_ACCESSION_KEY[config.rescore_method]).ne('deNovo')
-    )
+    all_features_df = pd.read_csv(f'{output_folder}/input_all_features.tab', sep='\t')
 
-    prefix_keys = PREFIX_KEYS[config.rescore_method]
-    psm_id_key = PSM_ID_KEY[config.rescore_method]
+    prefix_keys = PREFIX_KEYS[rescore_method]
+    psm_id_key = PSM_ID_KEY[rescore_method]
 
-    if proteome is not None:
-        all_features_df = all_features_df.with_columns(
-            (pl.lit('-.') + pl.col(PEPTIDE_KEY) + pl.lit('.-')).alias(PEPTIDE_KEY)
-        )
+    all_features_df, one_hot_features = generate_one_hot_entries(
+        all_features_df,
+        CHARGE_KEY
+    )
 
     if use_score_only:
-        non_spectral_df = all_features_df.select(
+        non_spectral_df = all_features_df[
             prefix_keys +
             [ENGINE_SCORE_KEY] +
             SUFFIX_KEYS
-        )
+        ]
     else:
-        non_spectral_df = all_features_df.select(
-            prefix_keys + NON_SPECTRAL_FEATURES + SUFFIX_KEYS[config.rescore_method]
-        )
+        non_spectral_df = all_features_df[
+            prefix_keys + NON_SPECTRAL_FEATURES + one_hot_features + SUFFIX_KEYS[rescore_method]
+        ]
 
-    non_spectral_df.write_csv(
-        f'{config.output_folder}/non_spectral_perc_input.tab',
-        separator='\t',
+    non_spectral_df = non_spectral_df.dropna(axis=1)
+    non_spectral_df.to_csv(
+        f'{output_folder}/non_spectral_perc_input.tab',
+        index=False,
+        sep='\t',
     )
 
-    non_spectral_psm_df, non_spectral_pep_df = apply_rescoring(
-        config.output_folder,
+    non_spectral_psm_df = apply_rescoring(
+        output_folder,
         'non_spectral_perc_input.tab',
         fdr,
-        config.rescore_method,
-        'non_spectral',
-        config.rescore_command,
-        proteome,
-        enzyme=config.enzyme,
-    )
+        rescore_method,
+        'non_spectral'
+    ).rename(columns={OUT_PSM_ID_KEY[rescore_method]: psm_id_key})
 
-    output_peptides_df = apply_post_processing(non_spectral_pep_df, config)
-    output_psm_df = apply_post_processing(non_spectral_psm_df, config)
-
-    output_peptides_df.write_csv(f'{config.output_folder}/nonSpectralPeptideAssignments.csv')
-    output_psm_df.write_csv(f'{config.output_folder}/nonSpectralPsmAssignments.csv')
-
-    non_spectral_psm_df = non_spectral_psm_df.rename(
-        {OUT_PSM_ID_KEY[config.rescore_method]: psm_id_key}
-    )
-
-    non_spectral_psm_df = non_spectral_psm_df.join(
+    non_spectral_psm_df = pd.merge(
+        non_spectral_psm_df,
         non_spectral_df[[psm_id_key, ENGINE_SCORE_KEY]],
         how='inner',
         on=psm_id_key,
@@ -207,18 +175,14 @@ def get_stats_at_cut_off(assignment_df, binders_df, q_cut, q_val_key):
     pct_binders : float
         The percentage of predicted binders among qualifying PSMs.
     """
-    psm_count = assignment_df.filter(pl.col(q_val_key).lt(q_cut)).shape[0]
+    psm_count = assignment_df[assignment_df[q_val_key] <= q_cut].shape[0]
     if binders_df is not None:
         binders_cut_df = binders_df[binders_df[q_val_key] <= q_cut]
         binders_divisor = binders_cut_df.shape[0]
-        if binders_divisor > 0:
-            binders_count = binders_cut_df[
-                (binders_cut_df['BindLevel'] == '<=WB') | (binders_cut_df['BindLevel'] == '<=SB')
-            ].shape[0]
-            pct_binders = 100*binders_count/binders_divisor
-        else:
-            binders_count = 0
-            pct_binders = 0
+        binders_count = binders_cut_df[
+            (binders_cut_df['BindLevel'] == '<=WB') | (binders_cut_df['BindLevel'] == '<=SB')
+        ].shape[0]
+        pct_binders = 100*binders_count/binders_divisor
     else:
         binders_count = None
         pct_binders = None
@@ -362,29 +326,23 @@ def generate_report(config):
     else:
         non_spectral_fdr = config.fdr
 
-    if config.infer_proteins:
-        proteome = config.proteome
-    else:
-        proteome = None
-
     non_spectral_df = apply_non_spectral_percolator(
-        config,
+        config.output_folder,
         non_spectral_fdr,
-        proteome,
+        config.rescore_method,
     )
 
-    assignment_df = pl.read_csv(f'{config.output_folder}/finalPsmAssignments.csv')
+    assignment_df = pd.read_csv(f'{config.output_folder}/finalAssignments.csv')
 
     if config.use_binding_affinity in ['asFeature', 'asValidation']:
-        mhcpan_df = read_mhcpan_output(f'{config.output_folder}/mhcpan', alleles=config.alleles)
-        mhcpan_df = mhcpan_df.to_pandas()
-        binders_df = combine_results(config.output_folder, mhcpan_df, 'finalPsmAssignments.csv')
+        mhcpan_df = read_mhcpan_output(f'{config.output_folder}/mhcpan')
+        binders_df = combine_results(config.output_folder, mhcpan_df, 'finalAssignments.csv')
         ns_binders_df = combine_results(
             config.output_folder,
             mhcpan_df,
             f'non_spectral.{config.rescore_method}.psms.txt'
         )
-        binders_df.to_csv(f'{config.output_folder}/binderfinalPsmAssignments.csv')
+        binders_df.to_csv(f'{config.output_folder}/binderFinalAssignments.csv')
 
         fdrs_df = calculate_fdr_cut_offs(
             assignment_df,
@@ -403,7 +361,7 @@ def generate_report(config):
     if config.use_binding_affinity:
         figures['binders_fig'] = create_binders_fig(fdrs_df, config.search_engine)
 
-    figures['psms_fig'] = create_psms_fig(fdrs_df, config.output_folder)
+    figures['psms_fig'] = create_psms_fig(fdrs_df, config.search_engine)
     fdrs_df.to_csv(f'{config.output_folder}/searchEngineFdrs.csv')
     print(
         OKCYAN_TEXT +

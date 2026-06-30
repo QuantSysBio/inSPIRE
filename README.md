@@ -1,28 +1,10 @@
-# inSPIRE, PEPSeek, & interact-ms
+# inSPIRE
 
 <img src="https://raw.githubusercontent.com/QuantSysBio/inSPIRE/master/img/inSPIRE-logo.png" alt="drawing" width="200"/>
 
 <i>in silico</i> Spectral Predictor Informed REscoring
 
 inSPIRE allows easy rescoring of MaxQuant, Mascot or PEAKS DB search results using spectral prediction. inSPIRE is primarily developed to use Prosit predicted spectra but can also use MS<sup>2</sup>PIP predictions. inSPIRE enables the prediction of MS2 spectra with Prosit without the need of a GPU and it can be run on a standard workstation or laptop.
-
-PEPSeek
-
-PEPSeek is a technology building on previous work on inSPIRE. It is a purpouse built tool for the identification of pathogen peptides in immunopeptidomics. For PEPSeek we recommend installation via the interact-ms webserver. We provide a demo of running PEPSeek [here](https://www.youtube.com/watch?v=Pf78932JWZo&t=39s).
-
-interact-ms
-
-interact-ms is a web-server built to allow easy access to the tools available here. To view the interact-ms GitHub page [click here](https://github.com/QuantSysBio/interact-ms), or view our demo site [here](https://quantsysbio.github.io/interact-ms.html).
-
-## inSPIRE Versions from previous publications
-
-We continue to update and improve inSPIRE with new releases. However, all previous versions used for passed publications are available online. The following versions are relevant for reproducing the exact results of previous publications:
-
-* Use version 1.0 (with minor bug fixes in versions 1.1, 1.2, and 1.3) and python version 3.9 for exact version used in [inSPIRE: An open-source tool for increased mass spectrometry identification rates using Prosit spectral prediction](https://doi.org/10.1016/j.mcpro.2022.100432)
-
-* Use version 1.5 and python version 3.9 for the exact version used in [Protein degradation by human 20S proteasomes elucidates the interplay between peptide hydrolysis and splicing](https://www.nature.com/articles/s41467-024-45339-3)
-
-* Use version 2.0 and python version 3.11 for the latest inSPIRE and PEPseek functionality used in [PEPSeek-mediated identification of novel epitopes from viral and bacterial pathogens and the impact on host cell immunopeptidomes](https://www.sciencedirect.com/science/article/pii/S1535947625000350).
 
 ## Set Up
 
@@ -34,10 +16,10 @@ If you are working on Mac with an M1 chip you will require Miniforge. For all ot
 ### Setting up your environment:
 
 
-1) To start with create a new conda environment with python version 3.11:
+1) To start with create a new conda environment with python version 3.9:
 
 ```
-conda create --name inspire python=3.11
+conda create --name inspire python=3.9
 ```
 
 2) Activate this environment
@@ -49,19 +31,13 @@ conda activate inspire
 3) You will then need to install the inspire package:
 
 ```
-pip install inspirems==3.0rc3
+pip install inspirems
 ```
 
 4) To check your installation, run the following command (it is normal for this call to hang for a few seconds on first execution)
 
 ```
 inspire -h
-```
-
-5) If you wish to use Percolator for rescoring rather than Mokapot you will need to install it separately. On Linux, Percolator can be installed via conda with the command below. Otherwise see https://github.com/percolator/percolator.
-
-```
-conda install -c bioconda percolator
 ```
 
 Once you have successfully installed inSPIRE you should run it specifying your pipeline and a config file. The core execution of inSPIRE will take the form:
@@ -80,11 +56,6 @@ Please cite the following article if you are using inSPIRE in your research:
 
 > Cormican, J. A., Horokhovskyi, Y., Soh, W. T., Mishto, M., and Liepe, J. (2022) inSPIRE: An open-source tool for increased mass spectrometry identification rates using Prosit spectral prediction. Mol Cell Proteomics. \
  [doi.org/10.1016/j.mcpro.2022.100432](https://doi.org/10.1016/j.mcpro.2022.100432)
-
-If you are using inSPIRE for analysis of in vitro protein digestions please cite the following article:
-
-> Soh, W. T., Roetschke, H. P., Cormican, J. A., Teo, B. F., Chiam, N. C., Raabe, M., Pflanz, R., Henneberg, F., Becker, S., Chari, A., Liu, H., Urlaub, H., Liepe, J., and Mishto, M. (2024) Protein degradation by human 20S proteasomes elucidates the interplay between peptide hydrolysis and splicing. Nature Communications. \
- [doi.org/10.1038/s41467-024-45339-3](https://doi.org/10.1038/s41467-024-45339-3)
 
 ### Dependencies
 
@@ -138,36 +109,20 @@ Firstly running the "prepare" pipeline will provide the input for all predictors
 
 You can then run the "predictSpectra" pipeline, followed by the "rescore" pipeline which will use the predicted binding affinities together with the spectral predictions to produce rescored PSM assignments.
 
-## inSPIRE for in vitro protein digestion.
-
-If using inSPIRE for in vitro protein digestion after MSFragger search please use the following settings to your config file. Firstly to ensure that the FASTA headers of your spliced peptide database match those generated by [invitroSPI](https://github.com/QuantSysBio/invitroSPI) and set this as the accession format.
-
-```
-accessionFormat: invitroSPI
-```
-
-Secondly, set this flag so that inSPIRE will use accession as a feature:
-
-```
-useAccessionStrata: True
-```
-
-Thirdly, please provide the protein sequence in FASTA format which is used for validation within inSPIRE:
-
-```
-proteome: path-to-fasta-file
-```
-
-Finally, for the less diverse dataset of the in vitro digestion, we also recommend using a minimal feature set to avoid overfitting:
-
-```
-useMinimalFeatures: True
-```
-
-
 ## Prosit Collision Energy Calibration
 
-Prosit uses the collision energy setting of the mass spectrometer as input for MS<sup>2</sup> prediction. While you could base this off the machine calibration, best results are expected if you callibrate prosit predictions for high scoring PSMs to the experimental data. Calibration will be executed automatically as part of the "core" pipeline if no collision energy is provided.
+Prosit uses the collision energy setting of the mass spectrometer as input for MS<sup>2</sup> prediction. While you could base this off the machine calibration, best results are expected if you callibrate prosit predictions for high scoring PSMs to the experimental data. Hence, for best performance, run the "calibrate" pipeline before executing the "core" pipeline. Execute this pipeline with:
+
+```
+inspire --config_file path-to-config --pipeline calibrate
+```
+
+The calibrate collision energy settting will be printed to the terminal and should be added to your config file as:
+
+```
+collisionEnergy: optimized-collision-energy
+```
+
 
 
 ## inSPIRE Config File
@@ -194,6 +149,7 @@ These are the minimal configs required to run inSPIRE.
 | outputFolder     | Specify an output folder location which inSPIRE should write to. |
 | scansFolder      | Specify a folder containing the experimental spectra files in mgf or mzML format. |
 | scansFormat      | Specify the format of the spectra file (must be either mgf or mzML). |
+| spectralPredictor | Either Prosit or MS<sup>2</sup>PIP |
 
 ### Arguments Required for Prosit
 | Key   | Description   |
@@ -212,7 +168,6 @@ The following settings are set by default but you should check that they are val
 
 | Key   | Description   |
 |-------|---------------|
-| spectralPredictor | Either Prosit or MS<sup>2</sup>PIP (default=prosit). |
 | mzUnits          | The units used for the m/z accuracy either Da for Daltons or ppm for Parts Per Million (default=Da). |
 | mzAccuracy       | The mz accuracy of the mass spectrometer in Daltons or ppm(default=0.02, default unit is Da). |
 | rescoreMethod       | inSPIRE supports either "mokapot" or "percolator" (default=mokapot). |
@@ -232,7 +187,7 @@ These setting are optional and are completely dependent on user preference.
 | reduce       | By default inSPIRE uses only the highest scoring hit per scan (and accession group if specified). If you set reduce to False this will consider all hits (default=True). |
 | reuseInput | Boolean flag on whether to reuse formatted data after the first read in. When using Mascot in particular this may be useful as it reduces the time spend formatting data for input. |
 | filterCysteine | Option to filter cysteins from rescoring if the sample contains unmodified cysteine and Prosit is being used. |
-| dropUnknownPTMs | Whether to drop PSMs containing modifications other than oxidation of methionine and carbamidomethylation of cysteine. (default=True if prosit used, False if ms2pip used) |
+| dropUnknownPTMs | Whether to drop PSMs containing modifications other than oxidation of methionine and carbamidomethylation of cysteine. (default=True if Prosit used, False if ms2pip used) | 
 
 ### Additional Configs for Mascot Distiller
 
@@ -240,7 +195,6 @@ If you have a combined mgf file from Mascot Distiller, you must add the followin
 
 | Key   | Description   |
 |-------|---------------|
-| sourceFileName | If you are using a Mascot search from an mgf file which does not contain the source file name specify it here. |
 | scanTitleFormat  | If Distiller used, set this argument to mascotDistiller.  |
 | distillerLog  | If Distiller used, set this argument to the path to the "table_peptide_int.txt" file from Distiller.  |
 | combinedScansFile | Set this to the combined mgf file from Mascot Distiller and put the mgf file in folder specified by scansFolder. |

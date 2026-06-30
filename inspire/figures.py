@@ -26,7 +26,7 @@ def create_binders_fig(fdrs_df, search_engine):
         x=fdrs_df['FDR'],
         y=fdrs_df['SpirePercentageBinders'],
         name='inSPIRE Percentage Binders',
-        line={'color': 'red'},
+        line={'color': 'olivedrab'},
         mode='lines+markers',
         connectgaps=True,
     )
@@ -34,15 +34,15 @@ def create_binders_fig(fdrs_df, search_engine):
         x=fdrs_df['FDR'],
         y=fdrs_df['searchEnginePercentageBinders'],
         name='Original Percentage Binders',
-        line={'color': 'black'},
+        line={'color': 'violet'},
         mode='lines+markers',
         connectgaps=True,
     )
 
     data = [trace1, trace2]
     layout2 = go.Layout(
-        yaxis={'title': 'Percentage of all Identified PSMs'},
-        xaxis={'title': 'q-value'},
+        yaxis=dict(title='Percentage of all Identified PSMs'),
+        xaxis=dict(title='q-value'),
     )
     fig = go.Figure(data=data, layout=layout2)
     fig.update_layout(
@@ -58,7 +58,7 @@ def create_binders_fig(fdrs_df, search_engine):
     return fig.to_html()
 
 
-def create_psms_fig(fdrs_df, output_folder):
+def create_psms_fig(fdrs_df, search_engine):
     """ Function for plotting the number of PSMs identified at varying q-values
         for inspire and the original search engine.
 
@@ -66,58 +66,47 @@ def create_psms_fig(fdrs_df, output_folder):
     ----------
     fdrs_df : pd.DataFrame
         A DataFrame of statistics for identifications at varying q-values.
-    output_folder : str
-        The folder where the PSM-fdr curve will be written to.
+    search_engine : str
+        The name of the search engine used.
 
     Returns
     -------
     fig : str
         The plot of PSMs vs. q-value converted to html.
     """
-    spire_trace = go.Scatter(
-        x=fdrs_df['FDR'],
-        y=fdrs_df['nSpirePsms'],
-        name='With inSPIRE',
-        line={'color': 'red'},
-        mode='lines+markers',
-        connectgaps=True,
-    )
     search_engine_trace = go.Scatter(
         x=fdrs_df['FDR'],
         y=fdrs_df['nSearchEnginePsms'],
-        name='Without inSPIRE',
-        line={'color': 'black'},
+        name='Number of Search Engine PSMs',
+        line={'color': 'violet'},
+        mode='lines+markers',
+        connectgaps=True,
+    )
+    spire_trace = go.Scatter(
+        x=fdrs_df['FDR'],
+        y=fdrs_df['nSpirePsms'],
+        name='Number of inSPIRE PSMs',
+        line={'color': 'olivedrab'},
         mode='lines+markers',
         connectgaps=True,
     )
 
-    data = [spire_trace, search_engine_trace]
+    data = [search_engine_trace, spire_trace]
     layout = go.Layout(
-        yaxis={'title':'Number of Identifications'},
-        xaxis={'title': 'q-value'},
+        yaxis=dict(title='Number of Identifications'),
+        xaxis=dict(title='q-value'),
     )
     fig = go.Figure(data=data, layout=layout)
 
-
     fig.update_layout(
         plot_bgcolor='rgba(0,0,0,0)',
-        title='PSMs Identified with and without inSPIRE',
+        title=f'PSMs Identified with {search_engine.title()} and inSPIRE',
+        width=1000,
+        height=500,
         title_x=0.5,
     )
     fig.update_xaxes(showline=True, linewidth=0.5, linecolor='black')
     fig.update_yaxes(showline=True, linewidth=0.5, linecolor='black')
-    fig.update_layout(
-        width=500,
-        height=300,
-    )
-
-    fig.write_image(
-        f'{output_folder}/img/psm_fdr_curve.svg', engine='kaleido'
-    )
-    fig.update_layout(
-        width=1000,
-        height=500,
-    )
 
     return fig.to_html()
 

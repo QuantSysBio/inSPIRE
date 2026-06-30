@@ -140,8 +140,7 @@ def create_html_report(config, figures):
         ENDC_TEXT
     )
 
-    if not config.silent_execution:
-        webbrowser.open(
-            'file://' + os.path.realpath(output_path),
-            new=2
-        )
+    webbrowser.open(
+        'file://' + os.path.realpath(output_path),
+        new=2
+    )

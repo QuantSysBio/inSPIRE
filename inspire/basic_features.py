@@ -1,7 +1,7 @@
 """ Functions for calculating basic features that do not require spectral data,
     retention time predictors, or binding affinity.
 """
-import polars as pl
+import numpy as np
 
 from inspire.constants import (
     MASS_DIFF_KEY,
@@ -33,32 +33,6 @@ def _check_reps(peptide):
             n_reps+=1
     return n_reps
 
-def _add_modification_weights(df_row, mod_weight_dict):
-    """ Function to add the wight of modifications to a peptide's average residue weight.
-
-    Parameters
-    ----------
-    df_row : dict or pl.Series
-        Colection including ptm_seq, avgResidueMass, and sequenceLength.
-    mod_weight_dict : dict
-        A dictionary mapping modification IDs to their molecular weight.
-
-    Returns
-    -------
-    averageResidueWeight : float
-        A value for the mean weight of residues including modifications.
-    """
-    if not isinstance(df_row[PTM_SEQ_KEY], str):
-        return float(df_row['avgResidueMass'])
-
-    mod_wt_av = sum(
-        mod_weight_dict.get(
-            aa_char, 0.0
-        ) for aa_char in df_row[PTM_SEQ_KEY]
-    )/df_row[SEQ_LEN_KEY]
-
-    return float(df_row['avgResidueMass'] + mod_wt_av)
-
 def create_basic_features(search_df, mods_df):
     """ Function to create the basic features used by percolator/mokapot.
 
@@ -73,64 +47,49 @@ def create_basic_features(search_df, mods_df):
         The input DataFrame with update columns containing features
         for percolator/mokapot.
     """
-    seq_len_mean = search_df.select(pl.mean(SEQ_LEN_KEY))[SEQ_LEN_KEY][0]
-    search_df = search_df.with_columns(
-        (pl.col(SEQ_LEN_KEY) - pl.lit(seq_len_mean)).abs().alias('seqLenMeanDiff')
+    search_df['seqLenMeanDiff'] = np.abs(
+        search_df[SEQ_LEN_KEY] - search_df[SEQ_LEN_KEY].mean()
     )
 
-    search_df = search_df.with_columns(
-        pl.col(MASS_DIFF_KEY).abs().alias('absMassDiff')
-    )
+    search_df['absMassDiff'] = search_df[MASS_DIFF_KEY].apply(abs)
 
     if PTM_IS_VAR_KEY in mods_df.columns:
         mods_df = mods_df[mods_df[PTM_IS_VAR_KEY]]
 
     if not mods_df.empty:
         mod_ids = [str(x) for x in mods_df[PTM_ID_KEY].tolist()]
-        search_df = search_df.with_columns(
-            pl.col(PTM_SEQ_KEY).map_elements(
-                lambda x : len(
-                    [char for char in x if char in mod_ids]
-                ) if isinstance(x, str) else 0,
-                skip_nulls=False, return_dtype=pl.Int64,
-            ).alias('nVarMods')
+        search_df['nVarMods'] = search_df[PTM_SEQ_KEY].apply(
+            lambda x : len([
+                char for char in x if char in mod_ids
+            ]) if isinstance(x, str) else 0
         )
-
         mod_weight_dict = fetch_mod_weight_dict(mods_df)
-        search_df = search_df.with_columns(
-            pl.struct([PTM_SEQ_KEY, SEQ_LEN_KEY, 'avgResidueMass']).map_elements(
-                lambda x : _add_modification_weights(x, mod_weight_dict),
-                skip_nulls=False, return_dtype=pl.Float64,
-            ).alias('avgResidueMass')
+        mod_weights = search_df.apply(
+            lambda x : 0.0 if not isinstance(x[PTM_SEQ_KEY], str) else sum(
+                (mod_weight_dict.get(aa_char, 0.0) for aa_char in x[PTM_SEQ_KEY])
+            )/x[SEQ_LEN_KEY],
+            axis=1
         )
+
+        search_df['avgResidueMass'] += mod_weights
     else:
-        search_df = search_df.with_columns(
-            pl.lit(0).alias('nVarMods')
-        )
+        search_df['nVarMods'] = 0
 
-    search_df = search_df.with_columns(
-        pl.col(PEPTIDE_KEY).map_elements(
-            _check_reps, return_dtype=pl.Int64
-        ).alias('nRepeatedResidues')
+    search_df['nRepeatedResidues'] = search_df[PEPTIDE_KEY].apply(
+        _check_reps
     )
 
-    search_df = search_df.with_columns(
-        pl.col(PEPTIDE_KEY).map_elements(
-            lambda x : len(set(x))/len(x), return_dtype=pl.Float64,
-        ).alias('fracUnique')
+    search_df['fracUnique'] = search_df[PEPTIDE_KEY].apply(
+        lambda x : len(set(x))/len(x)
     )
 
-    search_df = search_df.with_columns(
-        pl.col(PEPTIDE_KEY).map_elements(
-            lambda x : x.count('C')/len(x), return_dtype=pl.Float64,
-        ).alias('fracC')
+    search_df['fracC'] = search_df[PEPTIDE_KEY].apply(
+        lambda x : x.count('C')/len(x)
     )
-
-    search_df = search_df.with_columns(
-        pl.col(PEPTIDE_KEY).map_elements(
-            lambda x : (x.count('K') + x.count('R'))/(len(x) - 1),
-            return_dtype=pl.Float64,
-        ).alias('fracKR')
+    search_df['fracKR'] = search_df[PEPTIDE_KEY].apply(
+        lambda x : (
+            x.count('K') + x.count('R')
+        )/(len(x) - 1)
     )
 
     return search_df
